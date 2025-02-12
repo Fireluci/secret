@@ -62,9 +62,7 @@ Nᴀᴍᴇ - {}"""
 
     TOP_ALRT_MSG = """🔆彡[ @HEROFLiX ]彡🔆"""
 
-    MELCOW_ENG = """<b><i>🔆 "HEROFLiX • GROUP" 亗 🔆
-•───────────────────• 
-⚜Hey {}, Welcome To HEROFlix • Group. You Can Request Any Movies, Web-Series, Anime, K-Dramas, Animation etc., here....</i></b>"""
+    MELCOW_ENG = """<b>⚜Hey {}, Welcome To {}. You Can Get Any Movies, Series, Anime & More Here!</b>"""
 
     SHORTLINK_INFO = """🔆彡[ @HEROFLiX ]彡🔆"""
 
