@@ -48,8 +48,8 @@ async def pm_text(bot, message):
     if content.startswith("/") or content.startswith("#"): return  # ignore commands and hashtags
     if user_id in ADMINS: return # ignore admins
     await message.reply_text(
-         text=f"<b>🌟 Click Here For Any Movie, Series, Anime & More!!!👇 \n\n🌟 किसी भी मूवी, सीरीज, एनीमे और अधिक के लिए यहां क्लिक करें!!!👇</b>",   
-         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🎬 Click Here 🧤", url=f"https://telegram.me/heroflixofficial")]])
+         text=f"<b>🌟 Get Elite Membership at Just ₹40/- Per Month & I Can Provide You Any Movie, Series, Anime etc.,</b>",   
+         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🎬 Click Here To Buy 🧤", url=f"https://telegram.me/herofeedbot")]])
     )
 
 @Client.on_callback_query(filters.regex(r"^next"))
