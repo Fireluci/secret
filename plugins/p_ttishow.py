@@ -57,7 +57,7 @@ async def save_group(bot, message):
                                                  caption=(script.MELCOW_ENG.format(u.mention, message.chat.title)),
                                                  reply_markup=InlineKeyboardMarkup(
                                                                          [[
-                                                                           InlineKeyboardButton("❓How To Download❓", url=f'https://telegram.me/{TUTORIAL}')
+                                                                           InlineKeyboardButton("🔆彡[ HEROFLiX ]彡🔆", url=f'https://telegram.me/heroflix')
                                                                          ]]
                                                  ),
                                                  parse_mode=enums.ParseMode.HTML
