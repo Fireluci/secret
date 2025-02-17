@@ -14,15 +14,15 @@ def is_enabled(value, default):
 SESSION = environ.get('SESSION', 'Media_search')
 API_ID = int(environ.get('API_ID', '1736204'))
 API_HASH = environ.get('API_HASH', '890d40e0f91a4de32dec2965444b2cbe')
-BOT_TOKEN = environ.get('BOT_TOKEN', '6159823074:AAEUgLsUdv_WR2zn0C7yLJHhZ6aZx_L9S18')
+BOT_TOKEN = environ.get('BOT_TOKEN', '7000231271:AAEecrWS7-RmZOEi0NS-txk6gQ_wQTIFgRg')
 
-DATABASE_URI = environ.get('DATABASE_URI', "mongodb+srv://Heroflix:Heroflix@heroflix.6sgi15o.mongodb.net/?retryWrites=true&w=majority")
-DATABASE_NAME = environ.get('DATABASE_NAME', "Ariana")
-COLLECTION_NAME = environ.get('COLLECTION_NAME', 'Ariana')
+DATABASE_URI = environ.get('DATABASE_URI', "mongodb+srv://lusi:lusi@lusi.i3wyh.mongodb.net/?retryWrites=true&w=majority&appName=lusi")
+DATABASE_NAME = environ.get('DATABASE_NAME', "lusi")
+COLLECTION_NAME = environ.get('COLLECTION_NAME', 'lusi')
 
 DWLD = environ.get("DWLD", 'HeroFlixx/8')
 CACHE_TIME = int(environ.get('CACHE_TIME', 300))
-USE_CAPTION_FILTER = bool(environ.get('USE_CAPTION_FILTER', False))
+USE_CAPTION_FILTER = bool(environ.get('USE_CAPTION_FILTER', True))
 
 PICS = (environ.get('PICS', 'https://te.legra.ph/file/d6a23f16e002e86381656.jpg https://te.legra.ph/file/d6a23f16e002e86381656.jpg')).split()
 NOR_IMG = environ.get("NOR_IMG", "https://te.legra.ph/file/e709716b0b99ed944a533.jpg")
