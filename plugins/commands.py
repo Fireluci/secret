@@ -42,6 +42,8 @@ async def start(client, message):
         buttons = [[
             InlineKeyboardButton('❓How To Use Me', url=f'https://telegram.me/{TUTORIAL}'),
             InlineKeyboardButton('⚜ Updates', url=f'https://telegram.me/{CHNL_LNK}')
+        ],[
+            InlineKeyboardButton('🌟 Premium Membership 🌟', callback_data="PREMIUM")
         ]]
         reply_markup = InlineKeyboardMarkup(buttons)
         await message.reply_photo(
@@ -83,6 +85,8 @@ async def start(client, message):
         buttons = [[
             InlineKeyboardButton('❓How To Use Me', url=f'https://telegram.me/{TUTORIAL}'),
             InlineKeyboardButton('⚜ Updates', url=f'https://telegram.me/{CHNL_LNK}')
+        ],[
+            InlineKeyboardButton('🌟 Premium Membership 🌟', callback_data="PREMIUM")
         ]]
         reply_markup = InlineKeyboardMarkup(buttons)      
         await message.reply_photo(
