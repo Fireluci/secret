@@ -3,7 +3,14 @@ class script(object):
     
     
     HELP_TXT = """🔆彡[ @HEROFLiX ]彡🔆"""
+    PREMIUM = """🌟 PREMIUM MEMBERSHiP 🌟
+〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️
+🔆 Get All Movies + Series Direct Files Without Any Links or Ads!
 
+🗳 1 Month Plan ➔ ₹40/- 
+🗳 1 Year Plan ➔ ₹400/-
+
+🌀 To Buy ➔ Text @HeroFeedBot"""
     ABOUT_TXT = """🔆彡[ @HEROFLiX ]彡🔆"""
 
     SOURCE_TXT = """🔆彡[ @HEROFLiX ]彡🔆"""
