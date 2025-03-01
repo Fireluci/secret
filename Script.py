@@ -3,7 +3,7 @@ class script(object):
     
     
     HELP_TXT = """🔆彡[ @HEROFLiX ]彡🔆"""
-    PREMIUM = """🌟 PREMIUM MEMBERSHiP 🌟
+    PREMIUM_TXT = """🌟 PREMIUM MEMBERSHiP 🌟
 〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️
 🔆 Get All Movies + Series Direct Files Without Any Links or Ads!
 
