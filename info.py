@@ -17,9 +17,9 @@ API_HASH = environ.get('API_HASH', '8600379efa072b446f9bc81da4f40786')
 BOT_TOKEN = environ.get('BOT_TOKEN', '5782574416:AAFbyyAuosSz1qjh3ARQTKlLe8wSMQOwLog')
 
 
-DATABASE_URI = environ.get('DATABASE_URI', "mongodb+srv://forward:forward@forward.7rkvx.mongodb.net/?retryWrites=true&w=majority")
-DATABASE_NAME = environ.get('DATABASE_NAME', "Anurag")
-COLLECTION_NAME = environ.get('COLLECTION_NAME', 'Anurag_files')
+DATABASE_URI = environ.get('DATABASE_URI', "mongodb+srv://nora:nora@nora.g32ayec.mongodb.net/?retryWrites=true&w=majority&appName=nora")
+DATABASE_NAME = environ.get('DATABASE_NAME', "nora")
+COLLECTION_NAME = environ.get('COLLECTION_NAME', 'nora')
 
 DWLD = environ.get("DWLD", 'MiaFlix/15')
 CACHE_TIME = int(environ.get('CACHE_TIME', 300))
@@ -33,7 +33,7 @@ SPELL_IMG = environ.get("SPELL_IMG", "https://te.legra.ph/file/2d68d2c0fbf9385d4
 
 # Admins, Channels & Users
 ADMINS = [int(admin) if id_pattern.search(admin) else admin for admin in environ.get('ADMINS', '1058015838').split()]
-CHANNELS = [int(ch) if id_pattern.search(ch) else ch for ch in environ.get('CHANNELS', '-1001855514451').split()]
+CHANNELS = [int(ch) if id_pattern.search(ch) else ch for ch in environ.get('CHANNELS', '-1001638006524').split()]
 auth_users = [int(user) if id_pattern.search(user) else user for user in environ.get('AUTH_USERS', '1058015838').split()]
 AUTH_USERS = (auth_users + ADMINS) if auth_users else []
 PREMIUM_USER = [int(user) if id_pattern.search(user) else user for user in environ.get('PREMIUM_USER', '').split()]
