@@ -16,7 +16,7 @@ API_ID = int(environ.get('API_ID', '1736204'))
 API_HASH = environ.get('API_HASH', '890d40e0f91a4de32dec2965444b2cbe')
 BOT_TOKEN = environ.get('BOT_TOKEN', '')
 
-DATABASE_URI = environ.get('DATABASE_URI', "mongodb+srv://lika:lika@lika.a29ranw.mongodb.net/?retryWrites=true&w=majority&appName=lika")
+DATABASE_URI = environ.get('DATABASE_URI', "mongodb+srv://bharadi:<db_password>@bharadi.pn6j9h3.mongodb.net/?retryWrites=true&w=majority&appName=bharadi")
 DATABASE_NAME = environ.get('DATABASE_NAME', "heroflix")
 COLLECTION_NAME = environ.get('COLLECTION_NAME', 'heroflix')
 
@@ -24,10 +24,10 @@ DWLD = environ.get("DWLD", 'HeroFlixx/8')
 CACHE_TIME = int(environ.get('CACHE_TIME', 300))
 USE_CAPTION_FILTER = bool(environ.get('USE_CAPTION_FILTER', True))
 
-PICS = (environ.get('PICS', 'https://te.legra.ph/file/d6a23f16e002e86381656.jpg https://te.legra.ph/file/d6a23f16e002e86381656.jpg')).split()
-NOR_IMG = environ.get("NOR_IMG", "https://te.legra.ph/file/d6a23f16e002e86381656.jpg")
-MELCOW_PIC = environ.get("MELCOW_PIC", "https://te.legra.ph/file/d6a23f16e002e86381656.jpg")
-SPELL_IMG = environ.get("SPELL_IMG", "https://te.legra.ph/file/2d68d2c0fbf9385d48d70.jpg")
+PICS = (environ.get('PICS', 'https://te.legra.ph/file/7bece5ddc3e001805c02f.jpg https://te.legra.ph/file/7bece5ddc3e001805c02f.jpg')).split()
+NOR_IMG = environ.get("NOR_IMG", "https://te.legra.ph/file/7bece5ddc3e001805c02f.jpg")
+MELCOW_PIC = environ.get("MELCOW_PIC", "https://te.legra.ph/file/7bece5ddc3e001805c02f.jpg")
+SPELL_IMG = environ.get("SPELL_IMG", "https://te.legra.ph/file/7bece5ddc3e001805c02f.jpg")
 
 # Admins, Channels & Users
 ADMINS = [int(admin) if id_pattern.search(admin) else admin for admin in environ.get('ADMINS', '1058015838').split()]
