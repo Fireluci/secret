@@ -43,7 +43,7 @@ async def start(client, message):
             InlineKeyboardButton('❓How To Use Me', url=f'https://telegram.me/{TUTORIAL}'),
             InlineKeyboardButton('⚜ Updates', url=f'https://telegram.me/{CHNL_LNK}')
         ],[
-            InlineKeyboardButton("🌟 Premium Membership 🌟", url=f'https://telegram.me/HeroFlixx/49')
+            InlineKeyboardButton("🌟 Premium Membership 🌟", url=f'https://telegram.me/BharadiMovieKing')
         ]]
         reply_markup = InlineKeyboardMarkup(buttons)
         await message.reply_photo(
@@ -71,9 +71,9 @@ async def start(client, message):
             try:
                 kk, file_id = message.command[1].split("_", 1)
                 pre = 'checksubp' if kk == 'filep' else 'checksub' 
-                btn.append([InlineKeyboardButton("🔆彡⟨ HEROFLiX ⟩彡🔆", url=invite_link.invite_link)])
+                btn.append([InlineKeyboardButton("🔆彡⟨ Bharadi Movie King ⟩彡🔆", url=invite_link.invite_link)])
             except (IndexError, ValueError):
-                btn.append([InlineKeyboardButton("🔆彡⟨ HEROFLiX ⟩彡🔆", url=invite_link.invite_link)])
+                btn.append([InlineKeyboardButton("🔆彡⟨ Bharadi Movie King ⟩彡🔆", url=invite_link.invite_link)])
         await client.send_message(
             chat_id=message.from_user.id,
             text="**🔆 First Join Our Main Channel & Then Request Again in Group ♻ \n\n🔆 पहले हमारे मैन चैनल से जुड़ें और फिर ग्रुप में दोबारा रिक्वेस्ट करें ♻**",
@@ -86,7 +86,7 @@ async def start(client, message):
             InlineKeyboardButton('❓How To Use Me', url=f'https://telegram.me/{TUTORIAL}'),
             InlineKeyboardButton('⚜ Updates', url=f'https://telegram.me/{CHNL_LNK}')
         ],[
-            InlineKeyboardButton("🌟 Premium Membership 🌟", url=f'https://telegram.me/HeroFlixx/49')
+            InlineKeyboardButton("🌟 Premium Membership 🌟", url=f'https://telegram.me/BharadiMovieKing')
         ]]
         reply_markup = InlineKeyboardMarkup(buttons)      
         await message.reply_photo(
@@ -137,7 +137,7 @@ async def start(client, message):
                     reply_markup=InlineKeyboardMarkup(
                         [
                          [
-                          InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}'),
+                          InlineKeyboardButton('🔆彡⟨ Bharadi Movie King ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}'),
                          ]
                         ]
                     )
@@ -153,7 +153,7 @@ async def start(client, message):
                     reply_markup=InlineKeyboardMarkup(
                         [
                          [
-                          InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}'),
+                          InlineKeyboardButton('🔆彡⟨ Bharadi Movie King ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}'),
                          ]
                         ]
                     )
@@ -264,7 +264,7 @@ async def start(client, message):
         #code edited insed of direct file name
         cleaned_file_name = f"{' '.join(filter(lambda x: not x.startswith('www.') and not x.startswith('@'), files.file_name.split()))}"
         g = await get_shortlink(chat_id, f"https://telegram.me/{temp.U_NAME}?start=file_{file_id}")
-        k = await client.send_message(chat_id=user,text=f'<b>[ {get_size(files.file_size)} ] <a href="https://telegram.me/HEROFLiX">{cleaned_file_name}</a> \n\n📗 Download Link ➔ {g} {g}</b>', reply_markup=InlineKeyboardMarkup(
+        k = await client.send_message(chat_id=user,text=f'<b>[ {get_size(files.file_size)} ] <a href="https://telegram.me/Bharadi Movie King">{cleaned_file_name}</a> \n\n📗 Download Link ➔ {g} {g}</b>', reply_markup=InlineKeyboardMarkup(
                 [
                     [
                         InlineKeyboardButton('♻️ Download Link ♻️', url=g)
@@ -318,7 +318,7 @@ async def start(client, message):
                 reply_markup=InlineKeyboardMarkup(
                     [
                      [
-                      InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}'),
+                      InlineKeyboardButton('🔆彡⟨ Bharadi Movie King ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}'),
                      ]
                     ]
                 )
@@ -340,7 +340,7 @@ async def start(client, message):
             files = files_[0]
             g = await get_shortlink(chat_id, f"https://telegram.me/{temp.U_NAME}?start=file_{file_id}")
             cleaned_file_name = f"{' '.join(filter(lambda x: not x.startswith('www.') and not x.startswith('@'), files.file_name.split()))}"
-            k = await client.send_message(chat_id=message.from_user.id,text=f'<b>[ {get_size(files.file_size)} ] <a href="https://telegram.me/HEROFLiX">{cleaned_file_name}</a> \n\n📗 Download Link ➠ {g} {g}</b>', reply_markup=InlineKeyboardMarkup(
+            k = await client.send_message(chat_id=message.from_user.id,text=f'<b>[ {get_size(files.file_size)} ] <a href="https://telegram.me/Bharadi Movie King">{cleaned_file_name}</a> \n\n📗 Download Link ➠ {g} {g}</b>', reply_markup=InlineKeyboardMarkup(
                 [
                         [
                             InlineKeyboardButton('♻️ Download Link ♻️', url=g)
@@ -377,7 +377,7 @@ async def start(client, message):
                 reply_markup=InlineKeyboardMarkup(
                     [
                      [
-                      InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}'),
+                      InlineKeyboardButton('🔆彡⟨ Bharadi Movie King ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}'),
                      ]
                     ]
                 )
@@ -433,7 +433,7 @@ async def start(client, message):
         reply_markup=InlineKeyboardMarkup(
             [
              [
-              InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}'),
+              InlineKeyboardButton('🔆彡⟨ Bharadi Movie King ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}'),
              ]
             ]
         )
