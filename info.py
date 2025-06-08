@@ -16,7 +16,7 @@ API_ID = int(environ.get('API_ID', '1736204'))
 API_HASH = environ.get('API_HASH', '890d40e0f91a4de32dec2965444b2cbe')
 BOT_TOKEN = environ.get('BOT_TOKEN', '')
 
-DATABASE_URI = environ.get('DATABASE_URI', "mongodb+srv://youn-jung:youn-jung@youn-jung.oazpzep.mongodb.net/?retryWrites=true&w=majority&appName=youn-jung")
+DATABASE_URI = environ.get('DATABASE_URI', "mongodb+srv://han:han@han.pmifbb5.mongodb.net/?retryWrites=true&w=majority&appName=han")
 DATABASE_NAME = environ.get('DATABASE_NAME', "heroflix")
 COLLECTION_NAME = environ.get('COLLECTION_NAME', 'heroflix')
 
@@ -48,9 +48,9 @@ NO_RESULTS_MSG = bool(environ.get("NO_RESULTS_MSG", False))
 
 VERIFY = bool(environ.get('VERIFY', False))
 SHORTLINK_URL = environ.get('SHORTLINK_URL', 'easysky.in')
-SHORTLINK_API = environ.get('SHORTLINK_API', '640eb2125f39b0e70aa9f1baee312655c8f676cd')
+SHORTLINK_API = environ.get('SHORTLINK_API', '7ae04082aa301f39d78b947282be339db1b646fb')
 SECOND_SHORTLINK_URL = environ.get('SECOND_SHORTLINK_URL', 'easysky.in')
-SECOND_SHORTLINK_API = environ.get('SECOND_SHORTLINK_API', '640eb2125f39b0e70aa9f1baee312655c8f676cd')
+SECOND_SHORTLINK_API = environ.get('SECOND_SHORTLINK_API', '7ae04082aa301f39d78b947282be339db1b646fb')
 IS_SHORTLINK = bool(environ.get('IS_SHORTLINK', True))
 DELETE_CHANNELS = [int(dch) if id_pattern.search(dch) else dch for dch in environ.get('DELETE_CHANNELS', '0').split()]
 MAX_B_TN = environ.get("MAX_B_TN", "10")
