@@ -1579,6 +1579,7 @@ async def auto_filter(client, msg, spoll=False):
             search = search.replace("–", " ")
             search = search.replace("complete", "com")
             search = search.replace("combined", "com")
+            search = search.replace("all episode", "com")
             files, offset, total_results = await get_search_results(message.chat.id ,search, offset=0, filter=True)
             settings = await get_settings(message.chat.id)
             if not files:
