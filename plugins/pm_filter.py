@@ -1572,7 +1572,7 @@ async def auto_filter(client, msg, spoll=False):
                     continue
                 else:
                     search = search + x + " "
-            search = re.sub(r"\b(pl(i|e)*?(s|z+|ease|se|ese|(e+)s(e)?)|((send|snd|gib)(\sme)?)|movie(s)?|web\sseries|with\ssubtitle(s)?)", "", search, flags=re.IGNORECASE)
+            search = re.sub(r"\b(pl(i|e)*?(s|z+|ease|se|ese|(e+)s(e)?)|((send|snd|gib)(\sme)?)|movie(s)?|web\sseries|full\smovie|with\ssubtitle(s)?)", "", search, flags=re.IGNORECASE)
             search = re.sub(r"\s+", " ", search).strip()
             search = search.replace("-", " ")
             search = search.replace(":", " ")
@@ -1581,7 +1581,6 @@ async def auto_filter(client, msg, spoll=False):
             search = search.replace("combined", "com")
             search = search.replace("all episode", "com")
             search = search.replace("all episodes", "com")
-            search = search.replace("full movie", " ")
             search = search.replace("english", "eng")
             search = search.replace("hindi", "hin")
             search = search.replace("tamil", "tam")
