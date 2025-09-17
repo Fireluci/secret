@@ -16,7 +16,7 @@ API_ID = int(environ.get('API_ID', '1736204'))
 API_HASH = environ.get('API_HASH', '890d40e0f91a4de32dec2965444b2cbe')
 BOT_TOKEN = environ.get('BOT_TOKEN', '')
 
-DATABASE_URI = environ.get('DATABASE_URI', "mongodb+srv://yujin:yujin@yujin.ic3td9d.mongodb.net/?retryWrites=true&w=majority&appName=yujin")
+DATABASE_URI = environ.get('DATABASE_URI', "mongodb+srv://liz:liz@liz.hwhb5p4.mongodb.net/?retryWrites=true&w=majority&appName=liz")
 DATABASE_NAME = environ.get('DATABASE_NAME', "heroflix")
 COLLECTION_NAME = environ.get('COLLECTION_NAME', 'heroflix')
 
