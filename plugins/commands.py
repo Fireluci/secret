@@ -41,7 +41,7 @@ async def start(client, message):
     if len(message.command) != 2:
         buttons = [[
             InlineKeyboardButton('❓How To Use Me', url=f'https://telegram.me/{TUTORIAL}'),
-            InlineKeyboardButton('⚜ Updates', url=f'https://telegram.me/{AUTH_CHANNEL}')
+            InlineKeyboardButton('⚜ Updates', url=AUTH_CHANNEL')
         ],[
             InlineKeyboardButton("🌟 Premium Membership 🌟", url=f'https://telegram.me/HeroFlixx/49')
         ]]
@@ -84,7 +84,7 @@ async def start(client, message):
     if len(message.command) == 2 and message.command[1] in ["subscribe", "error", "okay", "help"]:
         buttons = [[
             InlineKeyboardButton('❓How To Use Me', url=f'https://telegram.me/{TUTORIAL}'),
-            InlineKeyboardButton('⚜ Updates', url=f'https://telegram.me/{AUTH_CHANNEL}')
+            InlineKeyboardButton('⚜ Updates', url=AUTH_CHANNEL')
         ],[
             InlineKeyboardButton("🌟 Premium Membership 🌟", url=f'https://telegram.me/HeroFlixx/49')
         ]]
