@@ -1572,11 +1572,10 @@ async def auto_filter(client, msg, spoll=False):
                     continue
                 else:
                     search = search + x + " "
-            search = re.sub(r"\b(pl(i|e)*?(s|z+|ease|se|ese|(e+)s(e)?)|((send|snd|gib)(\sme)?)|movie(s)?|web\sseries|full\smovie|with\ssubtitle(s)?)", "", search, flags=re.IGNORECASE)
+            search = re.sub(r"\b(ple*ase|plz|pls|send|snd|gib|movies?|web\sseries|full\s?movie|with\ssubtitle(s)?)\b", "", search, flags=re.IGNORECASE)
+            search = re.sub(r"\b(complete|combined|all\s*episodes?)\b", "com", search, flags=re.IGNORECASE)
+            search = re.sub(r"[-:–]+", " ", search)
             search = re.sub(r"\s+", " ", search).strip()
-            search = re.sub(r"[-:–]", " ", search)
-            search = re.sub(r"full\s*movie", "", search, flags=re.IGNORECASE)
-            search = re.sub(r"complete|combined|all\s*episodes?", "com", search, flags=re.IGNORECASE)
             search = search.replace("english", "eng")
             search = search.replace("hindi", "hin")
             search = search.replace("tamil", "tam")
