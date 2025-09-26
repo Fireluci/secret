@@ -1800,13 +1800,13 @@ async def advantage_spell_chok(client, msg):
     settings = await get_settings(msg.chat.id)
     find = mv_rqst.split(" ")
     query = ""
-    removes = ["in", "series", "download", "hd", "thriller", "4k", "esub", "and", "language", "&", "hollywood", "session", "bollywood", "web", "episodes", "dub", "anime", "file" "movie", "film", "netflix", "dubbed", "link", "subtitles"]
+    removes = ["in", "series", "download", "hd", "kdrama", "thriller", "4k", "esub", "and", "language", "&", "hollywood", "session", "bollywood", "web", "episodes", "dub", "anime", "file" "movie", "film", "netflix", "dubbed", "link", "subtitles"]
     for x in find:
         if x in removes:
             continue
         else:
             query = query + x + " "
-    query = re.sub(r"\b(pl(i|e)*?(s|z+|ease|se|ese|(e+)s(e)?)|((send|snd|gib)(\sme)?)|web\sseries|movie(s)?|with\ssubtitle(s)?)", "", query, flags=re.IGNORECASE)
+    query = re.sub(r"\b(pl(i|e)*?(s|z+|ease|se|ese|(e+)s(e)?)|((send|snd|gib)(\sme)?)|movie(s)?|web\sseries|full\smovie|with\ssubtitle(s)?)", "", query , flags=re.IGNORECASE)
     query = re.sub(r"\s+", " ", query).strip() + "movie"
     g_s = await search_gagala(query)
     g_s += await search_gagala(msg.text)
