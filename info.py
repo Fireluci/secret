@@ -16,11 +16,11 @@ API_ID = int(environ.get('API_ID', '1736204'))
 API_HASH = environ.get('API_HASH', '890d40e0f91a4de32dec2965444b2cbe')
 BOT_TOKEN = environ.get('BOT_TOKEN', '')
 
-DATABASE_URI = environ.get('DATABASE_URI', "mongodb+srv://liz:liz@liz.hwhb5p4.mongodb.net/?retryWrites=true&w=majority&appName=liz")
+DATABASE_URI = environ.get('DATABASE_URI', "mongodb+srv://lisa:lisa@lisa.vngq3yl.mongodb.net/?retryWrites=true&w=majority&appName=lisa")
 DATABASE_NAME = environ.get('DATABASE_NAME', "heroflix")
 COLLECTION_NAME = environ.get('COLLECTION_NAME', 'heroflix')
 
-DWLD = environ.get("DWLD", 'HeroFlixx/8')
+DWLD = environ.get("DWLD", 'HeroFlixx/54')
 CACHE_TIME = int(environ.get('CACHE_TIME', 300))
 USE_CAPTION_FILTER = bool(environ.get('USE_CAPTION_FILTER', True))
 
