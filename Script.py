@@ -7,8 +7,8 @@ class script(object):
 〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️
 🔆 Get All Movies + Series Direct Files Without Any Links or Ads!
 
-🗳 1 Month Plan ➔ ₹40/- 
-🗳 1 Year Plan ➔ ₹400/-
+🗳 1 Month Plan ➔ ₹30/- 
+🗳 1 Year Plan ➔ ₹399/-
 
 🌀 To Buy ➔ Text @HeroFeedBot</b>"""
     ABOUT_TXT = """🔆彡[ @HEROFLiX ]彡🔆"""
@@ -68,9 +68,7 @@ Nᴀᴍᴇ - {}"""
 
     TOP_ALRT_MSG = """🔆彡[ @HEROFLiX ]彡🔆"""
 
-    MELCOW_ENG = """<b><i>🔆 "HEROFLiX • GROUP" 亗 🔆
-•───────────────────• 
-⚜Hey {}, Welcome To HEROFlix • Group. You Can Request Any Movies, Web-Series, Anime, K-Dramas, Animation etc., here....</i></b>"""
+    MELCOW_ENG = """<b><i>🔆 Hey {}, Welcome to Elite Group! All Movies & Series Direct | No Ads | Unlimited Access</i></b>"""
 
     SHORTLINK_INFO = """🔆彡[ @HEROFLiX ]彡🔆"""
 
