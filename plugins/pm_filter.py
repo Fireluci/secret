@@ -47,7 +47,9 @@ def _is_valid_peer_value(val: Any) -> bool:
     return True
 
 async def safe_get_users(client, user_ids: Any) -> List:
-    \"\"\"Resolve user ids/usernames safely. Filters out invalid/falsy entries like 0/None/\"\".
+    """Resolve user ids/usernames safely. 
+Filters out invalid/falsy entries like 0, None, or empty strings."""
+
     Falls back to per-item resolution on bulk failure.
     \"\"\"
     if user_ids is None:
