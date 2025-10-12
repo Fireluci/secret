@@ -1939,7 +1939,21 @@ async def advantage_spell_chok(client, msg):
     query = re.sub(r"\b(pl(i|e)*?(s|z+|ease|se|ese|(e+)s(e)?)|((send|snd|gib)(\sme)?)|movie(s)?|web\sseries|full\smovie|with\ssubtitle(s)?)", "", query , flags=re.IGNORECASE)
     query = re.sub(r"\s+", " ", query).strip() + "movie"
     g_s = await search_gagala_safe(query)
-    g_s += await search_gagala_safe(msg.text)
+    # --- Safe Google search append (prevents NoneType crash + replies with I_CUD_NT) ---
+res = await search_gagala_safe(msg.text)
+if res:
+    g_s = (g_s or "") + res
+else:
+    g_s = g_s or ""
+    try:
+        await msg.reply_text(
+            script.I_CUD_NT,
+            disable_web_page_preview=True
+        )
+    except Exception as e:
+        log.warning(f"Failed to send I_CUD_NT message: {e}")
+# --- End safe block ---
+
     gs_parsed = []
     if not g_s:
         reqst_gle = query.replace(" ", "+")
