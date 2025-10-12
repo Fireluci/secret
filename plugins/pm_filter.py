@@ -23,134 +23,6 @@ from database.filters_mdb import del_all, find_filter, get_filters
 import logging
 
 logger = logging.getLogger(__name__)
-
-
-# ---- ADDED HELPERS: safe_get_users and safe async search wrapper ----
-from typing import Any, List
-import asyncio
-import functools
-import time
-import aiohttp
-
-def _is_valid_peer_value(val: Any) -> bool:
-    if val is None:
-        return False
-    try:
-        if isinstance(val, bool):
-            return False
-        if isinstance(val, (int,)) and int(val) == 0:
-            return False
-        if str(val).strip() in ("", "0", "None", "none"):
-            return False
-    except Exception:
-        pass
-    return True
-
-async def safe_get_users(client, user_ids: Any) -> List:
-    """Resolve user ids/usernames safely. Filters out invalid/falsy entries like 0/None/"".
-    Falls back to per-item resolution on bulk failure.
-    """
-    if user_ids is None:
-        return []
-    if not isinstance(user_ids, (list, tuple, set)):
-        user_ids_list = [user_ids]
-    else:
-        user_ids_list = list(user_ids)
-
-    cleaned = [x for x in user_ids_list if _is_valid_peer_value(x)]
-    if not cleaned:
-        return []
-
-    results = []
-    try:
-        resolved = await client.get_users(cleaned)
-        if isinstance(resolved, (list, tuple)):
-            results.extend(resolved)
-        else:
-            results.append(resolved)
-    except Exception as exc:
-        # fallback per-item
-        logging.warning("safe_get_users: bulk get_users failed: %s. Falling back.", exc)
-        for item in cleaned:
-            try:
-                r = await client.get_users(item)
-                if isinstance(r, (list, tuple)):
-                    results.extend(r)
-                else:
-                    results.append(r)
-            except Exception as e:
-                logging.warning("safe_get_users: failed to resolve %r: %s", item, e)
-                continue
-
-    # dedupe by id if possible
-    uniq = {}
-    for u in results:
-        try:
-            uid = getattr(u, "id", str(u))
-        except Exception:
-            uid = str(u)
-        uniq[uid] = u
-    return list(uniq.values())
-
-
-async def search_gagala_safe(query: str, max_attempts: int = 3, backoff: float = 1.8, timeout: int = 10):
-    """Async wrapper around utils.search_gagala (which may be sync).
-    Runs the original search in executor and retries on exceptions like HTTP 429.
-    Returns text on success or None on persistent failure.
-    """
-    if not query:
-        return None
-
-    # simple in-memory cache to reduce repeated hits
-    cache_key = f"_sg:{query}"
-    try:
-        cache = globals().setdefault("_PMF_SEARCH_CACHE", {})
-        item = cache.get(cache_key)
-        if item and item[0] > time.time():
-            return item[1]
-    except Exception:
-        pass
-
-    attempt = 0
-    last_exc = None
-    loop = asyncio.get_event_loop()
-    while attempt < max_attempts:
-        attempt += 1
-        try:
-            # call original search_gagala (imported from utils) in executor if it's sync
-            func = globals().get("search_gagala")  # original name imported
-            if asyncio.iscoroutinefunction(func):
-                resp = await func(query)
-            else:
-                resp = await loop.run_in_executor(None, functools.partial(func, query))
-            if not resp:
-                last_exc = None
-                # treat empty as failure but not an exception: retry a few times
-                await asyncio.sleep(backoff ** attempt)
-                continue
-            # cache and return
-            try:
-                cache[cache_key] = (time.time() + 300, resp)
-            except Exception:
-                pass
-            return resp
-        except Exception as e:
-            last_exc = e
-            # if the exception message or repr suggests 429, wait more
-            msg = str(e).lower()
-            if "429" in msg or "too many requests" in msg or "rate limit" in msg:
-                wait = backoff ** attempt
-                logging.warning("search_gagala_safe: rate limited; sleeping %.1f", wait)
-                await asyncio.sleep(wait)
-                continue
-            logging.warning("search_gagala_safe attempt %d failed: %s", attempt, e)
-            await asyncio.sleep(backoff ** attempt)
-            continue
-    logging.error("search_gagala_safe: all attempts failed for %r: last error: %s", query, last_exc)
-    return None
-
-# ---- END ADDED HELPERS ----
-
 logger.setLevel(logging.ERROR)
 
 BUTTON = {}
@@ -1680,7 +1552,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
 async def auto_filter(client, msg, spoll=False):
     curr_time = datetime.now(pytz.timezone('Asia/Kolkata')).time()
     # reqstr1 = msg.from_user.id if msg.from_user else 0
-    # reqstr = await safe_get_users(client, reqstr1)
+    # reqstr = await client.get_users(reqstr1)
     
     if not spoll:
         message = msg
@@ -1926,7 +1798,7 @@ async def auto_filter(client, msg, spoll=False):
 async def advantage_spell_chok(client, msg):
     mv_rqst = msg.text
     reqstr1 = msg.from_user.id if msg.from_user else 0
-    reqstr = await safe_get_users(client, reqstr1)
+    reqstr = await client.get_users(reqstr1)
     settings = await get_settings(msg.chat.id)
     find = mv_rqst.split(" ")
     query = ""
@@ -1938,22 +1810,8 @@ async def advantage_spell_chok(client, msg):
             query = query + x + " "
     query = re.sub(r"\b(pl(i|e)*?(s|z+|ease|se|ese|(e+)s(e)?)|((send|snd|gib)(\sme)?)|movie(s)?|web\sseries|full\smovie|with\ssubtitle(s)?)", "", query , flags=re.IGNORECASE)
     query = re.sub(r"\s+", " ", query).strip() + "movie"
-    g_s = await search_gagala_safe(query)
-    # --- Safe Google search append (prevents NoneType crash + replies with I_CUD_NT) ---
-
-if res:
-    g_s = (g_s or "") + res
-else:
-    g_s = g_s or ""
-    try:
-        await msg.reply_text(
-            script.I_CUD_NT,
-            disable_web_page_preview=True
-        )
-    except Exception as e:
-        log.warning(f"Failed to send I_CUD_NT message: {e}")
-# --- End safe block ---
-
+    g_s = await search_gagala(query)
+    g_s += await search_gagala(msg.text)
     gs_parsed = []
     if not g_s:
         reqst_gle = query.replace(" ", "+")
