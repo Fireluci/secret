@@ -2,7 +2,7 @@
 from pyrogram import Client, filters
 from normalize_text import normalize_fancy_text
 
-@Client.on_message(filters.text & ~filters.edited)
+@Client.on_message(filters.text)
 async def reply_to_any_font(_, message):
     text = message.text
     plain = normalize_fancy_text(text)
