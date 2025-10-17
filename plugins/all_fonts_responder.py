@@ -1,6 +1,6 @@
 # liz/plugins/all_fonts_responder.py
 from pyrogram import Client, filters
-from liz.helpers.normalize_text import normalize_fancy_text
+from normalize_text import normalize_fancy_text
 
 @Client.on_message(filters.text & ~filters.edited)
 async def reply_to_any_font(_, message):
