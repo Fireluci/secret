@@ -47,20 +47,20 @@ Nᴀᴍᴇ - {}"""
     CUDNT_FND = """<b>❗Enter Correct Name👇</b>
 <b>❗सही नाम दर्ज करें👇</b>"""
 
-    I_CUDNT = """<b><i>💢 Sorry – It’s Not Available❗️
+    I_CUDNT = """<b><i>💢 No Results For Your Search❗️
 
 ⚠️ The Reason❓[<a href="https://telegram.me/HeroFlixx/3">Click Here</a>]
 🗨 Please Follow Request Tips!
 🔆 Request Tips ➔ [<a href="https://telegram.me/HeroFlixx/2">Click Here</a>]</i></b>"""
 
 
-    I_CUD_NT = """<b><i>💢 Sorry – It’s Not Available❗️
+    I_CUD_NT = """<b><i>💢 No Results For Your Search❗️
 
 ⚠️ The Reason❓[<a href="https://telegram.me/HeroFlixx/3">Click Here</a>]
 🗨 Please Follow Request Tips!
 🔆 Request Tips ➔ [<a href="https://telegram.me/HeroFlixx/2">Click Here</a>]</i></b>"""
 
-    MVE_NT_FND = """<b><i>💢 Sorry – It’s Not Available❗️
+    MVE_NT_FND = """<b><i>💢 No Results For Your Search❗️
 
 ⚠️ The Reason❓[<a href="https://telegram.me/HeroFlixx/3">Click Here</a>]
 🗨 Please Follow Request Tips!
