@@ -22,7 +22,7 @@ COLLECTION_NAME = environ.get('COLLECTION_NAME', 'heroflix')
 
 DWLD = environ.get("DWLD", 'HeroFlixx/8')
 CACHE_TIME = int(environ.get('CACHE_TIME', 300))
-USE_CAPTION_FILTER = bool(environ.get('USE_CAPTION_FILTER', True))
+USE_CAPTION_FILTER = bool(environ.get('USE_CAPTION_FILTER', False))
 
 PICS = (environ.get('PICS', 'https://te.legra.ph/file/d6a23f16e002e86381656.jpg https://te.legra.ph/file/d6a23f16e002e86381656.jpg')).split()
 NOR_IMG = environ.get("NOR_IMG", "https://te.legra.ph/file/d6a23f16e002e86381656.jpg")
