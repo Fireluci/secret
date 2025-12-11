@@ -183,17 +183,36 @@ async def broadcast_messages_group(chat_id, message):
         return False, "Error"
     
 async def search_gagala(text):
-    usr_agent = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
-        'Chrome/61.0.3163.100 Safari/537.36'
-        }
-    text = text.replace(" ", '+')
-    url = f'https://www.google.com/search?q={text}'
-    response = requests.get(url, headers=usr_agent)
-    response.raise_for_status()
-    soup = BeautifulSoup(response.text, 'html.parser')
-    titles = soup.find_all( 'h3' )
-    return [title.getText() for title in titles]
+    """
+    Returns a list of title suggestions.
+    Replaces Google (no longer works) with DuckDuckGo HTML.
+    Same return format as old code.
+    """
+
+    query = text.replace(" ", "+")
+    url = f"https://duckduckgo.com/html/?q={query}"
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+    }
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers) as response:
+                html = await response.text()
+
+        soup = BeautifulSoup(html, "html.parser")
+
+        # DuckDuckGo search result titles have class="result__a"
+        titles = soup.find_all("a", class_="result__a")
+
+        results = [t.get_text(strip=True) for t in titles][:6]
+
+        return results
+
+    except Exception:
+        return []
+
 
 async def get_settings(group_id):
     settings = temp.SETTINGS.get(group_id)
