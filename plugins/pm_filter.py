@@ -189,9 +189,9 @@ async def next_page(bot, query):
         # ])
     # else:
     
-    # btn.insert(0, [
-    #     InlineKeyboardButton("Hᴏᴡ ᴛᴏ Dᴏᴡɴʟᴏᴀᴅ⚡", url=await get_tutorial(query.message.chat.id))
-    # ])
+    btn.insert(0, [
+        InlineKeyboardButton("Hᴏᴡ ᴛᴏ Dᴏᴡɴʟᴏᴀᴅ⚡", url=await get_tutorial(query.message.chat.id))
+    ])
     if settings["button"]:
         cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n<i>🗨 Choose Link & Press Start ↷</i>\n\n</b>"
     else:
