@@ -189,24 +189,44 @@ async def next_page(bot, query):
         # ])
     # else:
     
-    btn.insert(0, [
-        InlineKeyboardButton("Hᴏᴡ ᴛᴏ Dᴏᴡɴʟᴏᴀᴅ⚡", url=await get_tutorial(query.message.chat.id))
-    ])
+    #btn.insert(0, [
+     #   InlineKeyboardButton("Hᴏᴡ ᴛᴏ Dᴏᴡɴʟᴏᴀᴅ⚡", url=await get_tutorial(query.message.chat.id))
+    #])
+
+    # --- BUTTON LAYOUT (ALWAYS ADD HOW-TO BUTTON FIRST) ---
+    how_to_btn = [InlineKeyboardButton(
+        "❓ How To Download ❓",
+        url=await get_tutorial(query.message.chat.id)
+    )]
+    btn.insert(0, how_to_btn)
+
+    # --- CAPTION BUILDER ---
     if settings["button"]:
-        cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n<i>🗨 Choose Link & Press Start ↷</i>\n\n</b>"
+        cap = (
+            f"<b>🔆 Results For ➔ ‛{search}’👇\n\n"
+            f"<i>🗨 Choose Link & Press Start ↷</i>\n\n</b>"
+        )
     else:
-        # cap = f"<b>Hᴇʏ {query.from_user.mention}, Hᴇʀᴇ ɪs ᴛʜᴇ ʀᴇsᴜʟᴛ ғᴏʀ ʏᴏᴜʀ ᴏ̨ᴜᴇʀʏ {search} \n\n</b>"
-        cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n<i>🗨 Choose Link & Press Start ↷</i>\n\n</b>"
+        cap = (
+            f"<b>🔆 Results For ➔ ‛{search}’👇\n\n"
+            f"<i>🗨 Choose Link & Press Start ↷</i>\n\n</b>"
+        )
         for file in files:
-            cap += f"<b>📙 <a href='https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}'>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}\n\n</a></b>"
-    # --- Always answer callback FIRST (safe) ---
+            clean_name = " ".join(
+                filter(lambda x: not x.startswith('@') and not x.startswith('www.'), file.file_name.split())
+            )
+            cap += (
+                f"<b>📙 <a href='https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}'>"
+                f"[{get_size(file.file_size)}] {clean_name}</a>\n\n</b>"
+            )
+
+    # --- ALWAYS ANSWER CALLBACK FIRST ---
     try:
         await query.answer()
     except Exception:
-        # Callback already answered or expired — ignore safely
         pass
 
-    # --- Now try editing the message ---
+    # --- NOW EDIT THE MESSAGE SAFELY ---
     try:
         await query.message.edit_text(
             text=cap,
@@ -216,8 +236,35 @@ async def next_page(bot, query):
     except MessageNotModified:
         pass
     except Exception:
-        # FloodWait or expired message — ignore silently
         pass
+
+    
+    # if settings["button"]:
+    #     cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n<i>🗨 Choose Link & Press Start ↷</i>\n\n</b>"
+    # else:
+    #     # cap = f"<b>Hᴇʏ {query.from_user.mention}, Hᴇʀᴇ ɪs ᴛʜᴇ ʀᴇsᴜʟᴛ ғᴏʀ ʏᴏᴜʀ ᴏ̨ᴜᴇʀʏ {search} \n\n</b>"
+    #     cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n<i>🗨 Choose Link & Press Start ↷</i>\n\n</b>"
+    #     for file in files:
+    #         cap += f"<b>📙 <a href='https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}'>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}\n\n</a></b>"
+    # # --- Always answer callback FIRST (safe) ---
+    # try:
+    #     await query.answer()
+    # except Exception:
+    #     # Callback already answered or expired — ignore safely
+    #     pass
+
+    # # --- Now try editing the message ---
+    # try:
+    #     await query.message.edit_text(
+    #         text=cap,
+    #         reply_markup=InlineKeyboardMarkup(btn),
+    #         disable_web_page_preview=True
+    #     )
+    # except MessageNotModified:
+    #     pass
+    # except Exception:
+    #     # FloodWait or expired message — ignore silently
+    #     pass
 
 @Client.on_callback_query(filters.regex(r"^spolling"))
 async def advantage_spoll_choker(bot, query):
