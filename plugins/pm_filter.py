@@ -223,26 +223,54 @@ async def next_page(bot, query):
 
 @Client.on_callback_query(filters.regex(r"^spolling"))
 async def advantage_spoll_choker(bot, query):
-    _, user, movie_ = query.data.split('#')
-    if int(user) != 0 and query.from_user.id != int(user):
-        return await query.answer("🔆 Honey, It's Not For You❗\n🔆 हनी, ये तुम्हारे लिए नहीं है❗", show_alert=True)
+
+    try:
+        _, user, movie_ = query.data.split('#')
+        user = int(user)
+    except:
+        return await query.answer("❌ Invalid button!", show_alert=True)
+
+    # 🔥 HONEY PROTECTION (wrong user)
+    if user != 0 and query.from_user.id != user:
+        return await query.answer(
+            "🔆 Honey, It's Not For You❗\n🔆 हनी, ये तुम्हारे लिए नहीं है❗",
+            show_alert=True
+        )
+
+    # 🔥 Close button clicked
     if movie_ == "close_spellcheck":
         return await query.message.delete()
+
+    # 🔥 Load stored spell check movie list
     movies = SPELL_CHECK.get(query.message.reply_to_message.id)
     if not movies:
         return await query.answer("❗Link Expired, Request Again ♻", show_alert=True)
-    movie = movies[(int(movie_))]
+
+    # 🔥 Get selected movie safely
+    try:
+        movie = movies[int(movie_)]
+    except:
+        return await query.answer("❗Invalid Option", show_alert=True)
+
+    # Show waiting alert
     await query.answer("Checking, Please Wait ♻️ \n\n[ Don't Spam - Just Wait! ]", show_alert=True)
+
+    # Try manual filters first
     k = await manual_filters(bot, query.message, text=movie)
-    if k == False:
-        files, offset, total_results = await get_search_results(query.message.chat.id, movie, offset=0, filter=True)
+
+    # If manual not found, use auto search
+    if k is False:
+        files, offset, total_results = await get_search_results(
+            query.message.chat.id, movie, offset=0, filter=True
+        )
+
         if files:
-            k = (movie, files, offset, total_results)
-            await auto_filter(bot, query, k)
+            await auto_filter(bot, query, (movie, files, offset, total_results))
         else:
-            k = await query.message.edit(script.I_CUDNT,disable_web_page_preview=True)
+            k = await query.message.edit(script.I_CUDNT, disable_web_page_preview=True)
             await asyncio.sleep(60)
-            await k.delete()
+            return await k.delete()
+
 
 @Client.on_callback_query(filters.regex(r"^languages#"))
 async def languages_cb_handler(client: Client, query: CallbackQuery):
@@ -1813,73 +1841,121 @@ async def auto_filter(client, msg, spoll=False):
 
 async def advantage_spell_chok(client, msg):
     mv_rqst = msg.text
-    reqstr1 = msg.from_user.id if msg.from_user else 0
-    reqstr = await client.get_users(reqstr1)
+
+    # -------- SAFETY FIX ----------
+    reqstr1 = msg.from_user.id if msg.from_user else None
+    if not reqstr1 or reqstr1 == 0:
+        return await msg.reply("❌ Invalid request.")
+
+    # user lookup protected
+    try:
+        reqstr = await client.get_users(reqstr1)
+    except:
+        return await msg.reply("❌ Unable to fetch user.")
+
+    # -------- ORIGINAL CODE BELOW ----------
     settings = await get_settings(msg.chat.id)
     find = mv_rqst.split(" ")
     query = ""
     removes = ["in", "series", "download", "hd", "kdrama", "thriller", "4k", "esub", "and", "language", "&", "hollywood", "session", "bollywood", "web", "episodes", "dub", "anime", "file" "movie", "film", "netflix", "dubbed", "link", "subtitles"]
+
     for x in find:
         if x in removes:
             continue
         else:
             query = query + x + " "
-    query = re.sub(r"\b(pl(i|e)*?(s|z+|ease|se|ese|(e+)s(e)?)|((send|snd|gib)(\sme)?)|movie(s)?|web\sseries|full\smovie|with\ssubtitle(s)?)", "", query , flags=re.IGNORECASE)
+
+    query = re.sub(
+        r"\b(pl(i|e)*?(s|z+|ease|se|ese|(e+)s(e)?)|((send|snd|gib)(\sme)?)|movie(s)?|web\sseries|full\smovie|with\ssubtitle(s)?)",
+        "", query,
+        flags=re.IGNORECASE
+    )
     query = re.sub(r"\s+", " ", query).strip() + "movie"
+
     g_s = await search_gagala(query)
     g_s += await search_gagala(msg.text)
     gs_parsed = []
+
     if not g_s:
-        reqst_gle = query.replace(" ", "+")
         if NO_RESULTS_MSG:
-            await client.send_message(chat_id=LOG_CHANNEL, text=(script.NORSLTS.format(reqstr.id, reqstr.mention, mv_rqst)))
-        k = await msg.reply(script.I_CUDNT,disable_web_page_preview=True)
+            await client.send_message(chat_id=LOG_CHANNEL,
+                                      text=(script.NORSLTS.format(reqstr.id, reqstr.mention, mv_rqst)))
+        k = await msg.reply(script.I_CUDNT, disable_web_page_preview=True)
         await asyncio.sleep(60)
-        await k.delete()    
+        await k.delete()
         return
-    regex = re.compile(r".*(imdb|wikipedia).*", re.IGNORECASE)  # look for imdb / wiki results
+
+    regex = re.compile(r".*(imdb|wikipedia).*", re.IGNORECASE)
     gs = list(filter(regex.match, g_s))
-    gs_parsed = [re.sub(
-        r'\b(\-([a-zA-Z-\s])\-\simdb|(\-\s)?imdb|(\-\s)?wikipedia|\(|\)|\-|reviews|full|all|episode(s)?|film|movie|series)',
-        '', i, flags=re.IGNORECASE) for i in gs]
+
+    gs_parsed = [
+        re.sub(
+            r'\b(\-([a-zA-Z-\s])\-\simdb|(\-\s)?imdb|(\-\s)?wikipedia|\(|\)|\-|reviews|full|all|episode(s)?|film|movie|series)',
+            '', i,
+            flags=re.IGNORECASE
+        )
+        for i in gs
+    ]
+
     if not gs_parsed:
-        reg = re.compile(r"watch(\s[a-zA-Z0-9_\s\-\(\)]*)*\|.*",
-                         re.IGNORECASE)  # match something like Watch Niram | Amazon Prime
+        reg = re.compile(r"watch(\s[a-zA-Z0-9_\s\-\(\)]*)*\|.*", re.IGNORECASE)
         for mv in g_s:
             match = reg.match(mv)
             if match:
                 gs_parsed.append(match.group(1))
+
     movielist = []
-    gs_parsed = list(dict.fromkeys(gs_parsed))  # removing duplicates https://stackoverflow.com/a/7961425
+    gs_parsed = list(dict.fromkeys(gs_parsed))
+
     if len(gs_parsed) > 3:
         gs_parsed = gs_parsed[:3]
+
     if gs_parsed:
         for mov in gs_parsed:
-            imdb_s = await get_poster(mov.strip(), bulk=True)  # searching each keyword in imdb
+            imdb_s = await get_poster(mov.strip(), bulk=True)
             if imdb_s:
                 movielist += [movie.get('title') for movie in imdb_s]
-    movielist += [(re.sub(r'(\-|\(|\)|_)', '', i, flags=re.IGNORECASE)).strip() for i in gs_parsed]
-    movielist = list(dict.fromkeys(movielist))  # removing duplicates
+
+    movielist += [
+        (re.sub(r'(\-|\(|\)|_)', '', i, flags=re.IGNORECASE)).strip()
+        for i in gs_parsed
+    ]
+
+    movielist = list(dict.fromkeys(movielist))
+
     if not movielist:
-        reqst_gle = query.replace(" ", "+")
         if NO_RESULTS_MSG:
-            await client.send_message(chat_id=LOG_CHANNEL, text=(script.NORSLTS.format(reqstr.id, reqstr.mention, mv_rqst)))
+            await client.send_message(chat_id=LOG_CHANNEL,
+                                      text=(script.NORSLTS.format(reqstr.id, reqstr.mention, mv_rqst)))
         k = await msg.reply(script.I_CUDNT, disable_web_page_preview=True)
         await asyncio.sleep(60)
-        await k.delete()    
+        await k.delete()
         return
+
     SPELL_CHECK[msg.id] = movielist
-    btn = [[
-        InlineKeyboardButton(
-            text=movie.strip(),
-            callback_data=f"spolling#{reqstr1}#{k}",
-        )
-    ] for k, movie in enumerate(movielist)]
-    btn.append([InlineKeyboardButton(text="×××× ⟨ Close ⟩ ××××", callback_data='close_data')])
-    k = await msg.reply("<b>❗Type Correct Name👇</b> \n<b>❗सही नाम टाइप करें👇</b>",
-                     reply_markup=InlineKeyboardMarkup(btn))
+
+    btn = [
+        [
+            InlineKeyboardButton(
+                text=movie.strip(),
+                callback_data=f"spolling#{reqstr1}#{k}"
+            )
+        ]
+        for k, movie in enumerate(movielist)
+    ]
+
+    btn.append([
+        InlineKeyboardButton("×××× ⟨ Close ⟩ ××××", callback_data="close_data")
+    ])
+
+    k = await msg.reply(
+        "<b>❗Enter Correct Name</b>",
+        reply_markup=InlineKeyboardMarkup(btn)
+    )
+
     await asyncio.sleep(60)
     await k.delete()
+
 
 async def manual_filters(client, message, text=False):
     settings = await get_settings(message.chat.id)
