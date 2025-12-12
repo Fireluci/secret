@@ -195,12 +195,12 @@ async def next_page(bot, query):
 
     
     if settings["button"]:
-        cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n<i>🗨 Choose Link & Press Start ↷</i>\n\n</b>"
+        cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n<i>🗨 Choose Link - Press Start ↷</i>\n\n</b>"
     else:
         # cap = f"<b>Hᴇʏ {query.from_user.mention}, Hᴇʀᴇ ɪs ᴛʜᴇ ʀᴇsᴜʟᴛ ғᴏʀ ʏᴏᴜʀ ᴏ̨ᴜᴇʀʏ {search} \n\n</b>"
-        cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n<i>🗨 Choose Link & Press Start ↷</i>\n\n</b>"
+        cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n<i>🗨 Choose Link - Press Start ↷</i>\n\n</b>"
         for file in files:
-            cap += f"<b>📙 <a href='https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}'>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}\n\n</a></b>"
+            cap += f"<b>🍿 <a href='https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}'>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}\n\n</a></b>"
     # --- Always answer callback FIRST (safe) ---
     try:
         await query.answer()
@@ -228,7 +228,7 @@ async def advantage_spoll_choker(bot, query):
         _, user, movie_ = query.data.split('#')
         user = int(user)
     except:
-        return await query.answer("❌ Invalid button!", show_alert=True)
+        return  # ignore silently, no popup
 
     # 🔥 HONEY PROTECTION (wrong user)
     if user != 0 and query.from_user.id != user:
@@ -1772,12 +1772,12 @@ async def auto_filter(client, msg, spoll=False):
     #     )
     # else:
     if settings["button"]:
-        cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n<i>🗨 Choose Link & Press Start ↷</i>\n\n</b>"
+        cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n<i>🗨 Choose Link - Press Start ↷</i>\n\n</b>"
     else:
         # cap = f"<b>Hᴇʏ {message.from_user.mention}, Hᴇʀᴇ ɪs ᴛʜᴇ ʀᴇsᴜʟᴛ ғᴏʀ ʏᴏᴜʀ ᴏ̨ᴜᴇʀʏ {search} \n\n</b>"
-        cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n<i>🗨 Choose Link & Press Start ↷</i>\n\n</b>"
+        cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n<i>🗨 Choose Link - Press Start ↷</i>\n\n</b>"
         for file in files:
-            cap += f"<b>📙 ➔ <a href='https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}'>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}\n\n</a></b>"
+            cap += f"<b>🍿 <a href='https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}'>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}\n\n</a></b>"
 
     # if imdb and imdb.get('poster'):
     #     try:
@@ -1845,7 +1845,7 @@ async def advantage_spell_chok(client, msg):
     # -------- SAFETY FIX ----------
     reqstr1 = msg.from_user.id if msg.from_user else None
     if not reqstr1 or reqstr1 == 0:
-        return await msg.reply("❌ Invalid request.")
+        return 
 
     # user lookup protected
     try:
@@ -1949,7 +1949,7 @@ async def advantage_spell_chok(client, msg):
     ])
 
     k = await msg.reply(
-        "<b>❗Enter Correct Name</b>",
+        "<b>❗Enter Correct Name ↡</b>",
         reply_markup=InlineKeyboardMarkup(btn)
     )
 
