@@ -1,6 +1,6 @@
 class script(object):
-    START_TXT = """<i><b>🎃 Helo {}, I'm <a href=https://telegram.me/{}>{}</a></i></b> \n\n<i><b>🔅 I Can Provide You Any Movies, Web-Series, Anime, K-Dramas, Animation, etc!</i></b>"""
-    
+    START_TXT = "<b>🌀 Unlimited Movies, Series, Anime\n🔆 New Releases Upload Same Day\n♻️ 24x7 Service 📆 Daily Updates</b>"
+ 
     
     HELP_TXT = """🔆彡[ @HEROFLiX ]彡🔆"""
     PREMIUM_TXT = """<b>🌟 PREMIUM MEMBERSHiP 🌟
@@ -50,15 +50,15 @@ Nᴀᴍᴇ - {}"""
     I_CUDNT = """<b><i>💢 No Results For Your Search❗️
 
 ⚠️ The Reason❓[<a href="https://telegram.me/HeroFlixx/3">Click Here</a>]
-🗨 Please Follow Request Tips!
+🌀 Please Follow Request Tips!
 🔆 Request Tips ➔ [<a href="https://telegram.me/HeroFlixx/2">Click Here</a>]</i></b>"""
 
 
     I_CUD_NT = """<b><i>💢 No Results For Your Search❗️
 
 ⚠️ The Reason❓[<a href="https://telegram.me/HeroFlixx/3">Click Here</a>]
-🗨 Please Follow Request Tips!
-🔆 Request Tips ➔ [<a href="https://telegram.me/HeroFlixx/2">Click Here</a>]</i></b>"""
+🔆 Please Follow Request Tips!
+🌀 Request Tips ➔ [<a href="https://telegram.me/HeroFlixx/2">Click Here</a>]</i></b>"""
 
     MVE_NT_FND = """<b><i>💢 No Results For Your Search❗️
 
@@ -113,7 +113,7 @@ IMDb Data:
 🌐 Tɪᴍᴇᴢᴏɴᴇ : <code>Asia/Kolkata</code>
 🛠️ Bᴜɪʟᴅ Sᴛᴀᴛᴜs: <code>v2.7.1 [ Sᴛᴀʙʟᴇ ]</code></b>"""
 
-    LOGO = """𝑺𝒕𝒂𝒓𝒕𝒊𝒏𝒈......."""
+    LOGO = """🔆彡[ HEROFLiX ]彡🔆"""
 
 
 
