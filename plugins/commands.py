@@ -39,12 +39,12 @@ async def start(client, message):
         await db.add_user(message.from_user.id, message.from_user.first_name)
         await client.send_message(LOG_CHANNEL, script.LOG_TEXT_P.format(message.from_user.id, message.from_user.mention))
     if len(message.command) != 2:
-        buttons = [[
-            InlineKeyboardButton('❓How To Use Me', url=f'https://telegram.me/{TUTORIAL}'),
-            InlineKeyboardButton('⚜ Updates', url=f'https://telegram.me/{CHNL_LNK}')
-        ],[
-            InlineKeyboardButton("🌟 Premium Membership 🌟", url=f'https://telegram.me/HeroFlixx/49')
-        ]]
+        buttons = [
+            [InlineKeyboardButton("🌟 Paid (No Ads)", url="https://telegram.me/HeroFlixx/49"),
+             InlineKeyboardButton("🍿 Free (With Ads)", url="https://telegram.me/addlist/X5k2lnJLIGAyZjQ1")],
+            [InlineKeyboardButton("👤 Admin", url=f"https://telegram.me/{SUPPORT_CHAT}"),
+             InlineKeyboardButton("⚜ Updates", url=f"https://telegram.me/{CHNL_LNK}")]
+        ]
         reply_markup = InlineKeyboardMarkup(buttons)
         await message.reply_photo(
             photo=random.choice(PICS),
@@ -82,12 +82,12 @@ async def start(client, message):
             )
         return
     if len(message.command) == 2 and message.command[1] in ["subscribe", "error", "okay", "help"]:
-        buttons = [[
-            InlineKeyboardButton('❓How To Use Me', url=f'https://telegram.me/{TUTORIAL}'),
-            InlineKeyboardButton('⚜ Updates', url=f'https://telegram.me/{CHNL_LNK}')
-        ],[
-            InlineKeyboardButton("🌟 Premium Membership 🌟", url=f'https://telegram.me/HeroFlixx/49')
-        ]]
+        buttons = [
+            [InlineKeyboardButton("🌟 Paid (No Ads)", url="https://telegram.me/HeroFlixx/49"),
+             InlineKeyboardButton("🍿 Free (With Ads)", url="https://telegram.me/addlist/X5k2lnJLIGAyZjQ1")],
+            [InlineKeyboardButton("👤 Admin", url=f"https://telegram.me/{SUPPORT_CHAT}"),
+             InlineKeyboardButton("⚜ Updates", url=f"https://telegram.me/{CHNL_LNK}")]
+        ]
         reply_markup = InlineKeyboardMarkup(buttons)      
         await message.reply_photo(
             photo=random.choice(PICS),
