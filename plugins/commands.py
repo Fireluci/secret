@@ -270,6 +270,8 @@ async def start(client, message):
                         InlineKeyboardButton('♻️ Download Link ♻️', url=g)
                     ], [
                         InlineKeyboardButton('❓ How To Download ❓', url=f'https://telegram.me/{TUTORIAL}')
+                    ], [
+                        InlineKeyboardButton('🌟 Direct Download 🌟', url="https://telegram.me/HeroFlixx/49")
                     ]
                 ]
             )
@@ -346,6 +348,8 @@ async def start(client, message):
                             InlineKeyboardButton('♻️ Download Link ♻️', url=g)
                         ], [
                             InlineKeyboardButton('❓ How To Download ❓', url=f"https://telegram.me/{TUTORIAL}")
+                        ], [
+                            InlineKeyboardButton('🌟 Direct Download 🌟', url="https://telegram.me/HeroFlixx/49")
                         ]
                     ]
                 )
