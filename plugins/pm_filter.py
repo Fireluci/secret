@@ -125,20 +125,45 @@ async def next_page(bot, query):
                 off_set = None
             else:
                 off_set = offset - 10
+
             if n_offset == 0:
-                btn.append(
-                    [InlineKeyboardButton("⏪ BACK", callback_data=f"next_{req}_{key}_{off_set}"), InlineKeyboardButton(f"{math.ceil(int(offset)/10)+1} / {math.ceil(total/10)}", callback_data="pages")]
-                )
+                btn.append([
+                    InlineKeyboardButton(
+                        "⏪ BACK",
+                        callback_data=f"next_{req}_{key}_{off_set}"
+                    ),
+                    InlineKeyboardButton(
+                        f"{math.ceil(int(offset)/10) + 1} / {math.ceil(total/10)}",
+                        callback_data="pages"
+                    )
+                ])
             elif off_set is None:
-                btn.append([InlineKeyboardButton("🔅 Page", callback_data="pages"), InlineKeyboardButton(f"{math.ceil(int(offset)/10)+1} / {math.ceil(total/10)}", callback_data="pages"), InlineKeyboardButton(" NEXT ⏩", callback_data=f"next_{req}_{key}_{n_offset}")])
+                btn.append([
+                    InlineKeyboardButton("🔅 Page", callback_data="pages"),
+                    InlineKeyboardButton(
+                        f"{math.ceil(int(offset)/10) + 1} / {math.ceil(total/10)}",
+                        callback_data="pages"
+                    ),
+                    InlineKeyboardButton(
+                        " NEXT ⏩",
+                        callback_data=f"next_{req}_{key}_{n_offset}"
+                    )
+                ])
             else:
-                btn.append(
-                    [
-                        InlineKeyboardButton("⏪ BACK", callback_data=f"next_{req}_{key}_{off_set}"),
-                        InlineKeyboardButton(f"{math.ceil(int(offset)/10)+1} / {math.ceil(total/10)}", callback_data="pages"),
-                        InlineKeyboardButton(" NEXT ⏩", callback_data=f"next_{req}_{key}_{n_offset}")
-                    ],
-                )
+                btn.append([
+                    InlineKeyboardButton(
+                        "⏪ BACK",
+                        callback_data=f"next_{req}_{key}_{off_set}"
+                    ),
+                    InlineKeyboardButton(
+                        f"{math.ceil(int(offset)/10) + 1} / {math.ceil(total/10)}",
+                        callback_data="pages"
+                    ),
+                    InlineKeyboardButton(
+                        " NEXT ⏩",
+                        callback_data=f"next_{req}_{key}_{n_offset}"
+                    )
+                ])
         else:
             if 0 < offset <= int(MAX_B_TN):
                 off_set = 0
@@ -146,65 +171,135 @@ async def next_page(bot, query):
                 off_set = None
             else:
                 off_set = offset - int(MAX_B_TN)
+
             if n_offset == 0:
-                btn.append(
-                    [InlineKeyboardButton("⏪ BACK", callback_data=f"next_{req}_{key}_{off_set}"), InlineKeyboardButton(f"{math.ceil(int(offset)/int(MAX_B_TN))+1} / {math.ceil(total/int(MAX_B_TN))}", callback_data="pages")]
-                )
+                btn.append([
+                    InlineKeyboardButton(
+                        "⏪ BACK",
+                        callback_data=f"next_{req}_{key}_{off_set}"
+                    ),
+                    InlineKeyboardButton(
+                        f"{math.ceil(int(offset)/int(MAX_B_TN)) + 1} / {math.ceil(total/int(MAX_B_TN))}",
+                        callback_data="pages"
+                    )
+                ])
             elif off_set is None:
-                btn.append([InlineKeyboardButton("🔅 Page", callback_data="pages"), InlineKeyboardButton(f"{math.ceil(int(offset)/int(MAX_B_TN))+1} / {math.ceil(total/int(MAX_B_TN))}", callback_data="pages"), InlineKeyboardButton(" NEXT ⏩", callback_data=f"next_{req}_{key}_{n_offset}")])
+                btn.append([
+                    InlineKeyboardButton("🔅 Page", callback_data="pages"),
+                    InlineKeyboardButton(
+                        f"{math.ceil(int(offset)/int(MAX_B_TN)) + 1} / {math.ceil(total/int(MAX_B_TN))}",
+                        callback_data="pages"
+                    ),
+                    InlineKeyboardButton(
+                        " NEXT ⏩",
+                        callback_data=f"next_{req}_{key}_{n_offset}"
+                    )
+                ])
             else:
-                btn.append(
-                    [
-                        InlineKeyboardButton("⏪ BACK", callback_data=f"next_{req}_{key}_{off_set}"),
-                        InlineKeyboardButton(f"{math.ceil(int(offset)/int(MAX_B_TN))+1} / {math.ceil(total/int(MAX_B_TN))}", callback_data="pages"),
-                        InlineKeyboardButton(" NEXT ⏩", callback_data=f"next_{req}_{key}_{n_offset}")
-                    ],
-                )
+                btn.append([
+                    InlineKeyboardButton(
+                        "⏪ BACK",
+                        callback_data=f"next_{req}_{key}_{off_set}"
+                    ),
+                    InlineKeyboardButton(
+                        f"{math.ceil(int(offset)/int(MAX_B_TN)) + 1} / {math.ceil(total/int(MAX_B_TN))}",
+                        callback_data="pages"
+                    ),
+                    InlineKeyboardButton(
+                        " NEXT ⏩",
+                        callback_data=f"next_{req}_{key}_{n_offset}"
+                    )
+                ])
+
     except KeyError:
         await save_group_settings(query.message.chat.id, 'max_btn', True)
+
         if 0 < offset <= 10:
             off_set = 0
         elif offset == 0:
             off_set = None
         else:
             off_set = offset - 10
+
         if n_offset == 0:
-            btn.append(
-                [InlineKeyboardButton("⏪ BACK", callback_data=f"next_{req}_{key}_{off_set}"), InlineKeyboardButton(f"{math.ceil(int(offset)/10)+1} / {math.ceil(total/10)}", callback_data="pages")]
-            )
+            btn.append([
+                InlineKeyboardButton(
+                    "⏪ BACK",
+                    callback_data=f"next_{req}_{key}_{off_set}"
+                ),
+                InlineKeyboardButton(
+                    f"{math.ceil(int(offset)/10) + 1} / {math.ceil(total/10)}",
+                    callback_data="pages"
+                )
+            ])
         elif off_set is None:
-            btn.append([InlineKeyboardButton("🔅 Page", callback_data="pages"), InlineKeyboardButton(f"{math.ceil(int(offset)/10)+1} / {math.ceil(total/10)}", callback_data="pages"), InlineKeyboardButton(" NEXT ⏩", callback_data=f"next_{req}_{key}_{n_offset}")])
+            btn.append([
+                InlineKeyboardButton("🔅 Page", callback_data="pages"),
+                InlineKeyboardButton(
+                    f"{math.ceil(int(offset)/10) + 1} / {math.ceil(total/10)}",
+                    callback_data="pages"
+                ),
+                InlineKeyboardButton(
+                    " NEXT ⏩",
+                    callback_data=f"next_{req}_{key}_{n_offset}"
+                )
+            ])
         else:
-            btn.append(
-                [
-                    InlineKeyboardButton("⏪ BACK", callback_data=f"next_{req}_{key}_{off_set}"),
-                    InlineKeyboardButton(f"{math.ceil(int(offset)/10)+1} / {math.ceil(total/10)}", callback_data="pages"),
-                    InlineKeyboardButton(" NEXT ⏩", callback_data=f"next_{req}_{key}_{n_offset}")
-                ],
+            btn.append([
+                InlineKeyboardButton(
+                    "⏪ BACK",
+                    callback_data=f"next_{req}_{key}_{off_set}"
+                ),
+                InlineKeyboardButton(
+                    f"{math.ceil(int(offset)/10) + 1} / {math.ceil(total/10)}",
+                    callback_data="pages"
+                ),
+                InlineKeyboardButton(
+                    " NEXT ⏩",
+                    callback_data=f"next_{req}_{key}_{n_offset}"
+                )
+            ])
+
+    # ALWAYS add How To Download (works on every pagination)
+    btn = [
+        [
+            InlineKeyboardButton(
+                "Hᴏᴡ ᴛᴏ Dᴏᴡɴʟᴏᴀᴅ ⚡",
+                url=await get_tutorial(query.message.chat.id)
             )
-    # if ENABLE_SHORTLINK == True:
-        # btn.insert(0, [
-        #     InlineKeyboardButton("Sᴛᴀʀᴛ Bᴏᴛ", url=f"https://telegram.me/{temp.U_NAME}"),
-        #     InlineKeyboardButton("𝐒𝐞𝐧𝐝 𝐀𝐥𝐥", callback_data=f"sendfiles#{key}")
-        # ])
-    # else:
-    
-    # btn.insert(0, [
-    #     InlineKeyboardButton("Hᴏᴡ ᴛᴏ Dᴏᴡɴʟᴏᴀᴅ⚡", url=await get_tutorial(query.message.chat.id))
-    # ])
+        ]
+    ] + btn
+
     if settings["button"]:
-        cap = f"<b>🔆 Results For ➠ ‛{search}’👇\n\n<i>🗨 Select A Link & Press Start ↷</i>\n\n</b>"
+        cap = (
+            f"<b>🔆 Results For ➠ ‛{search}’👇\n\n"
+            f"<i>🗨 Select A Link & Press Start ↷</i>\n\n</b>"
+        )
     else:
-        # cap = f"<b>Hᴇʏ {query.from_user.mention}, Hᴇʀᴇ ɪs ᴛʜᴇ ʀᴇsᴜʟᴛ ғᴏʀ ʏᴏᴜʀ ᴏ̨ᴜᴇʀʏ {search} \n\n</b>"
-        cap = f"<b>🔆 Results For ➠ ‛{search}’👇\n\n<i>🗨 Select A Link & Press Start ↷</i>\n\n</b>"
+        cap = (
+            f"<b>🔆 Results For ➠ ‛{search}’👇\n\n"
+            f"<i>🗨 Select A Link & Press Start ↷</i>\n\n</b>"
+        )
         for file in files:
-            cap += f"<b>📙 ➔ <a href='https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}'>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}\n\n</a></b>"
+            cap += (
+                f"<b>📙 ➔ "
+                f"<a href='https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}'>"
+                f"[{get_size(file.file_size)}] "
+                f"{' '.join(filter(lambda x: not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}"
+                f"\n\n</a></b>"
+            )
 
     try:
-        await query.message.edit_text(text=cap, reply_markup=InlineKeyboardMarkup(btn), disable_web_page_preview=True)
+        await query.message.edit_text(
+            text=cap,
+            reply_markup=InlineKeyboardMarkup(btn),
+            disable_web_page_preview=True
+        )
     except MessageNotModified:
         pass
+
     await query.answer()
+
 
 @Client.on_callback_query(filters.regex(r"^spolling"))
 async def advantage_spoll_choker(bot, query):
@@ -314,12 +409,14 @@ async def filter_languages_cb_handler(client: Client, query: CallbackQuery):
     #     await save_group_settings(message.chat.id, 'is_shortlink', False)
     #     ENABLE_SHORTLINK = False
     pre = 'filep' if settings['file_secure'] else 'file'
+
     if settings["button"]:
         btn = [
             [
                 InlineKeyboardButton(
-                    text=f"[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}", callback_data=f'{pre}#{file.file_id}'
-                ),
+                    text=f"[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}",
+                    callback_data=f'{pre}#{file.file_id}'
+                )
             ]
             for file in files
         ]
@@ -328,86 +425,80 @@ async def filter_languages_cb_handler(client: Client, query: CallbackQuery):
             [
                 InlineKeyboardButton(
                     text=f"{' '.join(filter(lambda x: not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}",
-                    callback_data=f'{pre}#{file.file_id}',
+                    callback_data=f'{pre}#{file.file_id}'
                 ),
                 InlineKeyboardButton(
                     text=f"{get_size(file.file_size)}",
-                    callback_data=f'{pre}#{file.file_id}',
-                ),
+                    callback_data=f'{pre}#{file.file_id}'
+                )
             ]
             for file in files
         ]
 
-    try:
-        if settings['auto_delete']:
-            btn.insert(0, 
-                [
-                    InlineKeyboardButton("ʟᴀɴɢᴜᴀɢᴇs", callback_data=f"languages#{key}"),
-                    InlineKeyboardButton("Sᴇᴀsᴏɴs",  callback_data=f"seasons#{key}")
-                ]
-            )
-
-        else:
-            btn.insert(0, 
-                [
-                    InlineKeyboardButton("ʟᴀɴɢᴜᴀɢᴇs", callback_data=f"languages#{key}"),
-                    InlineKeyboardButton("Sᴇᴀsᴏɴs", callback_data=f"seasons#{key}")
-                ]
-            )
-                
-    except KeyError:
-        await save_group_settings(query.message.chat.id, 'auto_delete', True)
-        btn.insert(0, 
-            [           
-                InlineKeyboardButton("ʟᴀɴɢᴜᴀɢᴇs", callback_data=f"languages#{key}"),
-                InlineKeyboardButton("Sᴇᴀsᴏɴs", callback_data=f"seasons#{key}")
-            ]
-        )
-
-    # btn.insert(0, [
-    #     InlineKeyboardButton("Hᴏᴡ ᴛᴏ Dᴏᴡɴʟᴏᴀᴅ⚡", url=await get_tutorial(query.message.chat.id))
-    # ])
     if offset != "":
         try:
             if settings['max_btn']:
-                btn.append(
-                    [InlineKeyboardButton("🔅 Page", callback_data="pages"), InlineKeyboardButton(text=f"1/{math.ceil(int(total_results)/10)}",callback_data="pages"), InlineKeyboardButton(text=" NEXT ⏩",callback_data=f"next_{req}_{key}_{offset}")]
-                )
-    
+                btn.append([
+                    InlineKeyboardButton("🔅 Page", callback_data="pages"),
+                    InlineKeyboardButton(
+                        text=f"1/{math.ceil(int(total_results)/10)}",
+                        callback_data="pages"
+                    ),
+                    InlineKeyboardButton(
+                        text=" NEXT ⏩",
+                        callback_data=f"next_{req}_{key}_{offset}"
+                    )
+                ])
             else:
-                btn.append(
-                    [InlineKeyboardButton("🔅 Page", callback_data="pages"), InlineKeyboardButton(text=f"1/{math.ceil(int(total_results)/int(MAX_B_TN))}",callback_data="pages"), InlineKeyboardButton(text=" NEXT ⏩",callback_data=f"next_{req}_{key}_{offset}")]
-                )
+                btn.append([
+                    InlineKeyboardButton("🔅 Page", callback_data="pages"),
+                    InlineKeyboardButton(
+                        text=f"1/{math.ceil(int(total_results)/int(MAX_B_TN))}",
+                        callback_data="pages"
+                    ),
+                    InlineKeyboardButton(
+                        text=" NEXT ⏩",
+                        callback_data=f"next_{req}_{key}_{offset}"
+                    )
+                ])
         except KeyError:
             await save_group_settings(query.message.chat.id, 'max_btn', True)
-            btn.append(
-                [InlineKeyboardButton("🔅 Page", callback_data="pages"), InlineKeyboardButton(text=f"1/{math.ceil(int(total_results)/10)}",callback_data="pages"), InlineKeyboardButton(text=" NEXT ⏩",callback_data=f"next_{req}_{key}_{offset}")]
-            )
+            btn.append([
+                InlineKeyboardButton("🔅 Page", callback_data="pages"),
+                InlineKeyboardButton(
+                    text=f"1/{math.ceil(int(total_results)/10)}",
+                    callback_data="pages"
+                ),
+                InlineKeyboardButton(
+                    text=" NEXT ⏩",
+                    callback_data=f"next_{req}_{key}_{offset}"
+                )
+            ])
     else:
-        btn.append(
-            [InlineKeyboardButton(text="✦ ────「 The End 」──── ✦",callback_data="pages")]
-        )
-    # if ENABLE_SHORTLINK == True:
-    btn.insert(0, 
-                [
-                    InlineKeyboardButton("ʟᴀɴɢᴜᴀɢᴇs", callback_data=f"languages#{key}"),
-                    InlineKeyboardButton("Sᴇᴀsᴏɴs",  callback_data=f"seasons#{key}")
-                ]
+        btn.append([
+            InlineKeyboardButton(
+                text="✦ ────「 The End 」──── ✦",
+                callback_data="pages"
             )
-    # else:
-    #     btn.insert(0, 
-    #            [
-    #               InlineKeyboardButton("ʟᴀɴɢᴜᴀɢᴇs", callback_data=f"languages#{key}"),
-    #                InlineKeyboardButton("Sᴇᴀsᴏɴs",  callback_data=f"seasons#{key}")
-    #            ]
-    #        )
+        ])
+
+    # ✅ HOW TO DOWNLOAD — BOTTOM (ALL PAGES)
+    btn.append([
+        InlineKeyboardButton(
+            "Hᴏᴡ ᴛᴏ Dᴏᴡɴʟᴏᴀᴅ ⚡",
+            url=await get_tutorial(query.message.chat.id)
+        )
+    ])
+
     try:
         await query.edit_message_reply_markup(
             reply_markup=InlineKeyboardMarkup(btn)
         )
     except MessageNotModified:
         pass
+
     await query.answer()
+
     # if lang != "homepage":
     #     offset = 0
         
