@@ -1867,67 +1867,88 @@ async def advantage_spell_chok(client, msg):
 
     query = re.sub(
         r"\b(pl(i|e)*?(s|z+|ease|se|ese|(e+)s(e)?)|((send|snd|gib)(\sme)?)|movie(s)?|web\sseries|full\smovie|with\ssubtitle(s)?)",
-        "", query,
+        "",
+        query,
         flags=re.IGNORECASE
     )
     query = re.sub(r"\s+", " ", query).strip() + "movie"
 
     g_s = await search_gagala(query)
     g_s += await search_gagala(msg.text)
-    gs_parsed = []
 
+    # ---------------- SPELL CHECK ----------------
     if not g_s:
         if NO_RESULTS_MSG:
-            await client.send_message(chat_id=LOG_CHANNEL,
-                                      text=(script.NORSLTS.format(reqstr.id, reqstr.mention, mv_rqst)))
-        k = await msg.reply(script.I_CUDNT, disable_web_page_preview=True)
+            await client.send_message(
+                chat_id=LOG_CHANNEL,
+                text=script.NORSLTS.format(reqstr.id, reqstr.mention, mv_rqst)
+            )
+
+        k = await msg.reply(
+            script.I_CUDNT,
+            disable_web_page_preview=True
+        )
         await asyncio.sleep(60)
         await k.delete()
         return
 
     regex = re.compile(r".*(imdb|wikipedia).*", re.IGNORECASE)
-    gs = list(filter(regex.match, g_s))
+    gs = list(filter(regex.search, g_s))
 
     gs_parsed = [
         re.sub(
-            r'\b(\-([a-zA-Z-\s])\-\simdb|(\-\s)?imdb|(\-\s)?wikipedia|\(|\)|\-|reviews|full|all|episode(s)?|film|movie|series)',
-            '', i,
+            r'\b('
+            r'imdb|wikipedia|reviews|full|all|'
+            r'episode(s)?|film|movie|'
+            r'tv\s*series|television\s*series|web\s*series|'
+            r'tv\s*show|show|series'
+            r')\b|[\(\)\-]',
+            '',
+            i,
             flags=re.IGNORECASE
-        )
+        ).strip()
         for i in gs
     ]
 
     if not gs_parsed:
-        reg = re.compile(r"watch(\s[a-zA-Z0-9_\s\-\(\)]*)*\|.*", re.IGNORECASE)
-        for mv in g_s:
-            match = reg.match(mv)
-            if match:
-                gs_parsed.append(match.group(1))
+        reg = re.compile(
+            r"watch\s+([a-zA-Z0-9_\s\-\(\)]+)",
+            re.IGNORECASE
+        )
 
-    movielist = []
-    gs_parsed = list(dict.fromkeys(gs_parsed))
+        for mv in g_s:
+            match = reg.search(mv)
+            if match:
+                gs_parsed.append(match.group(1).strip())
+
+    gs_parsed = list(dict.fromkeys(filter(None, gs_parsed)))
 
     if len(gs_parsed) > 3:
         gs_parsed = gs_parsed[:3]
 
-    if gs_parsed:
-        for mov in gs_parsed:
-            imdb_s = await get_poster(mov.strip(), bulk=True)
-            if imdb_s:
-                movielist += [movie.get('title') for movie in imdb_s]
-
-    movielist += [
-        (re.sub(r'(\-|\(|\)|_)', '', i, flags=re.IGNORECASE)).strip()
+    movielist = [
+        re.sub(
+            r'(\-|\(|\)|_)',
+            '',
+            i,
+            flags=re.IGNORECASE
+        ).strip()
         for i in gs_parsed
     ]
 
-    movielist = list(dict.fromkeys(movielist))
+    movielist = list(dict.fromkeys(filter(None, movielist)))
 
     if not movielist:
         if NO_RESULTS_MSG:
-            await client.send_message(chat_id=LOG_CHANNEL,
-                                      text=(script.NORSLTS.format(reqstr.id, reqstr.mention, mv_rqst)))
-        k = await msg.reply(script.I_CUDNT, disable_web_page_preview=True)
+            await client.send_message(
+                chat_id=LOG_CHANNEL,
+                text=script.NORSLTS.format(reqstr.id, reqstr.mention, mv_rqst)
+            )
+
+        k = await msg.reply(
+            script.I_CUDNT,
+            disable_web_page_preview=True
+        )
         await asyncio.sleep(60)
         await k.delete()
         return
@@ -1937,16 +1958,21 @@ async def advantage_spell_chok(client, msg):
     btn = [
         [
             InlineKeyboardButton(
-                text=movie.strip(),
-                callback_data=f"spolling#{reqstr1}#{k}"
+                text=movie,
+                callback_data=f"spolling#{reqstr1}#{idx}"
             )
         ]
-        for k, movie in enumerate(movielist)
+        for idx, movie in enumerate(movielist)
     ]
 
-    btn.append([
-        InlineKeyboardButton("×××× ⟨ Close ⟩ ××××", callback_data="close_data")
-    ])
+    btn.append(
+        [
+            InlineKeyboardButton(
+                "×××× ⟨ Close ⟩ ××××",
+                callback_data="close_data"
+            )
+        ]
+    )
 
     k = await msg.reply(
         "<b>❗Enter Correct Name ↡</b>",
@@ -1955,7 +1981,6 @@ async def advantage_spell_chok(client, msg):
 
     await asyncio.sleep(60)
     await k.delete()
-
 
 async def manual_filters(client, message, text=False):
     settings = await get_settings(message.chat.id)
