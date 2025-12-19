@@ -430,20 +430,7 @@ async def filter_languages_cb_handler(client: Client, query: CallbackQuery):
         btn.append(
             [InlineKeyboardButton(text="✦ ────「 The End 」──── ✦",callback_data="pages")]
         )
-    # if ENABLE_SHORTLINK == True:
-    btn.insert(0, 
-                [
-                    InlineKeyboardButton("ʟᴀɴɢᴜᴀɢᴇs", callback_data=f"languages#{key}"),
-                    InlineKeyboardButton("Sᴇᴀsᴏɴs",  callback_data=f"seasons#{key}")
-                ]
-            )
-    # else:
-    #     btn.insert(0, 
-    #            [
-    #               InlineKeyboardButton("ʟᴀɴɢᴜᴀɢᴇs", callback_data=f"languages#{key}"),
-    #                InlineKeyboardButton("Sᴇᴀsᴏɴs",  callback_data=f"seasons#{key}")
-    #            ]
-    #        )
+    btn.insert(0, [InlineKeyboardButton("🌀 How To Download ❓", url=f"https://telegram.me/{TUTORIAL}")])
     try:
         await query.edit_message_reply_markup(
             reply_markup=InlineKeyboardMarkup(btn)
@@ -604,9 +591,7 @@ async def filter_seasons_cb_handler(client: Client, query: CallbackQuery):
     
     
 
-    # btn.insert(0, [
-    #     InlineKeyboardButton("Hᴏᴡ ᴛᴏ Dᴏᴡɴʟᴏᴀᴅ⚡", url=await get_tutorial(query.message.chat.id))
-    # ])
+    btn.insert(0, [InlineKeyboardButton("🌀 How To Download ❓", url=f"https://telegram.me/{TUTORIAL}")])
     offset = 0
 
     btn.append([
@@ -1824,6 +1809,7 @@ async def auto_filter(client, msg, spoll=False):
     #             await fek.delete()
     #             await message.delete()
     # else:
+    btn.insert(0, [InlineKeyboardButton("🌀 How To Download ❓", url=f"https://telegram.me/{TUTORIAL}")])
     fuk = await message.reply_text(text=cap, reply_markup=InlineKeyboardMarkup(btn), disable_web_page_preview=True)
     
     try:
