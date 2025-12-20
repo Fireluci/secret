@@ -64,85 +64,6 @@ async def save_group(bot, message):
                 
         
 
-@Client.on_message(filters.command('leave') & filters.user(ADMINS))
-async def leave_a_chat(bot, message):
-    if len(message.command) == 1:
-        return await message.reply('Give me a chat id')
-    chat = message.command[1]
-    try:
-        chat = int(chat)
-    except:
-        chat = chat
-    try:
-        buttons = [[
-            InlineKeyboardButton('📲 Support 📲', url=f'https://telegram.me/{SUPPORT_CHAT}')
-        ]]
-        reply_markup=InlineKeyboardMarkup(buttons)
-        await bot.send_message(
-            chat_id=chat,
-            text='<b>Hello Friends, \nMy admin has told me to leave from group, so i go! If you wanna add me again contact my Support Group or My Owner</b>',
-            reply_markup=reply_markup,
-        )
-
-        await bot.leave_chat(chat)
-        await message.reply(f"left the chat `{chat}`")
-    except Exception as e:
-        await message.reply(f'Error - {e}')
-
-@Client.on_message(filters.command('disable') & filters.user(ADMINS))
-async def disable_chat(bot, message):
-    if len(message.command) == 1:
-        return await message.reply('Give me a chat id')
-    r = message.text.split(None)
-    if len(r) > 2:
-        reason = message.text.split(None, 2)[2]
-        chat = message.text.split(None, 2)[1]
-    else:
-        chat = message.command[1]
-        reason = "No reason Provided"
-    try:
-        chat_ = int(chat)
-    except:
-        return await message.reply('Give Me A Valid Chat ID')
-    cha_t = await db.get_chat(int(chat_))
-    if not cha_t:
-        return await message.reply("Chat Not Found In DB")
-    if cha_t['is_disabled']:
-        return await message.reply(f"This chat is already disabled:\nReason-<code> {cha_t['reason']} </code>")
-    await db.disable_chat(int(chat_), reason)
-    temp.BANNED_CHATS.append(int(chat_))
-    await message.reply('Chat Successfully Disabled')
-    try:
-        buttons = [[
-            InlineKeyboardButton('📲 Support 📲', url=f'https://telegram.me/{SUPPORT_CHAT}')
-        ]]
-        reply_markup=InlineKeyboardMarkup(buttons)
-        await bot.send_message(
-            chat_id=chat_, 
-            text=f'<b>Hello Friends, \nMy admin has told me to leave from group so i go! If you wanna add me again contact my support group.</b> \nReason : <code>{reason}</code>',
-            reply_markup=reply_markup)
-        await bot.leave_chat(chat_)
-    except Exception as e:
-        await message.reply(f"Error - {e}")
-
-
-@Client.on_message(filters.command('enable') & filters.user(ADMINS))
-async def re_enable_chat(bot, message):
-    if len(message.command) == 1:
-        return await message.reply('Give me a chat id')
-    chat = message.command[1]
-    try:
-        chat_ = int(chat)
-    except:
-        return await message.reply('Give Me A Valid Chat ID')
-    sts = await db.get_chat(int(chat))
-    if not sts:
-        return await message.reply("Chat Not Found In DB !")
-    if not sts.get('is_disabled'):
-        return await message.reply('This chat is not yet disabled.')
-    await db.re_enable_chat(int(chat_))
-    temp.BANNED_CHATS.remove(int(chat_))
-    await message.reply("Chat Successfully re-enabled")
 
 
 @Client.on_message(filters.command('stats') & filters.incoming)
@@ -157,23 +78,6 @@ async def get_ststs(bot, message):
     free = get_size(free)
     await rju.edit(script.STATUS_TXT.format(files, total_users, totl_chats, size, free))
 
-
-@Client.on_message(filters.command('invite') & filters.user(ADMINS))
-async def gen_invite(bot, message):
-    if len(message.command) == 1:
-        return await message.reply('Give me a chat id')
-    chat = message.command[1]
-    try:
-        chat = int(chat)
-    except:
-        return await message.reply('Give Me A Valid Chat ID')
-    try:
-        link = await bot.create_chat_invite_link(chat)
-    except ChatAdminRequired:
-        return await message.reply("Invite Link Generation Failed, Iam Not Having Sufficient Rights")
-    except Exception as e:
-        return await message.reply(f'Error {e}')
-    await message.reply(f'Here is your Invite Link {link.invite_link}')
 
 @Client.on_message(filters.command('ban') & filters.user(ADMINS))
 async def ban_a_user(bot, message):
