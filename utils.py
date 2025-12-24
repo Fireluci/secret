@@ -717,28 +717,35 @@ async def extract_v2(text):
     text = regex.sub(r'\p{So}', '', text)
     text = re.sub(r"[@!$_\-.+:*#⁓(),/?]", " ", text)
 
-    # normalize season / episode words
-    text = re.sub(r'\bseason\s*(\d+)\b', lambda m: f's{m.group(1).zfill(2)}', text)
-    text = re.sub(r'\bepisode\s*(\d+)\b', lambda m: f'e{m.group(1).zfill(2)}', text)
+    # normalize season words (season / session / so)
+    text = re.sub(
+        r'\b(?:season|session|so)\s*(\d+)\b',
+        lambda m: f's{m.group(1).zfill(2)}',
+        text
+    )
 
-    # normalize short forms
+    # normalize episode words
+    text = re.sub(
+        r'\b(?:episode|ep)\s*(\d+)\b',
+        lambda m: f'e{m.group(1).zfill(2)}',
+        text
+    )
+
+    # normalize short standalone forms
     text = re.sub(r'\bs(\d)\b', r's0\1', text)
     text = re.sub(r'\be(\d)\b', r'e0\1', text)
-    text = re.sub(r'\bep\s*(\d+)\b', lambda m: f"e{m.group(1).zfill(2)}", text)
 
-    # split joined forms like s01e02 → s01 e02
+    # split joined forms s01e02 → s01 e02
     text = re.sub(r's(\d{2})e(\d{2})', r's\1 e\2', text)
 
     # cleanup spaces
     text = re.sub(r'\s+', ' ', text).strip()
 
-    # 🔥 if episode exists but season missing → assume s01
+    # episode exists but season missing → assume s01
     if re.search(r'\be\d{2}\b', text) and not re.search(r'\bs\d{2}\b', text):
         text = re.sub(r'\be(\d{2})\b', r's01e\1', text)
 
-    # finally merge to sXXeYY
+    # merge back to sXXeYY
     text = re.sub(r's(\d{2}) e(\d{2})', r's\1e\2', text)
 
     return text
-
-    
