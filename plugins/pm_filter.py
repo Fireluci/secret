@@ -1540,8 +1540,6 @@ async def auto_filter(client, msg, spoll=False):
             search = re.sub(r"\b(complete|combined|all\s*episodes?|full\s*episodes?)\b", "com", search, flags=re.IGNORECASE)
             search = re.sub(r"[-:–]+", " ", search)
             search = re.sub(r"\s+", " ", search).strip()
-            search = re.sub(r"(?:session|season)\s?(\d+)", lambda x: f"s{x.group(1).zfill(2)}", search, flags=re.IGNORECASE)
-            search = re.sub(r"so(\d+)", lambda x: f"s{x.group(1).zfill(2)}", search, flags=re.IGNORECASE)
             search = search.replace("english", "eng")
             search = search.replace("full movie", "")
             search = search.replace("hindi", "hin")
