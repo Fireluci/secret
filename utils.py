@@ -842,26 +842,35 @@ async def send_all(bot, userid, files, ident, chat_id, user_name, query):
             )'''
 
 
-async def extract_v2(text): 
+async def extract_v2(text):
     text = text.lower()
+
+    # remove emojis & symbols early
     text = regex.sub(r'\p{So}', '', text)
-    text = re.sub(r"[@!$ _\-.+:*#⁓(),/?]", " ", text)
+    text = re.sub(r"[@!$_\-.+:*#⁓(),/?]", " ", text)
 
-    
-    text = re.sub(r's(\d+)e(\d+)', r's\1 e\2', text, flags=re.IGNORECASE)
-    text = re.sub(r's(\d+)e', r's\1 e', text, flags=re.IGNORECASE)
-    text = re.sub(r'\bep(\d+)\b', r'e\1', text, flags=re.IGNORECASE)
-    text = re.sub(r'\bep (\d)\b', r'e0\1', text, flags=re.IGNORECASE)
-    text = re.sub(r'\bep (\d{2,})\b', r'e\1', text, flags=re.IGNORECASE)
-    text = re.sub(r'\be(\d)\b', r'e0\1', text, flags=re.IGNORECASE)
-    text = re.sub(r'\bs(\d)\b', r's0\1', text, flags=re.IGNORECASE)
-    text = re.sub(r'\bseason (\d+)\b', lambda x: f's{x.group(1).zfill(2)}', text, flags=re.IGNORECASE)
-    text = re.sub(r'\bepisode (\d+)\b', lambda x: f'e{x.group(1).zfill(2)}', text, flags=re.IGNORECASE)
+    # normalize season / episode words
+    text = re.sub(r'\bseason\s*(\d+)\b', lambda m: f's{m.group(1).zfill(2)}', text)
+    text = re.sub(r'\bepisode\s*(\d+)\b', lambda m: f'e{m.group(1).zfill(2)}', text)
 
-    text = ' '.join(['e' + word[2:] if word.startswith('e0') and word[2:].isdigit() and len(word) >= 4 else word for word in text.split()])
+    # normalize short forms
+    text = re.sub(r'\bs(\d)\b', r's0\1', text)
+    text = re.sub(r'\be(\d)\b', r'e0\1', text)
+    text = re.sub(r'\bep\s*(\d+)\b', lambda m: f"e{m.group(1).zfill(2)}", text)
 
+    # split joined forms like s01e02 → s01 e02
+    text = re.sub(r's(\d{2})e(\d{2})', r's\1 e\2', text)
+
+    # cleanup spaces
     text = re.sub(r'\s+', ' ', text).strip()
 
-    text = re.sub(r's(\d{2}) e(\d{2})', r's\1e\2', text, flags=re.IGNORECASE)
+    # 🔥 if episode exists but season missing → assume s01
+    if re.search(r'\be\d{2}\b', text) and not re.search(r'\bs\d{2}\b', text):
+        text = re.sub(r'\be(\d{2})\b', r's01e\1', text)
+
+    # finally merge to sXXeYY
+    text = re.sub(r's(\d{2}) e(\d{2})', r's\1e\2', text)
+
     return text
+
     
