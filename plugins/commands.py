@@ -2,8 +2,6 @@ import os
 import logging
 import random
 import asyncio
-from pyrogram import Client, filters
-from telegraph import Telegraph
 from datetime import datetime
 from Script import script
 from pyrogram import Client, filters, enums
@@ -14,13 +12,11 @@ from database.users_chats_db import db
 from info import CHANNELS, ADMINS, AUTH_CHANNEL, LOG_CHANNEL, PICS, BATCH_FILE_CAPTION, CUSTOM_FILE_CAPTION, PROTECT_CONTENT, CHNL_LNK, GRP_LNK, REQST_CHANNEL, SUPPORT_CHAT_ID, SUPPORT_CHAT, MAX_B_TN, VERIFY, SHORTLINK_API, SHORTLINK_URL, DWLD, TUTORIAL, IS_TUTORIAL, PREMIUM_USER
 from utils import get_settings, get_size, is_subscribed, save_group_settings, temp, verify_user, check_token, check_verification, get_token, get_shortlink, get_tutorial
 from database.connections_mdb import active_connection
-#from plugins.pm_filter import ENABLE_SHORTLINK
 import re, asyncio, os, sys
 import json
 import base64
 logger = logging.getLogger(__name__)
-telegraph = Telegraph()
-telegraph.create_account(short_name="BotLogs")
+
 BATCH_FILES = {}
 
 @Client.on_message(filters.command("start") & filters.incoming)
