@@ -20,7 +20,15 @@ DATABASE_URI = environ.get('DATABASE_URI', "mongodb+srv://ariana:ariana@ariana.v
 DATABASE_NAME = environ.get('DATABASE_NAME', "heroflix")
 COLLECTION_NAME = environ.get('COLLECTION_NAME', 'heroflix')
 
-DWLD = environ.get("DWLD", 'HeroFlixx/8')
+LOG_CHANNEL = int(environ.get('LOG_CHANNEL', '-1001652564383'))
+SUPPORT_CHAT = environ.get('SUPPORT_CHAT', 'herofeedbot')
+SHORTLINK_URL = environ.get('SHORTLINK_URL', 'softurl.in')
+SHORTLINK_API = environ.get('SHORTLINK_API', '373c1560e683c6254a5eb3c56209ef8e46ac8923')
+SECOND_SHORTLINK_URL = environ.get('SECOND_SHORTLINK_URL', 'softurl.in')
+SECOND_SHORTLINK_API = environ.get('SECOND_SHORTLINK_API', '373c1560e683c6254a5eb3c56209ef8e46ac8923')
+CHNL_LNK = environ.get('CHNL_LNK', '+NSpRIGWcoYU2OTk1')
+TUTORIAL = environ.get('TUTORIAL', 'HeroFlixx/54')
+
 CACHE_TIME = int(environ.get('CACHE_TIME', 300))
 USE_CAPTION_FILTER = bool(environ.get('USE_CAPTION_FILTER', False))
 
@@ -29,7 +37,6 @@ NOR_IMG = environ.get("NOR_IMG", "https://te.legra.ph/file/d6a23f16e002e86381656
 MELCOW_PIC = environ.get("MELCOW_PIC", "https://te.legra.ph/file/d6a23f16e002e86381656.jpg")
 SPELL_IMG = environ.get("SPELL_IMG", "https://te.legra.ph/file/2d68d2c0fbf9385d48d70.jpg")
 
-# Admins, Channels & Users
 ADMINS = [int(admin) if id_pattern.search(admin) else admin for admin in environ.get('ADMINS', '1058015838').split()]
 CHANNELS = [int(ch) if id_pattern.search(ch) else ch for ch in environ.get('CHANNELS', '-1001638006524').split()]
 auth_users = [int(user) if id_pattern.search(user) else user for user in environ.get('AUTH_USERS', '1058015838').split()]
@@ -45,24 +52,16 @@ REQST_CHANNEL = int(reqst_channel) if reqst_channel and id_pattern.search(reqst_
 SUPPORT_CHAT_ID = int(support_chat_id) if support_chat_id and id_pattern.search(support_chat_id) else None
 NO_RESULTS_MSG = bool(environ.get("NO_RESULTS_MSG", False))
 
-
 VERIFY = bool(environ.get('VERIFY', False))
-SHORTLINK_URL = environ.get('SHORTLINK_URL', 'softurl.in')
-SHORTLINK_API = environ.get('SHORTLINK_API', '373c1560e683c6254a5eb3c56209ef8e46ac8923')
-SECOND_SHORTLINK_URL = environ.get('SECOND_SHORTLINK_URL', 'softurl.in')
-SECOND_SHORTLINK_API = environ.get('SECOND_SHORTLINK_API', '373c1560e683c6254a5eb3c56209ef8e46ac8923')
 IS_SHORTLINK = bool(environ.get('IS_SHORTLINK', True))
 DELETE_CHANNELS = [int(dch) if id_pattern.search(dch) else dch for dch in environ.get('DELETE_CHANNELS', '0').split()]
 MAX_B_TN = environ.get("MAX_B_TN", "10")
 MAX_BTN = is_enabled((environ.get('MAX_BTN', "True")), True)
 PORT = environ.get("PORT", "8080")
 GRP_LNK = environ.get('GRP_LNK', 'https://t.me/heroflix')
-CHNL_LNK = environ.get('CHNL_LNK', '+NSpRIGWcoYU2OTk1')
-TUTORIAL = environ.get('TUTORIAL', 'HeroFlixx/54')
 IS_TUTORIAL = bool(environ.get('IS_TUTORIAL', True))
 MSG_ALRT = environ.get('MSG_ALRT', 'Wʜᴀᴛ Aʀᴇ Yᴏᴜ Lᴏᴏᴋɪɴɢ Aᴛ ?')
-LOG_CHANNEL = int(environ.get('LOG_CHANNEL', '-1001652564383'))
-SUPPORT_CHAT = environ.get('SUPPORT_CHAT', 'herofeedbot')
+
 P_TTI_SHOW_OFF = is_enabled((environ.get('P_TTI_SHOW_OFF', "False")), False)
 IMDB = is_enabled((environ.get('IMDB', "False")), False)
 AUTO_FFILTER = is_enabled((environ.get('AUTO_FFILTER', "True")), True)
