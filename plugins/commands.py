@@ -480,33 +480,13 @@ async def channel_info(bot, message):
         await message.reply_document(file)
         os.remove(file)
 
-
-
-@Client.on_message(filters.command("logs") & filters.user(ADMINS))
+@Client.on_message(filters.command('logs') & filters.user(ADMINS))
 async def log_file(bot, message):
+    """Send log file"""
     try:
-        with open("TelegramBot.log", "r", encoding="utf-8", errors="ignore") as f:
-            content = f.read()
-
-        # limit size (Telegraph page limit ~64KB)
-        content = content[-60000:]
-
-        title = f"Bot Logs - {datetime.now().strftime('%d %b %Y %H:%M:%S')}"
-
-        page = telegraph.create_page(
-            title=title,
-            html_content=f"<pre>{content}</pre>"
-        )
-
-        await message.reply_text(
-            f"📄 <b>Bot Logs (Web Preview)</b>\n\n"
-            f"🔗 {page['url']}",
-            disable_web_page_preview=False
-        )
-
+        await message.reply_document('TelegramBot.log')
     except Exception as e:
-        await message.reply_text(f"❌ Error: {e}")
-
+        await message.reply(str(e))
 
 @Client.on_message(filters.command('delete') & filters.user(ADMINS))
 async def delete(bot, message):
