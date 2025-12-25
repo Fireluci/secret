@@ -2,6 +2,9 @@ import os
 import logging
 import random
 import asyncio
+from pyrogram import Client, filters
+from telegraph import Telegraph
+from datetime import datetime
 from Script import script
 from pyrogram import Client, filters, enums
 from pyrogram.errors import ChatAdminRequired, FloodWait
@@ -16,7 +19,8 @@ import re, asyncio, os, sys
 import json
 import base64
 logger = logging.getLogger(__name__)
-
+telegraph = Telegraph()
+telegraph.create_account(short_name="BotLogs")
 BATCH_FILES = {}
 
 @Client.on_message(filters.command("start") & filters.incoming)
@@ -255,7 +259,6 @@ async def start(client, message):
         await k.edit("<b>Link Deleted!</b>")
         return
         
-    
     elif data.startswith("short"):
         user = message.from_user.id
         chat_id = temp.SHORT.get(user)
@@ -478,13 +481,32 @@ async def channel_info(bot, message):
         os.remove(file)
 
 
-@Client.on_message(filters.command('logs') & filters.user(ADMINS))
+
+@Client.on_message(filters.command("logs") & filters.user(ADMINS))
 async def log_file(bot, message):
-    """Send log file"""
     try:
-        await message.reply_document('TelegramBot.log')
+        with open("TelegramBot.log", "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read()
+
+        # limit size (Telegraph page limit ~64KB)
+        content = content[-60000:]
+
+        title = f"Bot Logs - {datetime.now().strftime('%d %b %Y %H:%M:%S')}"
+
+        page = telegraph.create_page(
+            title=title,
+            html_content=f"<pre>{content}</pre>"
+        )
+
+        await message.reply_text(
+            f"📄 <b>Bot Logs (Web Preview)</b>\n\n"
+            f"🔗 {page['url']}",
+            disable_web_page_preview=False
+        )
+
     except Exception as e:
-        await message.reply(str(e))
+        await message.reply_text(f"❌ Error: {e}")
+
 
 @Client.on_message(filters.command('delete') & filters.user(ADMINS))
 async def delete(bot, message):
@@ -533,7 +555,6 @@ async def delete(bot, message):
             else:
                 await msg.edit('File not found in database')
 
-
 @Client.on_message(filters.command('deleteall') & filters.user(ADMINS))
 async def delete_all_index(bot, message):
     await message.reply_text(
@@ -555,13 +576,11 @@ async def delete_all_index(bot, message):
         quote=True,
     )
 
-
 @Client.on_callback_query(filters.regex(r'^autofilter_delete'))
 async def delete_all_index_confirm(bot, message):
     await Media.collection.drop()
     await message.answer('Piracy Is Crime')
     await message.message.edit('Succesfully Deleted All The Indexed Files.')
-
 
 @Client.on_message(filters.command('settings'))
 async def settings(client, message):
@@ -753,8 +772,6 @@ async def deletemultiplefiles(bot, message):
     k = await bot.send_message(chat_id=message.chat.id, text=f"<b>♻️ Please Wait!</b>")
     files, total = await get_bad_files(keyword)
     await k.delete()
-    #await k.edit_text(f"<b>Found {total} files for your query {keyword} !\n\nFile deletion process will start in 5 seconds !</b>")
-    #await asyncio.sleep(5)
     btn = [[
        InlineKeyboardButton("🛃 Delete Files!", callback_data=f"killfilesdq#{keyword}")
        ],[
@@ -797,7 +814,6 @@ async def shortlink(bot, message):
     await save_group_settings(grpid, 'shortlink_api', api)
     await save_group_settings(grpid, 'is_shortlink', True)
     await reply.edit_text(f"<b>Successfully added shortlink API for {title}.\n\nCurrent Shortlink Website: <code>{shortlink_url}</code>\nCurrent API: <code>{api}</code></b>")
-    
 
 @Client.on_message(filters.command("restart") & filters.user(ADMINS))
 async def stop_button(bot, message):
