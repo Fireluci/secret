@@ -185,33 +185,47 @@ async def broadcast_messages_group(chat_id, message):
 async def search_gagala(text):
     """
     Returns a list of title suggestions.
-    Replaces Google (no longer works) with DuckDuckGo HTML.
-    Same return format as old code.
+    Uses IMDbPY instead of DuckDuckGo.
+    Same return format as old code: List[str]
     """
 
-    query = text.replace(" ", "+")
-    url = f"https://duckduckgo.com/html/?q={query}"
-
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-    }
-
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as response:
-                html = await response.text()
+        results = imdb.search_movie(text)
 
-        soup = BeautifulSoup(html, "html.parser")
+        suggestions = []
+        seen = set()
 
-        # DuckDuckGo search result titles have class="result__a"
-        titles = soup.find_all("a", class_="result__a")
+        for item in results:
+            title = item.get("title")
+            if not title:
+                continue
 
-        results = [t.get_text(strip=True) for t in titles][:6]
+            year = item.get("year")
+            kind = item.get("kind")
 
-        return results
+            # 👀 SHOW EVERYTHING (the "crap")
+            display = title
+            if year:
+                display += f" ({year})"
+            if kind:
+                display += f" {kind.title()}"
+
+            # 🔍 de-dup by TITLE only
+            key = title.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+
+            suggestions.append(display)
+
+            if len(suggestions) >= 6:
+                break
+
+        return suggestions
 
     except Exception:
         return []
+
 
 
 async def get_settings(group_id):
