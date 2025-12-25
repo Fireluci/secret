@@ -185,49 +185,34 @@ async def broadcast_messages_group(chat_id, message):
 async def search_gagala(text):
     """
     Returns a list of title suggestions.
-    Uses IMDbPY instead of DuckDuckGo.
-    Same return format as old code: List[str]
+    Replaces Google (no longer works) with DuckDuckGo HTML.
+    Same return format as old code.
     """
 
+    query = text.replace(" ", "+")
+    url = f"https://duckduckgo.com/html/?q={query}"
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+    }
+
     try:
-        results = imdb.search_movie(text)
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers) as response:
+                html = await response.text()
 
-        suggestions = []
-        seen = set()
+        soup = BeautifulSoup(html, "html.parser")
 
-        for item in results:
-            title = item.get("title")
-            if not title:
-                continue
+        # DuckDuckGo search result titles have class="result__a"
+        titles = soup.find_all("a", class_="result__a")
 
-            year = item.get("year")
-            kind = item.get("kind")
+        results = [t.get_text(strip=True) for t in titles][:6]
 
-            # 👀 SHOW EVERYTHING (the "crap")
-            display = title
-            if year:
-                display += f" ({year})"
-            if kind:
-                display += f" {kind.title()}"
-
-            # 🔍 de-dup by TITLE only
-            key = title.lower()
-            if key in seen:
-                continue
-            seen.add(key)
-
-            suggestions.append(display)
-
-            if len(suggestions) >= 6:
-                break
-
-        return suggestions
+        return results
 
     except Exception:
         return []
-
-
-
+        
 async def get_settings(group_id):
     settings = temp.SETTINGS.get(group_id)
     if not settings:
@@ -332,7 +317,6 @@ def last_online(from_user):
     elif from_user.status == enums.UserStatus.OFFLINE:
         time += from_user.last_online_date.strftime("%a, %d %b %Y, %H:%M:%S")
     return time
-
 
 def split_quotes(text: str) -> List:
     if not any(text.startswith(char) for char in START_CHAR):
@@ -480,7 +464,6 @@ def remove_escapes(text: str) -> str:
             res += text[counter]
     return res
 
-
 def humanbytes(size):
     if not size:
         return ""
@@ -522,8 +505,6 @@ async def get_shortlink(chat_id, link, second=False):
         shortzy = Shortzy(api_key=API, base_site=URL)
         link = await shortzy.convert(link)
         return link
-
-
     
 async def get_tutorial(chat_id):
     settings = await get_settings(chat_id) #fetching settings for group
@@ -634,7 +615,6 @@ async def check_verification(bot, userid):
     else:
         return False
     
-    
 async def send_all(bot, userid, files, ident, chat_id, user_name, query):
     settings = await get_settings(chat_id)
     if 'is_shortlink' in settings.keys():
@@ -722,7 +702,6 @@ async def send_all(bot, userid, files, ident, chat_id, user_name, query):
                     ]
                 )
             )'''
-
 
 async def extract_v2(text):
     text = text.lower()
