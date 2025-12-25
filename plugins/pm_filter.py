@@ -198,18 +198,32 @@ async def next_page(bot, query):
 @Client.on_callback_query(filters.regex(r"^spolling"))
 async def advantage_spoll_choker(bot, query):
 
+    # ✅ INSTANT ACK — prevents QUERY_ID_INVALID
+    try:
+        await query.answer()
+    except:
+        return
+
+    # 🔒 basic safety
+    if not query.from_user or not query.message:
+        return
+
     try:
         _, user, movie_ = query.data.split('#')
         user = int(user)
     except:
-        return  # ignore silently, no popup
+        return
 
     # 🔥 HONEY PROTECTION (wrong user)
     if user != 0 and query.from_user.id != user:
-        return await query.answer(
-            "🔆 Honey, It's Not For You❗\n🔆 हनी, ये तुम्हारे लिए नहीं है❗",
-            show_alert=True
-        )
+        try:
+            await query.answer(
+                "🔆 Honey, It's Not For You❗\n🔆 हनी, ये तुम्हारे लिए नहीं है❗",
+                show_alert=True
+            )
+        except:
+            pass
+        return
 
     # 🔥 Close button clicked
     if movie_ == "close_spellcheck":
@@ -218,21 +232,26 @@ async def advantage_spoll_choker(bot, query):
     # 🔥 Load stored spell check movie list
     movies = SPELL_CHECK.get(query.message.reply_to_message.id)
     if not movies:
-        return await query.answer("❗Link Expired, Request Again ♻", show_alert=True)
+        return await query.message.edit(
+            "❗Link Expired, Request Again ♻",
+            disable_web_page_preview=True
+        )
 
     # 🔥 Get selected movie safely
     try:
         movie = movies[int(movie_)]
     except:
-        return await query.answer("❗Invalid Option", show_alert=True)
+        return await query.message.edit("❗Invalid Option")
 
-    # Show waiting alert
-    await query.answer("Checking, Please Wait ♻️ \n\n[ Don't Spam - Just Wait! ]", show_alert=True)
+    # ✅ SHOW WAIT MESSAGE VIA EDIT (NOT ALERT)
+    await query.message.edit(
+        "Checking, Please Wait ♻️\n\n[ Don't Spam – Just Wait! ]"
+    )
 
-    # Try manual filters first
+    # 🔍 Try manual filters first
     k = await manual_filters(bot, query.message, text=movie)
 
-    # If manual not found, use auto search
+    # 🔍 Auto search fallback
     if k is False:
         files, offset, total_results = await get_search_results(
             query.message.chat.id, movie, offset=0, filter=True
@@ -241,9 +260,12 @@ async def advantage_spoll_choker(bot, query):
         if files:
             await auto_filter(bot, query, (movie, files, offset, total_results))
         else:
-            k = await query.message.edit(script.I_CUDNT, disable_web_page_preview=True)
+            msg = await query.message.edit(
+                script.I_CUDNT,
+                disable_web_page_preview=True
+            )
             await asyncio.sleep(60)
-            return await k.delete()
+            await msg.delete()
 
 
 @Client.on_callback_query(filters.regex(r"^languages#"))
