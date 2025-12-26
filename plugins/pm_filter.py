@@ -74,197 +74,176 @@ async def next_page(bot, query):
     except:
         pass
 
-    ident, req, key, offset = query.data.split("_")
+    # 🚦 slow down spam clicks
+    if is_spam(query.from_user.id):
+        return
 
-    # ❌ Wrong user protection
-    if int(req) not in [query.from_user.id, 0]:
+    # 🚦 limit concurrent heavy work
+    async with GLOBAL_SEM:
+
+        ident, req, key, offset = query.data.split("_")
+
+        # ❌ Wrong user protection
+        if int(req) not in [query.from_user.id, 0]:
+            try:
+                await query.answer(
+                    script.ALRT_TXT.format(query.from_user.first_name),
+                    show_alert=True
+                )
+            except:
+                pass
+            return
+
         try:
-            await query.answer(
-                script.ALRT_TXT.format(query.from_user.first_name),
-                show_alert=True
-            )
+            offset = int(offset)
         except:
-            pass
-        return
+            offset = 0
 
-    try:
-        offset = int(offset)
-    except:
-        offset = 0
+        search = BUTTONS.get(key) or FRESH.get(key)
 
-    search = BUTTONS.get(key) or FRESH.get(key)
+        if not search:
+            try:
+                await query.answer(
+                    script.OLD_ALRT_TXT.format(query.from_user.first_name),
+                    show_alert=True
+                )
+            except:
+                pass
+            return
 
-    if not search:
+        # ⏳ Heavy work AFTER answering
+        files, n_offset, total = await get_search_results(
+            query.message.chat.id,
+            search,
+            offset=offset,
+            filter=True
+        )
+
         try:
-            await query.answer(
-                script.OLD_ALRT_TXT.format(query.from_user.first_name),
-                show_alert=True
-            )
+            n_offset = int(n_offset)
         except:
-            pass
-        return
+            n_offset = 0
 
-    # ⏳ Heavy work AFTER answering
-    files, n_offset, total = await get_search_results(
-        query.message.chat.id,
-        search,
-        offset=offset,
-        filter=True
-    )
+        if not files:
+            return
 
-    try:
-        n_offset = int(n_offset)
-    except:
-        n_offset = 0
+        temp.GETALL[key] = files
+        temp.SHORT[query.from_user.id] = query.message.chat.id
+        settings = await get_settings(query.message.chat.id)
 
-    # continue your button/message edit logic below...
+        pre = 'filep' if settings['file_secure'] else 'file'
 
-
-    if not files:
-        return
-    temp.GETALL[key] = files
-    temp.SHORT[query.from_user.id] = query.message.chat.id
-    settings = await get_settings(query.message.chat.id)
-    # if 'is_shortlink' in settings.keys():
-    #     ENABLE_SHORTLINK = settings['is_shortlink']
-    # else:
-    #     await save_group_settings(query.message.chat.id, 'is_shortlink', False)
-    #     ENABLE_SHORTLINK = False
-    pre = 'filep' if settings['file_secure'] else 'file'
-    if settings['button']:
-        btn = [
-            [
-                InlineKeyboardButton(
-                    text=f"[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}", callback_data=f'{pre}#{file.file_id}'
-                ),
+        if settings['button']:
+            btn = [
+                [
+                    InlineKeyboardButton(
+                        text=f"[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}",
+                        callback_data=f'{pre}#{file.file_id}'
+                    ),
+                ]
+                for file in files
             ]
-            for file in files
-        ]
-    # else:
-    #     btn = [
-    #         [
-    #             InlineKeyboardButton(
-    #                 text=f"{' '.join(filter(lambda x: not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}", callback_data=f'files#{file.file_id}'
-    #             ),
-    #             InlineKeyboardButton(
-    #                 text=f"{get_size(file.file_size)}",
-    #                 callback_data=f'files_#{file.file_id}',
-    #             ),
-    #         ]
-    #         for file in files
-    #     ]
 
-        btn.insert(0, 
-            [
+            btn.insert(0, [
                 InlineKeyboardButton("ʟᴀɴɢᴜᴀɢᴇs", callback_data=f"languages#{key}"),
                 InlineKeyboardButton("Sᴇᴀsᴏɴs",  callback_data=f"seasons#{key}")
-            ]
-        )
-    else:
-        btn = []
-    try:
-        if settings['max_btn']:
-            if 0 < offset <= 10:
-                off_set = 0
-            elif offset == 0:
-                off_set = None
-            else:
-                off_set = offset - 10
-            if n_offset == 0:
-                btn.append(
-                    [InlineKeyboardButton("⏪ BACK", callback_data=f"next_{req}_{key}_{off_set}"), InlineKeyboardButton(f"{math.ceil(int(offset)/10)+1} / {math.ceil(total/10)}", callback_data="pages")]
-                )
-            elif off_set is None:
-                btn.append([InlineKeyboardButton("🔅 Page", callback_data="pages"), InlineKeyboardButton(f"{math.ceil(int(offset)/10)+1} / {math.ceil(total/10)}", callback_data="pages"), InlineKeyboardButton(" NEXT ⏩", callback_data=f"next_{req}_{key}_{n_offset}")])
-            else:
-                btn.append(
-                    [
-                        InlineKeyboardButton("⏪ BACK", callback_data=f"next_{req}_{key}_{off_set}"),
-                        InlineKeyboardButton(f"{math.ceil(int(offset)/10)+1} / {math.ceil(total/10)}", callback_data="pages"),
-                        InlineKeyboardButton(" NEXT ⏩", callback_data=f"next_{req}_{key}_{n_offset}")
-                    ],
-                )
+            ])
         else:
-            if 0 < offset <= int(MAX_B_TN):
-                off_set = 0
-            elif offset == 0:
-                off_set = None
-            else:
-                off_set = offset - int(MAX_B_TN)
-            if n_offset == 0:
-                btn.append(
-                    [InlineKeyboardButton("⏪ BACK", callback_data=f"next_{req}_{key}_{off_set}"), InlineKeyboardButton(f"{math.ceil(int(offset)/int(MAX_B_TN))+1} / {math.ceil(total/int(MAX_B_TN))}", callback_data="pages")]
-                )
-            elif off_set is None:
-                btn.append([InlineKeyboardButton("🔅 Page", callback_data="pages"), InlineKeyboardButton(f"{math.ceil(int(offset)/int(MAX_B_TN))+1} / {math.ceil(total/int(MAX_B_TN))}", callback_data="pages"), InlineKeyboardButton(" NEXT ⏩", callback_data=f"next_{req}_{key}_{n_offset}")])
-            else:
-                btn.append(
-                    [
-                        InlineKeyboardButton("⏪ BACK", callback_data=f"next_{req}_{key}_{off_set}"),
-                        InlineKeyboardButton(f"{math.ceil(int(offset)/int(MAX_B_TN))+1} / {math.ceil(total/int(MAX_B_TN))}", callback_data="pages"),
-                        InlineKeyboardButton(" NEXT ⏩", callback_data=f"next_{req}_{key}_{n_offset}")
-                    ],
-                )
-    except KeyError:
-        await save_group_settings(query.message.chat.id, 'max_btn', True)
-        if 0 < offset <= 10:
-            off_set = 0
-        elif offset == 0:
-            off_set = None
-        else:
-            off_set = offset - 10
-        if n_offset == 0:
-            btn.append(
-                [InlineKeyboardButton("⏪ BACK", callback_data=f"next_{req}_{key}_{off_set}"), InlineKeyboardButton(f"{math.ceil(int(offset)/10)+1} / {math.ceil(total/10)}", callback_data="pages")]
-            )
-        elif off_set is None:
-            btn.append([InlineKeyboardButton("🔅 Page", callback_data="pages"), InlineKeyboardButton(f"{math.ceil(int(offset)/10)+1} / {math.ceil(total/10)}", callback_data="pages"), InlineKeyboardButton(" NEXT ⏩", callback_data=f"next_{req}_{key}_{n_offset}")])
-        else:
-            btn.append(
-                [
-                    InlineKeyboardButton("⏪ BACK", callback_data=f"next_{req}_{key}_{off_set}"),
-                    InlineKeyboardButton(f"{math.ceil(int(offset)/10)+1} / {math.ceil(total/10)}", callback_data="pages"),
-                    InlineKeyboardButton(" NEXT ⏩", callback_data=f"next_{req}_{key}_{n_offset}")
-                ],
-            )
-    # if ENABLE_SHORTLINK == True:
-        # btn.insert(0, [
-        #     InlineKeyboardButton("Sᴛᴀʀᴛ Bᴏᴛ", url=f"https://telegram.me/{temp.U_NAME}"),
-        #     InlineKeyboardButton("𝐒𝐞𝐧𝐝 𝐀𝐥𝐥", callback_data=f"sendfiles#{key}")
-        # ])
-    # else:
-    
-    #btn.insert(0, [
-     #   InlineKeyboardButton("Hᴏᴡ ᴛᴏ Dᴏᴡɴʟᴏᴀᴅ⚡", url=await get_tutorial(query.message.chat.id))
-    #])
-    btn.insert(0, [InlineKeyboardButton("🌟 How To Download ❓", url=f"https://telegram.me/{TUTORIAL}")])
-    
-    if settings["button"]:
-        cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n<i>🗨 Choose Link - Press Start ↷</i>\n\n</b>"
-    else:
-        # cap = f"<b>Hᴇʏ {query.from_user.mention}, Hᴇʀᴇ ɪs ᴛʜᴇ ʀᴇsᴜʟᴛ ғᴏʀ ʏᴏᴜʀ ᴏ̨ᴜᴇʀʏ {search} \n\n</b>"
-        cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n<i>🗨 Choose Link - Press Start ↷</i>\n\n</b>"
-        for file in files:
-            cap += f"<b>🍿 <a href='https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}'>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}\n\n</a></b>"
-    # --- Always answer callback FIRST (safe) ---
-    try:
-        await query.answer()
-    except Exception:
-        # Callback already answered or expired — ignore safely
-        pass
+            btn = []
 
-    # --- Now try editing the message ---
-    try:
-        await query.message.edit_text(
-            text=cap,
-            reply_markup=InlineKeyboardMarkup(btn),
-            disable_web_page_preview=True
-        )
-    except MessageNotModified:
-        pass
-    except Exception:
-        # FloodWait or expired message — ignore silently
-        pass
+        try:
+            if settings['max_btn']:
+                if 0 < offset <= 10:
+                    off_set = 0
+                elif offset == 0:
+                    off_set = None
+                else:
+                    off_set = offset - 10
+
+                if n_offset == 0:
+                    btn.append(
+                        [
+                            InlineKeyboardButton("⏪ BACK", callback_data=f"next_{req}_{key}_{off_set}"),
+                            InlineKeyboardButton(f"{math.ceil(int(offset)/10)+1} / {math.ceil(total/10)}", callback_data="pages")
+                        ]
+                    )
+                elif off_set is None:
+                    btn.append(
+                        [
+                            InlineKeyboardButton("🔅 Page", callback_data="pages"),
+                            InlineKeyboardButton(f"{math.ceil(int(offset)/10)+1} / {math.ceil(total/10)}", callback_data="pages"),
+                            InlineKeyboardButton(" NEXT ⏩", callback_data=f"next_{req}_{key}_{n_offset}")
+                        ]
+                    )
+                else:
+                    btn.append(
+                        [
+                            InlineKeyboardButton("⏪ BACK", callback_data=f"next_{req}_{key}_{off_set}"),
+                            InlineKeyboardButton(f"{math.ceil(int(offset)/10)+1} / {math.ceil(total/10)}", callback_data="pages"),
+                            InlineKeyboardButton(" NEXT ⏩", callback_data=f"next_{req}_{key}_{n_offset}")
+                        ]
+                    )
+            else:
+                if 0 < offset <= int(MAX_B_TN):
+                    off_set = 0
+                elif offset == 0:
+                    off_set = None
+                else:
+                    off_set = offset - int(MAX_B_TN)
+
+                if n_offset == 0:
+                    btn.append(
+                        [
+                            InlineKeyboardButton("⏪ BACK", callback_data=f"next_{req}_{key}_{off_set}"),
+                            InlineKeyboardButton(f"{math.ceil(int(offset)/int(MAX_B_TN))+1} / {math.ceil(total/int(MAX_B_TN))}", callback_data="pages")
+                        ]
+                    )
+                elif off_set is None:
+                    btn.append(
+                        [
+                            InlineKeyboardButton("🔅 Page", callback_data="pages"),
+                            InlineKeyboardButton(f"{math.ceil(int(offset)/int(MAX_B_TN))+1} / {math.ceil(total/int(MAX_B_TN))}", callback_data="pages"),
+                            InlineKeyboardButton(" NEXT ⏩", callback_data=f"next_{req}_{key}_{n_offset}")
+                        ]
+                    )
+                else:
+                    btn.append(
+                        [
+                            InlineKeyboardButton("⏪ BACK", callback_data=f"next_{req}_{key}_{off_set}"),
+                            InlineKeyboardButton(f"{math.ceil(int(offset)/int(MAX_B_TN))+1} / {math.ceil(total/int(MAX_B_TN))}", callback_data="pages"),
+                            InlineKeyboardButton(" NEXT ⏩", callback_data=f"next_{req}_{key}_{n_offset}")
+                        ]
+                    )
+        except KeyError:
+            pass
+
+        btn.insert(0, [
+            InlineKeyboardButton("🌟 How To Download ❓", url=f"https://telegram.me/{TUTORIAL}")
+        ])
+
+        if settings["button"]:
+            cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n<i>🗨 Choose Link - Press Start ↷</i>\n\n</b>"
+        else:
+            cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n<i>🗨 Choose Link - Press Start ↷</i>\n\n</b>"
+            for file in files:
+                cap += (
+                    f"<b>🍿 <a href='https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}'>"
+                    f"[{get_size(file.file_size)}] "
+                    f"{' '.join(filter(lambda x: not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}"
+                    f"\n\n</a></b>"
+                )
+
+        try:
+            await query.message.edit_text(
+                text=cap,
+                reply_markup=InlineKeyboardMarkup(btn),
+                disable_web_page_preview=True
+            )
+        except MessageNotModified:
+            pass
+        except Exception:
+            pass
+
 
 @Client.on_callback_query(filters.regex(r"^spolling"))
 async def advantage_spoll_choker(bot, query):
@@ -273,70 +252,82 @@ async def advantage_spoll_choker(bot, query):
     try:
         await query.answer()
     except:
+        pass
+
+    # 🚦 stop spam clicking
+    if is_spam(query.from_user.id):
         return
 
-    # 🔒 basic safety
-    if not query.from_user or not query.message:
-        return
+    # 🚦 limit concurrent heavy work
+    async with GLOBAL_SEM:
 
-    try:
-        _, user, movie_ = query.data.split('#')
-        user = int(user)
-    except:
-        return
+        # 🔒 basic safety
+        if not query.from_user or not query.message:
+            return
 
-    # 🔥 HONEY PROTECTION (wrong user)
-    if user != 0 and query.from_user.id != user:
+        try:
+            _, user, movie_ = query.data.split('#')
+            user = int(user)
+        except:
+            return
+
+        # 🔥 HONEY PROTECTION (wrong user)
+        if user != 0 and query.from_user.id != user:
+            try:
+                await query.answer(
+                    "🔆 Honey, It's Not For You❗\n🔆 हनी, ये तुम्हारे लिए नहीं है❗",
+                    show_alert=True
+                )
+            except:
+                pass
+            return
+
+        # 🔥 Close button clicked
+        if movie_ == "close_spellcheck":
+            return await query.message.delete()
+
+        # 🔥 Load stored spell check movie list
+        movies = SPELL_CHECK.get(query.message.reply_to_message.id)
+        if not movies:
+            return await query.message.edit(
+                "❗Link Expired, Request Again ♻",
+                disable_web_page_preview=True
+            )
+
+        # 🔥 Get selected movie safely
+        try:
+            movie = movies[int(movie_)]
+        except:
+            return await query.message.edit("❗Invalid Option")
+
+        # ✅ SHOW WAIT MESSAGE AS ALERT (POPUP)
         try:
             await query.answer(
-                "🔆 Honey, It's Not For You❗\n🔆 हनी, ये तुम्हारे लिए नहीं है❗",
+                "Checking, Please Wait ♻️\n\n[ Don't Spam – Just Wait! ]",
                 show_alert=True
             )
         except:
             pass
-        return
 
-    # 🔥 Close button clicked
-    if movie_ == "close_spellcheck":
-        return await query.message.delete()
+        # 🔍 Try manual filters first
+        k = await manual_filters(bot, query.message, text=movie)
 
-    # 🔥 Load stored spell check movie list
-    movies = SPELL_CHECK.get(query.message.reply_to_message.id)
-    if not movies:
-        return await query.message.edit(
-            "❗Link Expired, Request Again ♻",
-            disable_web_page_preview=True
-        )
-
-    # 🔥 Get selected movie safely
-    try:
-        movie = movies[int(movie_)]
-    except:
-        return await query.message.edit("❗Invalid Option")
-
-    # ✅ SHOW WAIT MESSAGE VIA EDIT (NOT ALERT)
-    await query.message.edit(
-        "Checking, Please Wait ♻️\n\n[ Don't Spam – Just Wait! ]"
-    )
-
-    # 🔍 Try manual filters first
-    k = await manual_filters(bot, query.message, text=movie)
-
-    # 🔍 Auto search fallback
-    if k is False:
-        files, offset, total_results = await get_search_results(
-            query.message.chat.id, movie, offset=0, filter=True
-        )
-
-        if files:
-            await auto_filter(bot, query, (movie, files, offset, total_results))
-        else:
-            msg = await query.message.edit(
-                script.I_CUDNT,
-                disable_web_page_preview=True
+        # 🔍 Auto search fallback
+        if k is False:
+            files, offset, total_results = await get_search_results(
+                query.message.chat.id, movie, offset=0, filter=True
             )
-            await asyncio.sleep(60)
-            await msg.delete()
+
+            if files:
+                await auto_filter(bot, query, (movie, files, offset, total_results))
+            else:
+                msg = await query.message.edit(
+                    script.I_CUDNT,
+                    disable_web_page_preview=True
+                )
+                await asyncio.sleep(60)
+                await msg.delete()
+
 
 
 @Client.on_callback_query(filters.regex(r"^languages#"))
