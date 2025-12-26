@@ -1,51 +1,41 @@
-import asyncio
-import re
-import ast
-import math
-import random
-import pytz
+import asyncio, re, ast, math, random, pytz, logging
+import time as _time
 from datetime import datetime, timedelta, date, time
-lock = asyncio.Lock()
 
-from pyrogram.errors.exceptions.bad_request_400 import MediaEmpty, PhotoInvalidDimensions, WebpageMediaEmpty
-from Script import script
-import pyrogram
-from database.connections_mdb import active_connection, all_connections, delete_connection, if_active, make_active, \
-    make_inactive
-from info import *
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, InputMediaPhoto
 from pyrogram import Client, filters, enums
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, InputMediaPhoto
 from pyrogram.errors import FloodWait, UserIsBlocked, MessageNotModified, PeerIdInvalid
+from pyrogram.errors.exceptions.bad_request_400 import MediaEmpty, PhotoInvalidDimensions, WebpageMediaEmpty
+
+from Script import script
+from info import *
 from utils import get_size, is_subscribed, get_poster, search_gagala, temp, get_settings, save_group_settings, get_shortlink, get_tutorial, send_all
 from database.users_chats_db import db
+from database.connections_mdb import active_connection, all_connections, delete_connection, if_active, make_active, make_inactive
 from database.ia_filterdb import Media, get_file_details, get_search_results, get_bad_files
 from database.filters_mdb import del_all, find_filter, get_filters
-import logging
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.ERROR)
 
+lock = asyncio.Lock()
+
 BUTTON = {}
 BUTTONS = {}
 FRESH = {}
-BUTTONS0 = {}
-BUTTONS1 = {}
-BUTTONS2 = {}
 SPELL_CHECK = {}
-# ENABLE_SHORTLINK = ""
 
 GLOBAL_SEM = asyncio.Semaphore(12)
-
-# Per-user cooldown (anti-spam)
 USER_COOLDOWN = {}
 
-def is_spam(user_id: int, cooldown: int = 2) -> bool:
-    now = time()
-    last = USER_COOLDOWN.get(user_id, 0)
+def is_spam(uid, cooldown=2):
+    now = _time.monotonic()
+    last = USER_COOLDOWN.get(uid, 0)
     if now - last < cooldown:
         return True
-    USER_COOLDOWN[user_id] = now
+    USER_COOLDOWN[uid] = now
     return False
+False
 
 @Client.on_message(filters.group & filters.text & filters.incoming)
 async def give_filter(client, message):
