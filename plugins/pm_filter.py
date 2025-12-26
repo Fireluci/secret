@@ -54,26 +54,58 @@ async def pm_text(bot, message):
     
 @Client.on_callback_query(filters.regex(r"^next"))
 async def next_page(bot, query):
+
+    # ✅ Answer immediately (silent)
+    try:
+        await query.answer()
+    except:
+        pass
+
     ident, req, key, offset = query.data.split("_")
+
+    # ❌ Wrong user protection
     if int(req) not in [query.from_user.id, 0]:
-        return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+        try:
+            await query.answer(
+                script.ALRT_TXT.format(query.from_user.first_name),
+                show_alert=True
+            )
+        except:
+            pass
+        return
+
     try:
         offset = int(offset)
     except:
         offset = 0
-    if BUTTONS.get(key)!=None:
-        search = BUTTONS.get(key)
-    else:
-        search = FRESH.get(key)
+
+    search = BUTTONS.get(key) or FRESH.get(key)
+
     if not search:
-        await query.answer(script.OLD_ALRT_TXT.format(query.from_user.first_name),show_alert=True)
+        try:
+            await query.answer(
+                script.OLD_ALRT_TXT.format(query.from_user.first_name),
+                show_alert=True
+            )
+        except:
+            pass
         return
 
-    files, n_offset, total = await get_search_results(query.message.chat.id, search, offset=offset, filter=True)
+    # ⏳ Heavy work AFTER answering
+    files, n_offset, total = await get_search_results(
+        query.message.chat.id,
+        search,
+        offset=offset,
+        filter=True
+    )
+
     try:
         n_offset = int(n_offset)
     except:
         n_offset = 0
+
+    # continue your button/message edit logic below...
+
 
     if not files:
         return
