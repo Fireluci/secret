@@ -34,6 +34,19 @@ BUTTONS2 = {}
 SPELL_CHECK = {}
 # ENABLE_SHORTLINK = ""
 
+GLOBAL_SEM = asyncio.Semaphore(12)
+
+# Per-user cooldown (anti-spam)
+USER_COOLDOWN = {}
+
+def is_spam(user_id: int, cooldown: int = 2) -> bool:
+    now = time()
+    last = USER_COOLDOWN.get(user_id, 0)
+    if now - last < cooldown:
+        return True
+    USER_COOLDOWN[user_id] = now
+    return False
+
 @Client.on_message(filters.group & filters.text & filters.incoming)
 async def give_filter(client, message):
     success = await manual_filters(client, message)
