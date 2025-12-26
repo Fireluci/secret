@@ -849,22 +849,45 @@ async def extract_v2(text):
     text = re.sub(r"[@!$_\-.+:*#⁓(),/?]", " ", text)
 
     # normalize season / episode words
-    text = re.sub(r'\bseason\s*(\d+)\b', lambda m: f's{m.group(1).zfill(2)}', text)
-    text = re.sub(r'\bepisode\s*(\d+)\b', lambda m: f'e{m.group(1).zfill(2)}', text)
+    text = re.sub(
+        r'\bseason\s*(\d{1,2})\b',
+        lambda m: f's{m.group(1).zfill(2)}',
+        text
+    )
+    text = re.sub(
+        r'\bepisode\s*(\d{1,2})\b',
+        lambda m: f'e{m.group(1).zfill(2)}',
+        text
+    )
 
     # normalize short forms
     text = re.sub(r'\bs(\d)\b', r's0\1', text)
     text = re.sub(r'\be(\d)\b', r'e0\1', text)
-    text = re.sub(r'\bep\s*(\d+)\b', lambda m: f"e{m.group(1).zfill(2)}", text)
-
-    # 🔥 normalize joined season+episode forms
     text = re.sub(
-        r's(\d{1,2})ep(\d{1,2})',
+        r'\bep\s*(\d{1,2})\b',
+        lambda m: f"e{m.group(1).zfill(2)}",
+        text
+    )
+
+    # 🔥 normalize ALL season + episode combinations
+
+    # season 5 episode 1 / season 5 ep1
+    text = re.sub(
+        r'season\s*(\d{1,2})\s*(?:episode|ep)\s*(\d{1,2})',
         lambda m: f"s{m.group(1).zfill(2)}e{m.group(2).zfill(2)}",
         text
     )
+
+    # s5 episode 1 / s5 ep1 / s05 ep01
     text = re.sub(
-        r's(\d{1,2})e(\d{1,2})',
+        r's(\d{1,2})\s*(?:episode|ep)\s*(\d{1,2})',
+        lambda m: f"s{m.group(1).zfill(2)}e{m.group(2).zfill(2)}",
+        text
+    )
+
+    # s5 e1 / s05 e01 / s5e1
+    text = re.sub(
+        r's(\d{1,2})\s*e(\d{1,2})',
         lambda m: f"s{m.group(1).zfill(2)}e{m.group(2).zfill(2)}",
         text
     )
