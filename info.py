@@ -12,77 +12,129 @@ def is_enabled(value, default):
         return default
 
 SESSION = environ.get('SESSION', 'Media_search')
-API_ID = int(environ.get('API_ID', '1736204'))
-API_HASH = environ.get('API_HASH', '890d40e0f91a4de32dec2965444b2cbe')
-BOT_TOKEN = environ.get('BOT_TOKEN', '')
+API_ID = int(environ.get('API_ID', '24314601'))
+API_HASH = environ.get('API_HASH', 'ede341e2d490a0fad5469866dedf8a95')
+BOT_TOKEN = environ.get('BOT_TOKEN', '7084913738:AAEZyir5Y-PY6CKo2sMkX1T0LWhR8btOdJA')
 
-DATABASE_URI = environ.get('DATABASE_URI', "mongodb+srv://liz:liz@liz.hwhb5p4.mongodb.net/?retryWrites=true&w=majority&appName=liz")
-DATABASE_NAME = environ.get('DATABASE_NAME', "heroflix")
-COLLECTION_NAME = environ.get('COLLECTION_NAME', 'heroflix')
+DATABASE_URI = environ.get(
+    'DATABASE_URI',
+    "mongodb+srv://13duddududdu:13duddududdu@cluster0.dvpxim9.mongodb.net/?retryWrites=true&w=majority"
+)
+DATABASE_NAME = environ.get('DATABASE_NAME', "database")
+COLLECTION_NAME = environ.get('COLLECTION_NAME', 'database')
 
 DWLD = environ.get("DWLD", 'HeroFlixx/8')
 CACHE_TIME = int(environ.get('CACHE_TIME', 300))
 USE_CAPTION_FILTER = bool(environ.get('USE_CAPTION_FILTER', False))
 
-PICS = (environ.get('PICS', 'https://te.legra.ph/file/d6a23f16e002e86381656.jpg https://te.legra.ph/file/d6a23f16e002e86381656.jpg')).split()
-NOR_IMG = environ.get("NOR_IMG", "https://te.legra.ph/file/d6a23f16e002e86381656.jpg")
-MELCOW_PIC = environ.get("MELCOW_PIC", "https://te.legra.ph/file/d6a23f16e002e86381656.jpg")
+PICS = (
+    environ.get(
+        'PICS',
+        'https://te.legra.ph/file/7bece5ddc3e001805c02f.jpg https://te.legra.ph/file/7bece5ddc3e001805c02f.jpg'
+    )
+).split()
+
+NOR_IMG = environ.get("NOR_IMG", "https://te.legra.ph/file/7bece5ddc3e001805c02f.jpg")
+MELCOW_PIC = environ.get("MELCOW_PIC", "https://te.legra.ph/file/7bece5ddc3e001805c02f.jpg")
 SPELL_IMG = environ.get("SPELL_IMG", "https://te.legra.ph/file/2d68d2c0fbf9385d48d70.jpg")
 
 # Admins, Channels & Users
-ADMINS = [int(admin) if id_pattern.search(admin) else admin for admin in environ.get('ADMINS', '1058015838').split()]
-CHANNELS = [int(ch) if id_pattern.search(ch) else ch for ch in environ.get('CHANNELS', '-1001638006524').split()]
-auth_users = [int(user) if id_pattern.search(user) else user for user in environ.get('AUTH_USERS', '1058015838').split()]
+ADMINS = [
+    int(admin) if id_pattern.search(admin) else admin
+    for admin in environ.get('ADMINS', '1058015838 6178075056 640617767').split()
+]
+
+CHANNELS = [
+    int(ch) if id_pattern.search(ch) else ch
+    for ch in environ.get('CHANNELS', '-1001638006524 -1002246209699').split()
+]
+
+auth_users = [
+    int(user) if id_pattern.search(user) else user
+    for user in environ.get('AUTH_USERS', '640617767').split()
+]
+
 AUTH_USERS = (auth_users + ADMINS) if auth_users else []
-PREMIUM_USER = [int(user) if id_pattern.search(user) else user for user in environ.get('PREMIUM_USER', '').split()]
-auth_channel = environ.get('AUTH_CHANNEL', '-1002048881772')
+
+PREMIUM_USER = [
+    int(user) if id_pattern.search(user) else user
+    for user in environ.get('PREMIUM_USER', '').split()
+]
+
+auth_channel = environ.get('AUTH_CHANNEL', '-1001877433573')
 auth_grp = environ.get('AUTH_GROUP', '')
 AUTH_CHANNEL = int(auth_channel) if auth_channel and id_pattern.search(auth_channel) else None
 AUTH_GROUPS = [int(ch) for ch in auth_grp.split()] if auth_grp else None
+
 support_chat_id = environ.get('SUPPORT_CHAT_ID', '')
 reqst_channel = environ.get('REQST_CHANNEL_ID', '')
 REQST_CHANNEL = int(reqst_channel) if reqst_channel and id_pattern.search(reqst_channel) else None
 SUPPORT_CHAT_ID = int(support_chat_id) if support_chat_id and id_pattern.search(support_chat_id) else None
+
 NO_RESULTS_MSG = bool(environ.get("NO_RESULTS_MSG", False))
 
-
 VERIFY = bool(environ.get('VERIFY', False))
-SHORTLINK_URL = environ.get('SHORTLINK_URL', 'softurl.in')
-SHORTLINK_API = environ.get('SHORTLINK_API', '373c1560e683c6254a5eb3c56209ef8e46ac8923')
-SECOND_SHORTLINK_URL = environ.get('SECOND_SHORTLINK_URL', 'softurl.in')
-SECOND_SHORTLINK_API = environ.get('SECOND_SHORTLINK_API', '373c1560e683c6254a5eb3c56209ef8e46ac8923')
+
+SHORTLINK_URL = environ.get('SHORTLINK_URL', 'easysky.in')
+SHORTLINK_API = environ.get('SHORTLINK_API', 'a3f19acc6e58669565e8a3eb4cd5f7b040db4989')
+SECOND_SHORTLINK_URL = environ.get('SECOND_SHORTLINK_URL', 'easysky.in')
+SECOND_SHORTLINK_API = environ.get('SECOND_SHORTLINK_API', 'a3f19acc6e58669565e8a3eb4cd5f7b040db4989')
+
 IS_SHORTLINK = bool(environ.get('IS_SHORTLINK', True))
-DELETE_CHANNELS = [int(dch) if id_pattern.search(dch) else dch for dch in environ.get('DELETE_CHANNELS', '0').split()]
+
+DELETE_CHANNELS = [
+    int(dch) if id_pattern.search(dch) else dch
+    for dch in environ.get('DELETE_CHANNELS', '0').split()
+]
+
 MAX_B_TN = environ.get("MAX_B_TN", "10")
 MAX_BTN = is_enabled((environ.get('MAX_BTN', "True")), True)
+
 PORT = environ.get("PORT", "8080")
+
 GRP_LNK = environ.get('GRP_LNK', 'https://t.me/heroflix')
-CHNL_LNK = environ.get('CHNL_LNK', 'heroflix')
-TUTORIAL = environ.get('TUTORIAL', 'HeroFlixx/54')
+CHNL_LNK = environ.get('CHNL_LNK', 'CinepleX1')
+TUTORIAL = environ.get('TUTORIAL', 'publicth01/24')
+
 IS_TUTORIAL = bool(environ.get('IS_TUTORIAL', True))
+
 MSG_ALRT = environ.get('MSG_ALRT', 'Wʜᴀᴛ Aʀᴇ Yᴏᴜ Lᴏᴏᴋɪɴɢ Aᴛ ?')
-LOG_CHANNEL = int(environ.get('LOG_CHANNEL', '-1001652564383'))
-SUPPORT_CHAT = environ.get('SUPPORT_CHAT', 'herofeedbot')
+
+LOG_CHANNEL = int(environ.get('LOG_CHANNEL', '-1002196916445'))
+SUPPORT_CHAT = environ.get('SUPPORT_CHAT', 'link_report')
+
 P_TTI_SHOW_OFF = is_enabled((environ.get('P_TTI_SHOW_OFF', "False")), False)
 IMDB = is_enabled((environ.get('IMDB', "False")), False)
 AUTO_FFILTER = is_enabled((environ.get('AUTO_FFILTER', "True")), True)
 AUTO_DELETE = is_enabled((environ.get('AUTO_DELETE', "True")), True)
 SINGLE_BUTTON = is_enabled((environ.get('SINGLE_BUTTON', "True")), True)
+
 CUSTOM_FILE_CAPTION = environ.get("CUSTOM_FILE_CAPTION", f"{script.CAPTION}")
 BATCH_FILE_CAPTION = environ.get("BATCH_FILE_CAPTION", CUSTOM_FILE_CAPTION)
+
 IMDB_TEMPLATE = environ.get("IMDB_TEMPLATE", f"{script.IMDB_TEMPLATE_TXT}")
+
 LONG_IMDB_DESCRIPTION = is_enabled(environ.get("LONG_IMDB_DESCRIPTION", "False"), False)
-SPELL_CHECK_REPLY = is_enabled(environ.get("SPELL_CHECK_REPLY", "True"), True)
+SPELL_CHECK_REPLY = is_enabled(environ.get("SPELL_CHECK_REPLY", "False"), False)
+
 MAX_LIST_ELM = environ.get("MAX_LIST_ELM", None)
+
 INDEX_REQ_CHANNEL = int(environ.get('INDEX_REQ_CHANNEL', LOG_CHANNEL))
-FILE_STORE_CHANNEL = [int(ch) for ch in (environ.get('FILE_STORE_CHANNEL', '')).split()]
+
+FILE_STORE_CHANNEL = [
+    int(ch) for ch in (environ.get('FILE_STORE_CHANNEL', '')).split()
+]
+
 MELCOW_NEW_USERS = is_enabled((environ.get('MELCOW_NEW_USERS', "False")), False)
 PROTECT_CONTENT = is_enabled((environ.get('PROTECT_CONTENT', "False")), False)
 PUBLIC_FILE_STORE = is_enabled((environ.get('PUBLIC_FILE_STORE', "False")), False)
 
 LANGUAGES = ["mal", "tam", "eng", "hin", "tel", "kan"]
 
-SEASONS = ["season 1" , "season 2" , "season 3" , "season 4", "season 5" , "season 6" , "season 7" , "season 8" , "season 9" , "season 10"]
+SEASONS = [
+    "season 1", "season 2", "season 3", "season 4", "season 5",
+    "season 6", "season 7", "season 8", "season 9", "season 10"
+]
 
 LOG_STR = "Current Cusomized Configurations are:-\n"
 LOG_STR += ("IMDB Results are enabled, Bot will be showing imdb details for you queries.\n" if IMDB else "IMBD Results are disabled.\n")
