@@ -14,7 +14,7 @@ def is_enabled(value, default):
 SESSION = environ.get('SESSION', 'Media_search')
 API_ID = int(environ.get('API_ID', '24314601'))
 API_HASH = environ.get('API_HASH', 'ede341e2d490a0fad5469866dedf8a95')
-BOT_TOKEN = environ.get('BOT_TOKEN', '7084913738:AAEZyir5Y-PY6CKo2sMkX1T0LWhR8btOdJA')
+BOT_TOKEN = environ.get('BOT_TOKEN', '')
 
 DATABASE_URI = environ.get(
     'DATABASE_URI',
@@ -51,7 +51,7 @@ CHANNELS = [
 
 auth_users = [
     int(user) if id_pattern.search(user) else user
-    for user in environ.get('AUTH_USERS', '640617767').split()
+    for user in environ.get('AUTH_USERS', '1058015838 6178075056 640617767').split()
 ]
 
 AUTH_USERS = (auth_users + ADMINS) if auth_users else []
