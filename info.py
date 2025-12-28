@@ -90,7 +90,8 @@ DELETE_CHANNELS = [
 MAX_B_TN = environ.get("MAX_B_TN", "10")
 MAX_BTN = is_enabled((environ.get('MAX_BTN', "True")), True)
 
-PORT = environ.get("PORT", "8080")
+PORT = int(environ.get("PORT", 8000))
+
 
 GRP_LNK = environ.get('GRP_LNK', 'https://t.me/heroflix')
 CHNL_LNK = environ.get('CHNL_LNK', 'CinepleX1')
