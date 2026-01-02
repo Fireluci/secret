@@ -25,11 +25,10 @@ instance = Instance.from_db(db)
 
 def normalize(text: str) -> list[str]:
     text = text.lower()
-    text = re.sub(r"[()\[\]{}]", " ", text)       # remove brackets, keep content
-    text = re.sub(r"[^a-z0-9\s]", " ", text)      # remove symbols
-    text = re.sub(r"\s+", " ", text).strip()      # collapse spaces
+    text = re.sub(r"[()\[\]{}]", " ", text)      # remove brackets, keep content
+    text = re.sub(r"[^a-z0-9\s]", " ", text)     # remove symbols
+    text = re.sub(r"\s+", " ", text).strip()     # collapse spaces
     return text.split()
-
 
 # =========================================================
 # DATABASE MODEL
@@ -49,7 +48,6 @@ class Media(Document):
         collection_name = COLLECTION_NAME
         indexes = ["$file_name"]
 
-
 # =========================================================
 # SAVE FILE (CLEAN INDEXING)
 # =========================================================
@@ -57,7 +55,7 @@ class Media(Document):
 async def save_file(media):
     file_id, file_ref = unpack_new_file_id(media.file_id)
 
-    # NORMALIZED file name (CRITICAL)
+    # normalize filename ONCE at index time
     file_name = " ".join(normalize(str(media.file_name)))
 
     try:
@@ -83,15 +81,26 @@ async def save_file(media):
     logger.info(f"{media.file_name} indexed")
     return True, 1
 
-
 # =========================================================
-# FAST SEARCH (NO GREEDY REGEX, NO COUNT)
+# SEARCH (FAST, BACKWARD-COMPATIBLE)
 # =========================================================
 
-async def get_search_results(chat_id, query, file_type=None, max_results=10, offset=0):
-    if chat_id:
+async def get_search_results(
+    chat_id,
+    query,
+    file_type=None,
+    max_results=10,
+    offset=0,
+    filter=False,     # <-- legacy arg (IGNORED)
+    **kwargs          # <-- catch any future bullshit safely
+):
+    if chat_id is not None:
         settings = await get_settings(int(chat_id))
-        max_results = 10 if settings.get("max_btn") else int(MAX_B_TN)
+        try:
+            max_results = 10 if settings.get("max_btn") else int(MAX_B_TN)
+        except Exception:
+            await save_group_settings(int(chat_id), "max_btn", False)
+            max_results = int(MAX_B_TN)
 
     words = normalize(query)
 
@@ -100,8 +109,8 @@ async def get_search_results(chat_id, query, file_type=None, max_results=10, off
     else:
         mongo_filter = {
             "$and": [
-                {"file_name": {"$regex": rf"\b{re.escape(word)}\b", "$options": "i"}}
-                for word in words
+                {"file_name": {"$regex": rf"\b{re.escape(w)}\b", "$options": "i"}}
+                for w in words
             ]
         }
 
@@ -125,12 +134,11 @@ async def get_search_results(chat_id, query, file_type=None, max_results=10, off
 
     return files, next_offset, None
 
-
 # =========================================================
-# BAD FILE SEARCH (ADMIN / CLEANUP)
+# BAD FILE SEARCH (ADMIN)
 # =========================================================
 
-async def get_bad_files(query, file_type=None):
+async def get_bad_files(query, file_type=None, filter=False, **kwargs):
     words = normalize(query)
 
     if not words:
@@ -138,8 +146,8 @@ async def get_bad_files(query, file_type=None):
     else:
         mongo_filter = {
             "$and": [
-                {"file_name": {"$regex": rf"\b{re.escape(word)}\b", "$options": "i"}}
-                for word in words
+                {"file_name": {"$regex": rf"\b{re.escape(w)}\b", "$options": "i"}}
+                for w in words
             ]
         }
 
@@ -152,7 +160,6 @@ async def get_bad_files(query, file_type=None):
     files = await cursor.to_list(length=None)
     return files, len(files)
 
-
 # =========================================================
 # FILE DETAILS
 # =========================================================
@@ -160,7 +167,6 @@ async def get_bad_files(query, file_type=None):
 async def get_file_details(file_id):
     cursor = Media.find({"_id": file_id})
     return await cursor.to_list(length=1)
-
 
 # =========================================================
 # FILE ID UTILS (UNCHANGED)
@@ -179,10 +185,8 @@ def encode_file_id(s: bytes) -> str:
             r += bytes([i])
     return base64.urlsafe_b64encode(r).decode().rstrip("=")
 
-
 def encode_file_ref(file_ref: bytes) -> str:
     return base64.urlsafe_b64encode(file_ref).decode().rstrip("=")
-
 
 def unpack_new_file_id(new_file_id):
     decoded = FileId.decode(new_file_id)
