@@ -20,7 +20,7 @@ db = client[DATABASE_NAME]
 instance = Instance.from_db(db)
 
 # =========================================================
-# NORMALIZATION (CONSISTENT INDEX + SEARCH)
+# NORMALIZER (ORDER-INDEPENDENT SEARCH)
 # =========================================================
 
 def normalize(text: str) -> list[str]:
@@ -31,6 +31,20 @@ def normalize(text: str) -> list[str]:
     return text.split()
 
 # =========================================================
+# EPISODE NORMALIZER (LIMITED SCOPE)
+# s01 e01 / s01 ep01 / s01 ep 01 → s01e01
+# =========================================================
+
+def normalize_basic_episode(text: str) -> str:
+    text = text.lower()
+
+    text = re.sub(r'\bs(\d{2})\s*e(\d{2})\b', r's\1e\2', text)
+    text = re.sub(r'\bs(\d{2})\s*ep(\d{2})\b', r's\1e\2', text)
+    text = re.sub(r'\bs(\d{2})\s*ep\s*(\d{2})\b', r's\1e\2', text)
+
+    return text
+
+# =========================================================
 # DATABASE MODEL
 # =========================================================
 
@@ -38,7 +52,10 @@ def normalize(text: str) -> list[str]:
 class Media(Document):
     file_id = fields.StrField(attribute="_id")
     file_ref = fields.StrField(allow_none=True)
-    file_name = fields.StrField(required=True)
+
+    file_name = fields.StrField(required=True)      # normalized (search)
+    display_name = fields.StrField(required=True)   # original (UI)
+
     file_size = fields.IntField(required=True)
     file_type = fields.StrField(allow_none=True)
     mime_type = fields.StrField(allow_none=True)
@@ -49,18 +66,26 @@ class Media(Document):
         indexes = ["$file_name"]
 
 # =========================================================
-# SAVE FILE (INDEX TIME NORMALIZATION)
+# SAVE FILE (INDEX TIME)
 # =========================================================
 
 async def save_file(media):
     file_id, file_ref = unpack_new_file_id(media.file_id)
-    file_name = " ".join(normalize(str(media.file_name)))
+
+    original_name = str(media.file_name)
+
+    # apply limited episode normalization
+    tmp = normalize_basic_episode(original_name)
+
+    # searchable normalized name
+    normalized_name = " ".join(normalize(tmp))
 
     try:
         file = Media(
             file_id=file_id,
             file_ref=file_ref,
-            file_name=file_name,
+            file_name=normalized_name,
+            display_name=original_name,
             file_size=media.file_size,
             file_type=media.file_type,
             mime_type=media.mime_type,
@@ -73,14 +98,14 @@ async def save_file(media):
     try:
         await file.commit()
     except DuplicateKeyError:
-        logger.warning(f"{media.file_name} already exists")
+        logger.warning(f"{original_name} already exists")
         return False, 0
 
-    logger.info(f"{media.file_name} indexed")
+    logger.info(f"{original_name} indexed")
     return True, 1
 
 # =========================================================
-# SEARCH (FULLY BACKWARD-COMPATIBLE)
+# SEARCH (WORD ORDER DOES NOT MATTER)
 # =========================================================
 
 async def get_search_results(
@@ -90,9 +115,8 @@ async def get_search_results(
     max_results=10,
     offset=0,
     filter=False,   # legacy param (ignored)
-    **kwargs        # future-proof catch-all
+    **kwargs
 ):
-    # ---- settings compatibility ----
     if chat_id is not None:
         settings = await get_settings(int(chat_id))
         try:
@@ -108,8 +132,8 @@ async def get_search_results(
     else:
         mongo_filter = {
             "$and": [
-                {"file_name": {"$regex": rf"\b{re.escape(w)}\b", "$options": "i"}}
-                for w in words
+                {"file_name": {"$regex": re.escape(word), "$options": "i"}}
+                for word in words
             ]
         }
 
@@ -117,7 +141,7 @@ async def get_search_results(
         mongo_filter = {
             "$or": [
                 mongo_filter,
-                {"caption": mongo_filter.get("$and")}
+                {"caption": mongo_filter.get("$and", [])}
             ]
         }
 
@@ -130,7 +154,7 @@ async def get_search_results(
 
     files = await cursor.to_list(length=max_results)
 
-    # ---- pagination compatibility (NO None leaks) ----
+    # pagination-safe return
     if files:
         next_offset = offset + max_results
         total_results = offset + len(files)
@@ -143,32 +167,6 @@ async def get_search_results(
         total_results = 0
 
     return files, next_offset, total_results
-
-# =========================================================
-# BAD FILE SEARCH (ADMIN / CLEANUP)
-# =========================================================
-
-async def get_bad_files(query, file_type=None, filter=False, **kwargs):
-    words = normalize(query)
-
-    if not words:
-        mongo_filter = {}
-    else:
-        mongo_filter = {
-            "$and": [
-                {"file_name": {"$regex": rf"\b{re.escape(w)}\b", "$options": "i"}}
-                for w in words
-            ]
-        }
-
-    if file_type:
-        mongo_filter["file_type"] = file_type
-
-    cursor = Media.find(mongo_filter)
-    cursor.sort("$natural", -1)
-
-    files = await cursor.to_list(length=None)
-    return files, len(files)
 
 # =========================================================
 # FILE DETAILS
