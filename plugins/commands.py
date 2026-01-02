@@ -59,28 +59,23 @@ async def start(client, message):
         except ChatAdminRequired:
             logger.error("Make sure Bot is admin in Forcesub channel")
             return
+
+        payload = message.command[1] if len(message.command) > 1 else "subscribe"
+        retry = f"https://telegram.me/{temp.U_NAME}?start={payload}"
+
         btn = [
-            [
-                InlineKeyboardButton(
-                    "🏮Main Channel ⟨Click Here⟩🏮", url=invite_link
-                )
-            ]
+            [InlineKeyboardButton("🏮 Main Channel ⟨Click Here⟩ 🏮", url=invite_link)],
+            [InlineKeyboardButton("🔄 Try Again", url=retry)]
         ]
 
-        if message.command[1] != "subscribe":
-            try:
-                kk, file_id = message.command[1].split("_", 1)
-                pre = 'checksubp' if kk == 'filep' else 'checksub' 
-                btn.append([InlineKeyboardButton("🔆彡⟨ HEROFLiX ⟩彡🔆", url=invite_link)])
-            except (IndexError, ValueError):
-                btn.append([InlineKeyboardButton("🔆彡⟨ HEROFLiX ⟩彡🔆", url=invite_link)])
         await client.send_message(
             chat_id=message.from_user.id,
-            text="**🔆 First Join Our Main Channel & Then Request Again in Group ♻ \n\n🔆 पहले हमारे मैन चैनल से जुड़ें और फिर ग्रुप में दोबारा रिक्वेस्ट करें ♻**",
+            text="**🔆 First Join Our Main Channel & Then Click Try Again ♻\n\n🔆 पहले हमारे मैन चैनल से जुड़ें और फिर Try Again दबाएँ ♻**",
             reply_markup=InlineKeyboardMarkup(btn),
             parse_mode=enums.ParseMode.MARKDOWN
-            )
+        )
         return
+
     if len(message.command) == 2 and message.command[1] in ["subscribe", "error", "okay", "help"]:
         buttons = [
             [InlineKeyboardButton("🌟 Paid (No Ads)", url="https://telegram.me/HeroFlixx/49"),
