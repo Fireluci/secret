@@ -20,14 +20,14 @@ db = client[DATABASE_NAME]
 instance = Instance.from_db(db)
 
 # =========================================================
-# NORMALIZATION (CORE FIX)
+# NORMALIZATION (CONSISTENT INDEX + SEARCH)
 # =========================================================
 
 def normalize(text: str) -> list[str]:
     text = text.lower()
-    text = re.sub(r"[()\[\]{}]", " ", text)      # remove brackets, keep content
-    text = re.sub(r"[^a-z0-9\s]", " ", text)     # remove symbols
-    text = re.sub(r"\s+", " ", text).strip()     # collapse spaces
+    text = re.sub(r"[()\[\]{}]", " ", text)
+    text = re.sub(r"[^a-z0-9\s]", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
     return text.split()
 
 # =========================================================
@@ -49,13 +49,11 @@ class Media(Document):
         indexes = ["$file_name"]
 
 # =========================================================
-# SAVE FILE (CLEAN INDEXING)
+# SAVE FILE (INDEX TIME NORMALIZATION)
 # =========================================================
 
 async def save_file(media):
     file_id, file_ref = unpack_new_file_id(media.file_id)
-
-    # normalize filename ONCE at index time
     file_name = " ".join(normalize(str(media.file_name)))
 
     try:
@@ -82,7 +80,7 @@ async def save_file(media):
     return True, 1
 
 # =========================================================
-# SEARCH (FAST, BACKWARD-COMPATIBLE)
+# SEARCH (FULLY BACKWARD-COMPATIBLE)
 # =========================================================
 
 async def get_search_results(
@@ -91,9 +89,10 @@ async def get_search_results(
     file_type=None,
     max_results=10,
     offset=0,
-    filter=False,     # <-- legacy arg (IGNORED)
-    **kwargs          # <-- catch any future bullshit safely
+    filter=False,   # legacy param (ignored)
+    **kwargs        # future-proof catch-all
 ):
+    # ---- settings compatibility ----
     if chat_id is not None:
         settings = await get_settings(int(chat_id))
         try:
@@ -130,12 +129,23 @@ async def get_search_results(
     cursor.skip(offset).limit(max_results)
 
     files = await cursor.to_list(length=max_results)
-    next_offset = offset + max_results if len(files) == max_results else ""
 
-    return files, next_offset, None
+    # ---- pagination compatibility (NO None leaks) ----
+    if files:
+        next_offset = offset + max_results
+        total_results = offset + len(files)
+        if len(files) == max_results:
+            total_results += 1
+        else:
+            next_offset = ""
+    else:
+        next_offset = ""
+        total_results = 0
+
+    return files, next_offset, total_results
 
 # =========================================================
-# BAD FILE SEARCH (ADMIN)
+# BAD FILE SEARCH (ADMIN / CLEANUP)
 # =========================================================
 
 async def get_bad_files(query, file_type=None, filter=False, **kwargs):
