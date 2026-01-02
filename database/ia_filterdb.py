@@ -20,10 +20,10 @@ db = client[DATABASE_NAME]
 instance = Instance.from_db(db)
 
 # =========================================================
-# NORMALIZER (ORDER-INDEPENDENT SEARCH)
+# NORMALIZE (ORDER DOES NOT MATTER)
 # =========================================================
 
-def normalize(text: str) -> list[str]:
+def normalize(text: str) -> list:
     text = text.lower()
     text = re.sub(r"[()\[\]{}]", " ", text)
     text = re.sub(r"[^a-z0-9\s]", " ", text)
@@ -31,17 +31,15 @@ def normalize(text: str) -> list[str]:
     return text.split()
 
 # =========================================================
-# EPISODE NORMALIZER (LIMITED SCOPE)
+# EPISODE NORMALIZER (LIMITED)
 # s01 e01 / s01 ep01 / s01 ep 01 → s01e01
 # =========================================================
 
 def normalize_basic_episode(text: str) -> str:
     text = text.lower()
-
     text = re.sub(r'\bs(\d{2})\s*e(\d{2})\b', r's\1e\2', text)
     text = re.sub(r'\bs(\d{2})\s*ep(\d{2})\b', r's\1e\2', text)
     text = re.sub(r'\bs(\d{2})\s*ep\s*(\d{2})\b', r's\1e\2', text)
-
     return text
 
 # =========================================================
@@ -53,8 +51,8 @@ class Media(Document):
     file_id = fields.StrField(attribute="_id")
     file_ref = fields.StrField(allow_none=True)
 
-    file_name = fields.StrField(required=True)      # normalized (search)
-    display_name = fields.StrField(required=True)   # original (UI)
+    file_name = fields.StrField(required=True)      # normalized for search
+    display_name = fields.StrField(required=True)   # original for UI
 
     file_size = fields.IntField(required=True)
     file_type = fields.StrField(allow_none=True)
@@ -74,10 +72,10 @@ async def save_file(media):
 
     original_name = str(media.file_name)
 
-    # apply limited episode normalization
+    # limited episode normalization
     tmp = normalize_basic_episode(original_name)
 
-    # searchable normalized name
+    # final searchable form
     normalized_name = " ".join(normalize(tmp))
 
     try:
@@ -105,7 +103,7 @@ async def save_file(media):
     return True, 1
 
 # =========================================================
-# SEARCH (WORD ORDER DOES NOT MATTER)
+# SEARCH RESULTS (ORDER-INDEPENDENT)
 # =========================================================
 
 async def get_search_results(
@@ -114,7 +112,7 @@ async def get_search_results(
     file_type=None,
     max_results=10,
     offset=0,
-    filter=False,   # legacy param (ignored)
+    filter=False,
     **kwargs
 ):
     if chat_id is not None:
@@ -127,15 +125,15 @@ async def get_search_results(
 
     words = normalize(query)
 
-    if not words:
-        mongo_filter = {}
-    else:
+    if words:
         mongo_filter = {
             "$and": [
-                {"file_name": {"$regex": re.escape(word), "$options": "i"}}
-                for word in words
+                {"file_name": {"$regex": re.escape(w), "$options": "i"}}
+                for w in words
             ]
         }
+    else:
+        mongo_filter = {}
 
     if USE_CAPTION_FILTER:
         mongo_filter = {
@@ -148,25 +146,48 @@ async def get_search_results(
     if file_type:
         mongo_filter["file_type"] = file_type
 
+    total_results = await Media.count_documents(mongo_filter)
+    next_offset = offset + max_results
+    if next_offset >= total_results:
+        next_offset = ""
+
     cursor = Media.find(mongo_filter)
     cursor.sort("$natural", -1)
     cursor.skip(offset).limit(max_results)
 
     files = await cursor.to_list(length=max_results)
 
-    # pagination-safe return
-    if files:
-        next_offset = offset + max_results
-        total_results = offset + len(files)
-        if len(files) == max_results:
-            total_results += 1
-        else:
-            next_offset = ""
-    else:
-        next_offset = ""
-        total_results = 0
-
     return files, next_offset, total_results
+
+# =========================================================
+# LEGACY FUNCTION (DO NOT REMOVE)
+# =========================================================
+
+async def get_bad_files(query, file_type=None, filter=False, **kwargs):
+    """
+    Legacy compatibility function.
+    Do NOT remove – used by other modules.
+    """
+    words = normalize(query)
+
+    if words:
+        mongo_filter = {
+            "$and": [
+                {"file_name": {"$regex": re.escape(w), "$options": "i"}}
+                for w in words
+            ]
+        }
+    else:
+        mongo_filter = {}
+
+    if file_type:
+        mongo_filter["file_type"] = file_type
+
+    cursor = Media.find(mongo_filter)
+    cursor.sort("$natural", -1)
+
+    files = await cursor.to_list(length=100)
+    return files, len(files)
 
 # =========================================================
 # FILE DETAILS
