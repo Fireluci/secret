@@ -97,7 +97,8 @@ async def get_search_results(
             await save_group_settings(int(chat_id), "max_btn", False)
             max_results = int(MAX_B_TN)
 
-    words = extract_v2(query).split()
+    words = (await extract_v2(query)).split()
+
 
     mongo_filter = (
         {"$and": [{"file_name": {"$regex": re.escape(w), "$options": "i"}} for w in words]}
