@@ -50,7 +50,7 @@ async def save_file(media):
     original_name = str(media.file_name)
 
     # 🔥 unified normalization
-    normalized_name = extract_v2(original_name)
+    normalized_name = original_name.lower()
 
     try:
         file = Media(
