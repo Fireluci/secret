@@ -123,6 +123,11 @@ async def get_search_results(
             await save_group_settings(int(chat_id), "max_btn", False)
             max_results = int(MAX_B_TN)
 
+    # ✅ normalize user query using extract_v2
+    query = await extract_v2(query)
+    query = query.strip()
+
+    # split into words AFTER extract
     words = normalize(query)
 
     if words:
@@ -147,17 +152,22 @@ async def get_search_results(
         mongo_filter["file_type"] = file_type
 
     total_results = await Media.count_documents(mongo_filter)
+
     next_offset = offset + max_results
     if next_offset >= total_results:
         next_offset = ""
 
-    cursor = Media.find(mongo_filter)
-    cursor.sort("$natural", -1)
-    cursor.skip(offset).limit(max_results)
+    cursor = (
+        Media.find(mongo_filter)
+        .sort("$natural", -1)
+        .skip(offset)
+        .limit(max_results)
+    )
 
     files = await cursor.to_list(length=max_results)
 
     return files, next_offset, total_results
+
 
 # =========================================================
 # LEGACY FUNCTION (DO NOT REMOVE)
