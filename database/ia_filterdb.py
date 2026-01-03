@@ -10,7 +10,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from marshmallow.exceptions import ValidationError
 
 from info import DATABASE_URI, DATABASE_NAME, COLLECTION_NAME, USE_CAPTION_FILTER, MAX_B_TN
-from utils import get_settings, save_group_settings, extract_v2
+from utils import get_settings, save_group_settings
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -18,6 +18,29 @@ logger.setLevel(logging.INFO)
 client = AsyncIOMotorClient(DATABASE_URI)
 db = client[DATABASE_NAME]
 instance = Instance.from_db(db)
+
+# =========================================================
+# NORMALIZE (ORDER DOES NOT MATTER)
+# =========================================================
+
+def normalize(text: str) -> list:
+    text = text.lower()
+    text = re.sub(r"[()\[\]{}]", " ", text)
+    text = re.sub(r"[^a-z0-9\s]", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text.split()
+
+# =========================================================
+# EPISODE NORMALIZER (LIMITED)
+# s01 e01 / s01 ep01 / s01 ep 01 → s01e01
+# =========================================================
+
+def normalize_basic_episode(text: str) -> str:
+    text = text.lower()
+    text = re.sub(r'\bs(\d{2})\s*e(\d{2})\b', r's\1e\2', text)
+    text = re.sub(r'\bs(\d{2})\s*ep(\d{2})\b', r's\1e\2', text)
+    text = re.sub(r'\bs(\d{2})\s*ep\s*(\d{2})\b', r's\1e\2', text)
+    return text
 
 # =========================================================
 # DATABASE MODEL
@@ -28,8 +51,8 @@ class Media(Document):
     file_id = fields.StrField(attribute="_id")
     file_ref = fields.StrField(allow_none=True)
 
-    file_name = fields.StrField(required=True)      # normalized (searchable)
-    display_name = fields.StrField(required=True)   # original (UI)
+    file_name = fields.StrField(required=True)      # normalized for search
+    display_name = fields.StrField(required=True)   # original for UI
 
     file_size = fields.IntField(required=True)
     file_type = fields.StrField(allow_none=True)
@@ -49,8 +72,11 @@ async def save_file(media):
 
     original_name = str(media.file_name)
 
-    # 🔥 unified normalization
-    normalized_name = original_name.lower()
+    # limited episode normalization
+    tmp = normalize_basic_episode(original_name)
+
+    # final searchable form
+    normalized_name = " ".join(normalize(tmp))
 
     try:
         file = Media(
@@ -97,30 +123,39 @@ async def get_search_results(
             await save_group_settings(int(chat_id), "max_btn", False)
             max_results = int(MAX_B_TN)
 
-    words = (await extract_v2(query)).split()
+    words = normalize(query)
 
-
-    mongo_filter = (
-        {"$and": [{"file_name": {"$regex": re.escape(w), "$options": "i"}} for w in words]}
-        if words else {}
-    )
+    if words:
+        mongo_filter = {
+            "$and": [
+                {"file_name": {"$regex": re.escape(w), "$options": "i"}}
+                for w in words
+            ]
+        }
+    else:
+        mongo_filter = {}
 
     if USE_CAPTION_FILTER:
-        mongo_filter = {"$or": [mongo_filter, {"caption": mongo_filter.get("$and", [])}]}
+        mongo_filter = {
+            "$or": [
+                mongo_filter,
+                {"caption": mongo_filter.get("$and", [])}
+            ]
+        }
 
     if file_type:
         mongo_filter["file_type"] = file_type
 
     total_results = await Media.count_documents(mongo_filter)
-    next_offset = "" if offset + max_results >= total_results else offset + max_results
+    next_offset = offset + max_results
+    if next_offset >= total_results:
+        next_offset = ""
 
-    files = await (
-        Media.find(mongo_filter)
-        .sort("$natural", -1)
-        .skip(offset)
-        .limit(max_results)
-        .to_list(length=max_results)
-    )
+    cursor = Media.find(mongo_filter)
+    cursor.sort("$natural", -1)
+    cursor.skip(offset).limit(max_results)
+
+    files = await cursor.to_list(length=max_results)
 
     return files, next_offset, total_results
 
@@ -129,17 +164,28 @@ async def get_search_results(
 # =========================================================
 
 async def get_bad_files(query, file_type=None, filter=False, **kwargs):
-    words = extract_v2(query).split()
+    """
+    Legacy compatibility function.
+    Do NOT remove – used by other modules.
+    """
+    words = normalize(query)
 
-    mongo_filter = (
-        {"$and": [{"file_name": {"$regex": re.escape(w), "$options": "i"}} for w in words]}
-        if words else {}
-    )
+    if words:
+        mongo_filter = {
+            "$and": [
+                {"file_name": {"$regex": re.escape(w), "$options": "i"}}
+                for w in words
+            ]
+        }
+    else:
+        mongo_filter = {}
 
     if file_type:
         mongo_filter["file_type"] = file_type
 
-    cursor = Media.find(mongo_filter).sort("$natural", -1)
+    cursor = Media.find(mongo_filter)
+    cursor.sort("$natural", -1)
+
     files = await cursor.to_list(length=100)
     return files, len(files)
 
