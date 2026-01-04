@@ -63,7 +63,7 @@ async def start(client, message):
 
         btn = [
             [InlineKeyboardButton("🏮 Main Channel ⟨Click Here⟩ 🏮", url=FORCE)],
-            [InlineKeyboardButton("🔄 Try Again", callback_data="checksub"
+            [InlineKeyboardButton("🔄 Try Again", callback_data="checksub")]
         ]
 
         await client.send_message(
