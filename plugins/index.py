@@ -264,4 +264,3 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot):
                 logger.warning(
                     f"FloodWait while sending final result: {e.value} seconds. Skipping final edit."
                 )
-``
