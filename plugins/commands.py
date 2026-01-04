@@ -54,26 +54,23 @@ async def start(client, message):
         )
         return
     if AUTH_CHANNEL and not await is_subscribed(client, message):
-        payload = (
-            message.text.split(" ", 1)[1]
-            if " " in message.text
-            else "subscribe"
-        )
+        payload = message.text.split(" ", 1)[1] if " " in message.text else "subscribe"
         retry = f"https://telegram.me/{temp.U_NAME}?start={payload}"
 
         btn = [
             [InlineKeyboardButton("🏮 Main Channel ⟨Click Here⟩ 🏮", url=FORCE)],
-            [InlineKeyboardButton("🔄 Try Again", callback_data="checksub")]
+            [InlineKeyboardButton("🔄 Try Again", url=retry)]
         ]
 
         await client.send_message(
-            chat_id=message.from_user.id,
-            text="**🔆 First Join Our Main Channel & Then Click Try Again ♻\n\n"
-                 "🔆 पहले हमारे मैन चैनल से जुड़ें और फिर Try Again दबाएँ ♻**",
+            message.from_user.id,
+            "**🔆 First Join Our Main Channel & Then Click Try Again ♻\n\n"
+            "🔆 पहले हमारे मैन चैनल से जुड़ें और फिर Try Again दबाएँ ♻**",
             reply_markup=InlineKeyboardMarkup(btn),
             parse_mode=enums.ParseMode.MARKDOWN
         )
         return
+
 
     if len(message.command) == 2 and message.command[1] in ["subscribe", "error", "okay", "help"]:
         buttons = [
