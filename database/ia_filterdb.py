@@ -167,7 +167,18 @@ async def get_search_results(
 
     files = await cursor.to_list(length=max_results)
 
+    # format display name for UI only
+    for f in files:
+        out = []
+        for w in f.file_name.split():
+            if w.isdigit() and len(w) == 4 and 1900 <= int(w) <= 2100:
+                out.append(f"({w})")
+            else:
+                out.append(w.capitalize())
+        f.display_name = " ".join(out)
+
     return files, next_offset, total_results
+
 
 
 # =========================================================
