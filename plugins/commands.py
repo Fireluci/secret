@@ -43,7 +43,7 @@ async def start(client, message):
             [InlineKeyboardButton("🌟 Paid (No Ads)", url="https://telegram.me/HeroFlixx/49"),
              InlineKeyboardButton("🍿 Free (With Ads)", url="https://telegram.me/addlist/X5k2lnJLIGAyZjQ1")],
             [InlineKeyboardButton("👤 Admin", url=f"https://telegram.me/{SUPPORT_CHAT}"),
-             InlineKeyboardButton("⚜ Updates", url=f"https://telegram.me/{CHNL_LNK}")]
+             InlineKeyboardButton("⚜ Updates", url=FORCE)]
         ]
         reply_markup = InlineKeyboardMarkup(buttons)
         await message.reply_photo(
@@ -77,7 +77,7 @@ async def start(client, message):
             [InlineKeyboardButton("🌟 Paid (No Ads)", url="https://telegram.me/HeroFlixx/49"),
              InlineKeyboardButton("🍿 Free (With Ads)", url="https://telegram.me/addlist/X5k2lnJLIGAyZjQ1")],
             [InlineKeyboardButton("👤 Admin", url=f"https://telegram.me/{SUPPORT_CHAT}"),
-             InlineKeyboardButton("⚜ Updates", url=f"https://telegram.me/{CHNL_LNK}")]
+             InlineKeyboardButton("⚜ Updates", url=FORCE")]
         ]
         reply_markup = InlineKeyboardMarkup(buttons)      
         await message.reply_photo(
