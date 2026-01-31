@@ -1648,14 +1648,12 @@ async def auto_filter(client, msg, spoll=False):
                     continue
                 else:
                     search = search + x + " "
-            search = re.sub(r"\b(pl(i|e)*?(s|z+|ease|se|ese|(e+)s(e)?)|((send|snd|gib)(\sme)?)|movie(s)?|web\sseries|full\smovie|with\ssubtitle(s)?)", "", search, flags=re.IGNORECASE)
             search = re.sub(r"\b(complete|combined|all\s*episodes?|full\s*episodes?)\b", "com", search, flags=re.IGNORECASE)
             search = re.sub(r"[-:–]+", " ", search)
             search = re.sub(r"\s+", " ", search).strip()
             search = re.sub(r"(?:session|season)\s?(\d+)", lambda x: f"s{x.group(1).zfill(2)}", search, flags=re.IGNORECASE)
             search = re.sub(r"so(\d+)", lambda x: f"s{x.group(1).zfill(2)}", search, flags=re.IGNORECASE)
             search = search.replace("english", "eng")
-            search = search.replace("full movie", "")
             search = search.replace("hindi", "hin")
             search = search.replace("tamil", "tam")
             search = search.replace("telugu", "tel")
@@ -1899,12 +1897,6 @@ async def advantage_spell_chok(client, msg):
         else:
             query = query + x + " "
 
-    query = re.sub(
-        r"\b(pl(i|e)*?(s|z+|ease|se|ese|(e+)s(e)?)|((send|snd|gib)(\sme)?)|movie(s)?|web\sseries|full\smovie|with\ssubtitle(s)?)",
-        "",
-        query,
-        flags=re.IGNORECASE
-    )
     query = re.sub(r"\s+", " ", query).strip() + "movie"
 
     g_s = await search_gagala(query)
