@@ -476,7 +476,7 @@ async def filter_languages_cb_handler(client: Client, query: CallbackQuery):
             )
     else:
         btn.append(
-            [InlineKeyboardButton(text="✦ ────「 The End 」──── ✦",callback_data="pages")]
+            [InlineKeyboardButton(text="✦ ───「 The End 」─── ✦",callback_data="pages")]
         )
     btn.insert(0, [InlineKeyboardButton("🌟 How To Download ❓", url=f"https://telegram.me/{TUTORIAL}")])
     try:
