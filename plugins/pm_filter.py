@@ -1929,7 +1929,7 @@ async def advantage_spell_chok(client, msg):
             r'tv\s*series|television\s*series|web\s*series|'
             r'tv\s*show|show|series'
             r')\b|[\(\)\-]',
-            '',
+            ' ',
             i,
             flags=re.IGNORECASE
         ).strip()
