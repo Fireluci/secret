@@ -1921,20 +1921,7 @@ async def advantage_spell_chok(client, msg):
     regex = re.compile(r".*(imdb|wikipedia).*", re.IGNORECASE)
     gs = list(filter(regex.search, g_s))
 
-    gs_parsed = [
-        re.sub(
-            r'\b('
-            r'imdb|wikipedia|reviews|full|all|'
-            r'episode(s)?|film|movie|'
-            r'tv\s*series|television\s*series|web\s*series|'
-            r'tv\s*show|show|series'
-            r')\b|[\(\)\-]',
-            ' ',
-            i,
-            flags=re.IGNORECASE
-        ).strip()
-        for i in gs
-    ]
+    gs_parsed = [re.sub(r'\b(?:imdb|wikipedia|reviews?|full|all|episodes?|films?|movies?|(?:tv|television|web)\s*series|(?:tv\s*)?shows?|series|streaming|online)\b|[\(\)\-]', ' ', i, flags=re.IGNORECASE).strip() for i in gs]
 
     if not gs_parsed:
         reg = re.compile(
