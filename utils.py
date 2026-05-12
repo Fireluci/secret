@@ -183,14 +183,9 @@ async def broadcast_messages_group(chat_id, message):
         return False, "Error"
     
 async def search_gagala(text):
-    """
-    Returns a list of title suggestions.
-    Replaces Google (no longer works) with DuckDuckGo HTML.
-    Same return format as old code.
-    """
 
     query = text.replace(" ", "+")
-    url = f"https://duckduckgo.com/html/?q={query}"
+    url = f"https://html.duckduckgo.com/html/?q={query}"
 
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
