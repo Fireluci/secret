@@ -19,6 +19,8 @@ from database.users_chats_db import db
 from bs4 import BeautifulSoup
 import requests
 import aiohttp
+from rapidfuzz import fuzz
+import urllib.parse
 from shortzy import Shortzy
 import regex
 import http.client
@@ -184,26 +186,41 @@ async def broadcast_messages_group(chat_id, message):
     
 async def search_gagala(text):
 
-    query = text.replace(" ", "+")
-    url = f"https://html.duckduckgo.com/html/?q={query}"
+    q = urllib.parse.quote(text.lower())
+    first = text[0].lower()
+
+    url = f"https://v2.sg.media-imdb.com/suggestion/{first}/{q}.json"
 
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+        )
     }
 
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as response:
-                html = await response.text()
+        async with aiohttp.ClientSession(headers=headers) as session:
+            async with session.get(url) as response:
+                data = await response.json(
+                    content_type=None
+                )
 
-        soup = BeautifulSoup(html, "html.parser")
+        results = []
 
-        # DuckDuckGo search result titles have class="result__a"
-        titles = soup.find_all("a", class_="result__a")
+        for item in data.get("d", []):
 
-        results = [t.get_text(strip=True) for t in titles][:6]
+            title = item.get("l", "")
 
-        return results
+            if title:
+                score = fuzz.token_set_ratio(
+                    text.lower(),
+                    title.lower()
+                )
+
+                results.append((score, title))
+
+        results.sort(reverse=True)
+
+        return [x[1] for x in results[:6]]
 
     except Exception:
         return []
