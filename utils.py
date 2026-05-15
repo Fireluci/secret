@@ -184,12 +184,13 @@ async def broadcast_messages_group(chat_id, message):
     except Exception as e:
         return False, "Error"
     
+
+
 async def search_gagala(text):
 
-    q = urllib.parse.quote(text.lower())
-    first = text[0].lower()
+    query = text.replace(" ", "+")
 
-    url = f"https://v2.sg.media-imdb.com/suggestion/{first}/{q}.json"
+    url = f"https://html.duckduckgo.com/html/?q={query}"
 
     headers = {
         "User-Agent": (
@@ -198,13 +199,41 @@ async def search_gagala(text):
     }
 
     try:
-        async with aiohttp.ClientSession(headers=headers) as session:
-            async with session.get(url) as response:
-                data = await response.json(
-                    content_type=None
-                )
+        async with aiohttp.ClientSession() as session:
+
+            async with session.get(
+                url,
+                headers=headers
+            ) as response:
+
+                html = await response.text()
+
+        soup = BeautifulSoup(html, "html.parser")
+
+        titles = soup.find_all(
+            "a",
+            class_="result__a"
+        )
 
         results = []
+
+        for t in titles:
+
+            title = t.get_text(strip=True)
+
+            score = fuzz.token_set_ratio(
+                text.lower(),
+                title.lower()
+            )
+
+            results.append((score, title))
+
+        results.sort(reverse=True)
+
+        return [x[1] for x in results[:6]]
+
+    except Exception:
+        return []
 
         for item in data.get("d", []):
 
