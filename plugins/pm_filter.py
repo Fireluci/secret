@@ -318,14 +318,14 @@ async def advantage_spoll_choker(bot, query):
         return await query.message.edit("❗Invalid Option")
 
     # ✅ SHOW WAIT MESSAGE VIA EDIT (NOT ALERT)
-try:
-    await query.message.edit(
-        "Checking, Please Wait ♻️\n\n[ Don't Spam – Just Wait! ]"
-    )
-except MessageNotModified:
-    pass
-except Exception:
-    pass
+    try:
+        await query.message.edit(
+            "Checking, Please Wait ♻️\n\n[ Don't Spam – Just Wait! ]"
+        )
+    except MessageNotModified:
+        pass
+    except Exception:
+        pass
 
     # 🔍 Try manual filters first
     k = await manual_filters(bot, query.message, text=movie)
