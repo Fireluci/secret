@@ -1926,7 +1926,7 @@ async def advantage_spell_chok(client, msg):
     gs_parsed = [
         re.sub(
             r'\b('
-            r'imdb|wikipedia|reviews|full|all|'
+            r'imdb|wikipedia|online|streaming|reviews|full|all|'
             r'episode(s)?|film|movie|'
             r'tv\s*series|television\s*series|web\s*series|'
             r'tv\s*show|show|series'
