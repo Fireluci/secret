@@ -2003,7 +2003,7 @@ async def advantage_spell_chok(client, msg):
     )
 
     k = await msg.reply(
-        "<b>❗Enter Correct Name ↡</b>",
+        "<b>🎬 Select Your Pick ↡</b>",
         reply_markup=InlineKeyboardMarkup(btn)
     )
 
