@@ -3,13 +3,23 @@ import re
 import base64
 from struct import pack
 
+from pyrogram import Client, filters
 from pyrogram.file_id import FileId
+
 from pymongo.errors import DuplicateKeyError
 from umongo import Instance, Document, fields
 from motor.motor_asyncio import AsyncIOMotorClient
 from marshmallow.exceptions import ValidationError
 
-from info import DATABASE_URI, DATABASE_NAME, COLLECTION_NAME, USE_CAPTION_FILTER, MAX_B_TN
+from info import (
+    DATABASE_URI,
+    DATABASE_NAME,
+    COLLECTION_NAME,
+    USE_CAPTION_FILTER,
+    MAX_B_TN,
+    CAPTION_INDEX_CHANNEL
+)
+
 from utils import get_settings, save_group_settings, extract_v2
 
 logger = logging.getLogger(__name__)
@@ -52,8 +62,8 @@ class Media(Document):
     file_id = fields.StrField(attribute="_id")
     file_ref = fields.StrField(allow_none=True)
 
-    file_name = fields.StrField(required=True)      # normalized for search
-    display_name = fields.StrField(required=True)   # original for UI
+    file_name = fields.StrField(required=True)
+    display_name = fields.StrField(required=True)
 
     file_size = fields.IntField(required=True)
     file_type = fields.StrField(allow_none=True)
@@ -73,35 +83,134 @@ async def save_file(media):
 
     original_name = str(media.file_name)
 
-    # limited episode normalization
-    tmp = normalize_basic_episode(original_name)
+    # =====================================================
+    # DEFAULT = filename
+    # SPECIAL CHANNEL = caption
+    # =====================================================
 
-    # final searchable form
+    source_text = original_name
+
+    try:
+        if (
+            media.chat
+            and media.chat.id == CAPTION_INDEX_CHANNEL
+            and media.caption
+        ):
+            source_text = media.caption.text
+
+    except Exception:
+        pass
+
+    # avoid huge captions
+    source_text = source_text[:1000]
+
+    # same episode normalizer
+    tmp = normalize_basic_episode(source_text)
+
+    # same cleanup/indexing
     normalized_name = " ".join(normalize(tmp))
 
     try:
         file = Media(
             file_id=file_id,
             file_ref=file_ref,
+
+            # searchable text
             file_name=normalized_name,
+
+            # original filename shown in UI
             display_name=original_name,
+
             file_size=media.file_size,
             file_type=media.file_type,
             mime_type=media.mime_type,
-            caption=media.caption.html if media.caption else None,
+            caption=media.caption.text if media.caption else None,
         )
+
     except ValidationError:
         logger.exception("Validation error while saving file")
         return False, 2
 
     try:
         await file.commit()
+
     except DuplicateKeyError:
+
+        # update duplicate file if reposted in caption channel
+        try:
+
+            if (
+                media.chat
+                and media.chat.id == CAPTION_INDEX_CHANNEL
+                and media.caption
+            ):
+
+                await Media.collection.update_one(
+                    {"_id": file_id},
+                    {
+                        "$set": {
+                            "file_name": normalized_name,
+                            "caption": media.caption.text
+                        }
+                    }
+                )
+
+                logger.info(f"{original_name} updated using caption indexing")
+                return True, 1
+
+        except Exception:
+            logger.exception("Failed updating duplicate file")
+
         logger.warning(f"{original_name} already exists")
         return False, 0
 
     logger.info(f"{original_name} indexed")
     return True, 1
+
+# =========================================================
+# AUTO UPDATE ON CAPTION EDIT
+# =========================================================
+
+@Client.on_edited_message(filters.chat(CAPTION_INDEX_CHANNEL))
+async def update_caption_index(client, message):
+
+    media = (
+        message.document
+        or message.video
+        or message.audio
+        or message.animation
+    )
+
+    if not media:
+        return
+
+    # caption removed → fallback filename
+    if message.caption:
+        source_text = message.caption.text[:1000]
+    else:
+        source_text = str(media.file_name)
+
+    try:
+
+        file_id, _ = unpack_new_file_id(media.file_id)
+
+        tmp = normalize_basic_episode(source_text)
+        normalized_name = " ".join(normalize(tmp))
+
+        await Media.collection.update_one(
+            {"_id": file_id},
+            {
+                "$set": {
+                    "file_name": normalized_name,
+                    "caption": message.caption.text if message.caption else None
+                }
+            }
+        )
+
+        logger.info(f"Updated caption index for {file_id}")
+
+    except Exception:
+        logger.exception("Failed updating edited caption")
 
 # =========================================================
 # SEARCH RESULTS (ORDER-INDEPENDENT)
@@ -124,7 +233,7 @@ async def get_search_results(
             await save_group_settings(int(chat_id), "max_btn", False)
             max_results = int(MAX_B_TN)
 
-    # ✅ normalize user query using extract_v2
+    # normalize user query using extract_v2
     query = await extract_v2(query)
     query = query.strip()
 
@@ -179,8 +288,6 @@ async def get_search_results(
 
     return files, next_offset, total_results
 
-
-
 # =========================================================
 # LEGACY FUNCTION (DO NOT REMOVE)
 # =========================================================
@@ -190,6 +297,7 @@ async def get_bad_files(query, file_type=None, filter=False, **kwargs):
     Legacy compatibility function.
     Do NOT remove – used by other modules.
     """
+
     words = normalize(query)
 
     if words:
@@ -226,6 +334,7 @@ async def get_file_details(file_id):
 def encode_file_id(s: bytes) -> str:
     r = b""
     n = 0
+
     for i in s + bytes([22]) + bytes([4]):
         if i == 0:
             n += 1
@@ -234,6 +343,7 @@ def encode_file_id(s: bytes) -> str:
                 r += b"\x00" + bytes([n])
                 n = 0
             r += bytes([i])
+
     return base64.urlsafe_b64encode(r).decode().rstrip("=")
 
 def encode_file_ref(file_ref: bytes) -> str:
@@ -241,6 +351,7 @@ def encode_file_ref(file_ref: bytes) -> str:
 
 def unpack_new_file_id(new_file_id):
     decoded = FileId.decode(new_file_id)
+
     file_id = encode_file_id(
         pack(
             "<iiqq",
@@ -250,5 +361,7 @@ def unpack_new_file_id(new_file_id):
             decoded.access_hash
         )
     )
+
     file_ref = encode_file_ref(decoded.file_reference)
+
     return file_id, file_ref
