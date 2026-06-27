@@ -798,3 +798,37 @@ async def stop_button(bot, message):
     await asyncio.sleep(3)
     await msg.edit("**✅️ 𝙱𝙾𝚃 𝙸𝚂 𝚁𝙴𝚂𝚃𝙰𝚁𝚃𝙴𝙳**")
     os.execl(sys.executable, sys.executable, *sys.argv)
+
+
+
+
+@Client.on_message(filters.command("promote") & filters.group)
+async def promote(client, message):
+
+    if len(message.command) < 2:
+        return await message.reply_text(
+            "Usage:\n/promote @username"
+        )
+
+    username = message.command[1]
+
+    try:
+        user = await client.get_users(username)
+
+        await client.promote_chat_member(
+            chat_id=message.chat.id,
+            user_id=user.id,
+            privileges=ChatPrivileges(
+                can_manage_chat=True,
+                can_delete_messages=True,
+                can_invite_users=True,
+                can_pin_messages=True
+            )
+        )
+
+        await message.reply_text(
+            f"✅ Promoted {username}"
+        )
+
+    except Exception as e:
+        await message.reply_text(f"❌ Error:\n{e}")
