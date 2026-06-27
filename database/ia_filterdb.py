@@ -3,7 +3,6 @@ import re
 import base64
 from struct import pack
 
-from pyrogram import Client, filters
 from pyrogram.file_id import FileId
 
 from pymongo.errors import DuplicateKeyError
@@ -43,7 +42,6 @@ def normalize(text: str) -> list:
 
 # =========================================================
 # EPISODE NORMALIZER (LIMITED)
-# s01 e01 / s01 ep01 / s01 ep 01 → s01e01
 # =========================================================
 
 def normalize_basic_episode(text: str) -> str:
@@ -75,25 +73,29 @@ class Media(Document):
         indexes = ["$file_name"]
 
 # =========================================================
-# SAVE FILE (INDEX TIME)
+# SAVE FILE
 # =========================================================
 
 async def save_file(media):
+
     file_id, file_ref = unpack_new_file_id(media.file_id)
 
     original_name = str(media.file_name)
 
     # =====================================================
-    # DEFAULT = filename
-    # SPECIAL CHANNEL = caption
+    # DEFAULT SEARCH TEXT = FILENAME
     # =====================================================
 
     source_text = original_name
 
     try:
+
+        # safe chat id getter
+        chat_id = getattr(getattr(media, "chat", None), "id", None)
+
+        # use caption for special channel
         if (
-            media.chat
-            and media.chat.id == CAPTION_INDEX_CHANNEL
+            chat_id == CAPTION_INDEX_CHANNEL
             and media.caption
         ):
             source_text = media.caption.text
@@ -104,13 +106,12 @@ async def save_file(media):
     # avoid huge captions
     source_text = source_text[:1000]
 
-    # same episode normalizer
+    # normalize
     tmp = normalize_basic_episode(source_text)
-
-    # same cleanup/indexing
     normalized_name = " ".join(normalize(tmp))
 
     try:
+
         file = Media(
             file_id=file_id,
             file_ref=file_ref,
@@ -118,12 +119,13 @@ async def save_file(media):
             # searchable text
             file_name=normalized_name,
 
-            # original filename shown in UI
+            # original filename for UI
             display_name=original_name,
 
             file_size=media.file_size,
             file_type=media.file_type,
             mime_type=media.mime_type,
+
             caption=media.caption.text if media.caption else None,
         )
 
@@ -132,16 +134,16 @@ async def save_file(media):
         return False, 2
 
     try:
+
         await file.commit()
 
     except DuplicateKeyError:
 
-        # update duplicate file if reposted in caption channel
+        # update searchable text if reposted
         try:
 
             if (
-                media.chat
-                and media.chat.id == CAPTION_INDEX_CHANNEL
+                chat_id == CAPTION_INDEX_CHANNEL
                 and media.caption
             ):
 
@@ -168,52 +170,7 @@ async def save_file(media):
     return True, 1
 
 # =========================================================
-# AUTO UPDATE ON CAPTION EDIT
-# =========================================================
-
-@Client.on_edited_message(filters.chat(CAPTION_INDEX_CHANNEL))
-async def update_caption_index(client, message):
-
-    media = (
-        message.document
-        or message.video
-        or message.audio
-        or message.animation
-    )
-
-    if not media:
-        return
-
-    # caption removed → fallback filename
-    if message.caption:
-        source_text = message.caption.text[:1000]
-    else:
-        source_text = str(media.file_name)
-
-    try:
-
-        file_id, _ = unpack_new_file_id(media.file_id)
-
-        tmp = normalize_basic_episode(source_text)
-        normalized_name = " ".join(normalize(tmp))
-
-        await Media.collection.update_one(
-            {"_id": file_id},
-            {
-                "$set": {
-                    "file_name": normalized_name,
-                    "caption": message.caption.text if message.caption else None
-                }
-            }
-        )
-
-        logger.info(f"Updated caption index for {file_id}")
-
-    except Exception:
-        logger.exception("Failed updating edited caption")
-
-# =========================================================
-# SEARCH RESULTS (ORDER-INDEPENDENT)
+# SEARCH RESULTS
 # =========================================================
 
 async def get_search_results(
@@ -225,19 +182,21 @@ async def get_search_results(
     filter=False,
     **kwargs
 ):
+
     if chat_id is not None:
         settings = await get_settings(int(chat_id))
+
         try:
             max_results = 10 if settings.get("max_btn") else int(MAX_B_TN)
+
         except Exception:
             await save_group_settings(int(chat_id), "max_btn", False)
             max_results = int(MAX_B_TN)
 
-    # normalize user query using extract_v2
+    # normalize user query
     query = await extract_v2(query)
     query = query.strip()
 
-    # split into words AFTER extract
     words = normalize(query)
 
     if words:
@@ -264,6 +223,7 @@ async def get_search_results(
     total_results = await Media.count_documents(mongo_filter)
 
     next_offset = offset + max_results
+
     if next_offset >= total_results:
         next_offset = ""
 
@@ -276,27 +236,13 @@ async def get_search_results(
 
     files = await cursor.to_list(length=max_results)
 
-    # format display name for UI only
-    for f in files:
-        out = []
-        for w in f.file_name.split():
-            if w.isdigit() and len(w) == 4 and 1900 <= int(w) <= 2100:
-                out.append(f"({w})")
-            else:
-                out.append(w.capitalize())
-        f.display_name = " ".join(out)
-
     return files, next_offset, total_results
 
 # =========================================================
-# LEGACY FUNCTION (DO NOT REMOVE)
+# LEGACY FUNCTION
 # =========================================================
 
 async def get_bad_files(query, file_type=None, filter=False, **kwargs):
-    """
-    Legacy compatibility function.
-    Do NOT remove – used by other modules.
-    """
 
     words = normalize(query)
 
@@ -317,6 +263,7 @@ async def get_bad_files(query, file_type=None, filter=False, **kwargs):
     cursor.sort("$natural", -1)
 
     files = await cursor.to_list(length=100)
+
     return files, len(files)
 
 # =========================================================
@@ -328,20 +275,24 @@ async def get_file_details(file_id):
     return await cursor.to_list(length=1)
 
 # =========================================================
-# FILE ID UTILS (UNCHANGED)
+# FILE ID UTILS
 # =========================================================
 
 def encode_file_id(s: bytes) -> str:
+
     r = b""
     n = 0
 
     for i in s + bytes([22]) + bytes([4]):
+
         if i == 0:
             n += 1
+
         else:
             if n:
                 r += b"\x00" + bytes([n])
                 n = 0
+
             r += bytes([i])
 
     return base64.urlsafe_b64encode(r).decode().rstrip("=")
@@ -350,6 +301,7 @@ def encode_file_ref(file_ref: bytes) -> str:
     return base64.urlsafe_b64encode(file_ref).decode().rstrip("=")
 
 def unpack_new_file_id(new_file_id):
+
     decoded = FileId.decode(new_file_id)
 
     file_id = encode_file_id(
