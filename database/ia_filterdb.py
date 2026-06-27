@@ -8,8 +8,7 @@ from pymongo.errors import DuplicateKeyError
 from umongo import Instance, Document, fields
 from motor.motor_asyncio import AsyncIOMotorClient
 from marshmallow.exceptions import ValidationError
-
-from info import DATABASE_URI, DATABASE_NAME, COLLECTION_NAME, USE_CAPTION_FILTER, MAX_B_TN
+from info import DATABASE_URI, DATABASE_NAME, COLLECTION_NAME, USE_CAPTION_FILTER, MAX_B_TN, CAPTION_INDEX_CHANNEL
 from utils import get_settings, save_group_settings, extract_v2
 
 logger = logging.getLogger(__name__)
@@ -69,34 +68,106 @@ class Media(Document):
 # =========================================================
 
 async def save_file(media):
+
     file_id, file_ref = unpack_new_file_id(media.file_id)
 
     original_name = str(media.file_name)
 
-    # limited episode normalization
-    tmp = normalize_basic_episode(original_name)
+    # =====================================================
+    # DEFAULT = filename
+    # =====================================================
 
-    # final searchable form
-    normalized_name = " ".join(normalize(tmp))
+    source_text = original_name
+    display_source = original_name
+
+    # =====================================================
+    # SPECIAL CHANNEL = caption
+    # =====================================================
 
     try:
+
+        if (
+            hasattr(media, "chat_id")
+            and media.chat_id == CAPTION_INDEX_CHANNEL
+            and media.caption
+        ):
+
+            source_text = media.caption
+            display_source = media.caption
+
+    except Exception:
+        pass
+
+    # avoid huge captions
+    source_text = source_text[:1000]
+    display_source = display_source[:1000]
+
+    # searchable normalized text
+    tmp = normalize_basic_episode(source_text)
+    normalized_name = " ".join(normalize(tmp))
+
+    # display normalized text
+    display_tmp = normalize_basic_episode(display_source)
+
+    display_name = " ".join(
+        word.capitalize()
+        for word in normalize(display_tmp)
+    )
+
+    try:
+
         file = Media(
             file_id=file_id,
             file_ref=file_ref,
+
+            # searchable text
             file_name=normalized_name,
-            display_name=original_name,
+
+            # clean display text
+            display_name=display_name,
+
             file_size=media.file_size,
             file_type=media.file_type,
             mime_type=media.mime_type,
-            caption=media.caption.html if media.caption else None,
+
+            caption=media.caption if media.caption else None,
         )
+
     except ValidationError:
         logger.exception("Validation error while saving file")
         return False, 2
 
     try:
+
         await file.commit()
+
     except DuplicateKeyError:
+
+        try:
+
+            if (
+                hasattr(media, "chat_id")
+                and media.chat_id == CAPTION_INDEX_CHANNEL
+                and media.caption
+            ):
+
+                await Media.collection.update_one(
+                    {"_id": file_id},
+                    {
+                        "$set": {
+                            "file_name": normalized_name,
+                            "display_name": display_name,
+                            "caption": media.caption
+                        }
+                    }
+                )
+
+                logger.info(f"{original_name} updated using caption indexing")
+                return True, 1
+
+        except Exception:
+            logger.exception("Failed updating duplicate file")
+
         logger.warning(f"{original_name} already exists")
         return False, 0
 
