@@ -98,7 +98,7 @@ async def save_file(media):
             chat_id == CAPTION_INDEX_CHANNEL
             and media.caption
         ):
-            source_text = media.caption.text
+            source_text = media.caption
 
     except Exception:
         pass
@@ -126,7 +126,7 @@ async def save_file(media):
             file_type=media.file_type,
             mime_type=media.mime_type,
 
-            caption=media.caption.text if media.caption else None,
+            caption=media.caption if media.caption else None,
         )
 
     except ValidationError:
@@ -152,7 +152,7 @@ async def save_file(media):
                     {
                         "$set": {
                             "file_name": normalized_name,
-                            "caption": media.caption.text
+                            "caption": media.caption
                         }
                     }
                 )
