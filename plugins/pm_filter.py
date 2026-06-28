@@ -90,7 +90,17 @@ async def next_page(bot, query):
             offset = 0
 
         search = BUTTONS.get(key) or FRESH.get(key)
+        if len(BUTTONS) > 5000:
+            BUTTONS.clear()
 
+        if len(FRESH) > 5000:
+            FRESH.clear()
+
+        if len(SPELL_CHECK) > 2000:
+            SPELL_CHECK.clear()
+
+        if len(temp.GETALL) > 500:
+            temp.GETALL.clear()
         if not search:
             try:
                 await query.answer(
@@ -1810,8 +1820,7 @@ async def auto_filter(client, msg, spoll=False):
         # cap = f"<b>Hᴇʏ {message.from_user.mention}, Hᴇʀᴇ ɪs ᴛʜᴇ ʀᴇsᴜʟᴛ ғᴏʀ ʏᴏᴜʀ ᴏ̨ᴜᴇʀʏ {search} \n\n</b>"
         cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n<i>🎬 Select Your Pick ↡</i>\n\n</b>"
         for file in files:
-            cap += f"<b>🍿 <a href='https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}'>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}\n\n</a></b>"
-
+            cap += f"🍿 <a href='https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}'><b>[{get_size(file.file_size)}] {escape(' '.join(filter(lambda x: not x.startswith('@') and not x.startswith('www.'), file.file_name.split())))}</b></a>"
     # if imdb and imdb.get('poster'):
     #     try:
     #         hehe = await message.reply_photo(photo=imdb.get('poster'), caption=cap[:1024], reply_markup=InlineKeyboardMarkup(btn))
