@@ -1780,10 +1780,9 @@ async def auto_filter(client, msg, spoll=False):
     if settings["button"]:
         cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n<i>🎬 Select Your Pick ↡</i>\n\n</b>"
     else:
-        cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n<i>🎬 Select Your Pick ↡</i>\n\n"
+        cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n<i>🎬 Select Your Pick ↡</i>\n\n</b>"
         for file in files:
-            cap += f"🍿 <a href='https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}'>[{get_size(file.file_size)}] {escape(file.file_name)}</a>\n\n"
-        cap += "</b>"
+            cap += f"<b>🍿 <a href='https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}'>[{get_size(file.file_size)}] {escape(file.file_name)}\n\n</a></b>"
 
     btn.insert(0, [InlineKeyboardButton("🌟 How To Download ❓", url=f"https://telegram.me/{TUTORIAL}")])
     fuk = await message.reply_text(text=cap, reply_markup=InlineKeyboardMarkup(btn), disable_web_page_preview=True)
