@@ -198,13 +198,21 @@ async def search_gagala(text):
         )
     }
 
+    timeout = aiohttp.ClientTimeout(total=8)
+
     try:
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(
+            timeout=timeout
+        ) as session:
 
             async with session.get(
                 url,
-                headers=headers
+                headers=headers,
+                ssl=False
             ) as response:
+
+                if response.status != 200:
+                    return []
 
                 html = await response.text()
 
@@ -217,7 +225,7 @@ async def search_gagala(text):
 
         results = []
 
-        for t in titles:
+        for t in titles[:10]:
 
             title = t.get_text(strip=True)
 
@@ -226,30 +234,15 @@ async def search_gagala(text):
                 title.lower()
             )
 
-            results.append((score, title))
-
-        results.sort(reverse=True)
-
-        return [x[1] for x in results[:6]]
-
-    except Exception:
-        return []
-
-        for item in data.get("d", []):
-
-            title = item.get("l", "")
-
-            if title:
-                score = fuzz.token_set_ratio(
-                    text.lower(),
-                    title.lower()
-                )
-
+            if score >= 55:
                 results.append((score, title))
 
         results.sort(reverse=True)
 
         return [x[1] for x in results[:6]]
+
+    except asyncio.TimeoutError:
+        return []
 
     except Exception:
         return []
