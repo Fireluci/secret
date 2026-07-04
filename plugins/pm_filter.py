@@ -137,7 +137,7 @@ async def next_page(bot, query):
             btn = [
                 [
                     InlineKeyboardButton(
-                        text=f"[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}",
+                        text=f"[{get_size(file.file_size)}] {file.file_name}",
                         callback_data=f'{pre}#{file.file_id}'
                     ),
                 ]
@@ -419,7 +419,7 @@ async def filter_languages_cb_handler(client: Client, query: CallbackQuery):
         btn = [
             [
                 InlineKeyboardButton(
-                    text=f"[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}", callback_data=f'{pre}#{file.file_id}'
+                    text=f"[{get_size(file.file_size)}] {file.file_name}", callback_data=f'{pre}#{file.file_id}'
                 ),
             ]
             for file in files
@@ -627,7 +627,7 @@ async def filter_seasons_cb_handler(client: Client, query: CallbackQuery):
         btn = [
             [
                 InlineKeyboardButton(
-                    text=f"[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}", callback_data=f'{pre}#{file.file_id}'
+                    text=f"[{get_size(file.file_size)}] {file.file_name}", callback_data=f'{pre}#{file.file_id}'
                 ),
             ]
             for file in files
@@ -1706,7 +1706,7 @@ async def auto_filter(client, msg, spoll=False):
         btn = [
             [
                 InlineKeyboardButton(
-                    text=f"[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}", callback_data=f'{pre}#{file.file_id}'
+                    text=f"[{get_size(file.file_size)}] {file.file_name}", callback_data=f'{pre}#{file.file_id}'
                 ),
             ]
             for file in files
@@ -1778,11 +1778,11 @@ async def auto_filter(client, msg, spoll=False):
         )
 
     if settings["button"]:
-        cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n<i>🎬 Select Your Pick ↡</i>\n\n</b>"
+        cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n🎬 Select Your Pick ↡\n\n</b>"
     else:
-        cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n<i>🎬 Select Your Pick ↡</i>\n\n</b>"
+        cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n🎬 Select Your Pick ↡\n\n</b>"
         for file in files:
-            cap += f"<b>🍿 <a href='https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}'>[{get_size(file.file_size)}] {escape(file.file_name)}\n\n</a></b>"
+            cap += f"<b>🍿 <a href='https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}'>[{get_size(file.file_size)}] {escape(file.file_name)}</a></b>\n\n"
 
     btn.insert(0, [InlineKeyboardButton("🌟 How To Download ❓", url=f"https://telegram.me/{TUTORIAL}")])
     fuk = await message.reply_text(text=cap, reply_markup=InlineKeyboardMarkup(btn), disable_web_page_preview=True)
