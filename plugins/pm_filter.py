@@ -342,11 +342,6 @@ async def languages_cb_handler(client: Client, query: CallbackQuery):
     except:
         pass
     _, key = query.data.split("#")
-    # if BUTTONS.get(key+"1")!=None:
-    #     search = BUTTONS.get(key+"1")
-    # else:
-    #     search = BUTTONS.get(key)
-    #     BUTTONS[key+"1"] = search
     search = FRESH.get(key)
     search = search.replace(' ', '_')
     btn = []
@@ -403,17 +398,11 @@ async def filter_languages_cb_handler(client: Client, query: CallbackQuery):
     BUTTONS[key] = search
 
     files, offset, total_results = await get_search_results(chat_id, search, offset=0, filter=True)
-    # files = [file for file in files if re.search(lang, file.file_name, re.IGNORECASE)]
     if not files:
         await query.answer("🚫 𝗡𝗼 𝗙𝗶𝗹𝗲 𝗪𝗲𝗿𝗲 𝗙𝗼𝘂𝗻𝗱 🚫", show_alert=1)
         return
     temp.GETALL[key] = files
     settings = await get_settings(message.chat.id)
-    # if 'is_shortlink' in settings.keys():
-    #     ENABLE_SHORTLINK = settings['is_shortlink']
-    # else:
-    #     await save_group_settings(message.chat.id, 'is_shortlink', False)
-    #     ENABLE_SHORTLINK = False
     pre = 'filep' if settings['file_secure'] else 'file'
     if settings["button"]:
         btn = [
@@ -465,9 +454,7 @@ async def filter_languages_cb_handler(client: Client, query: CallbackQuery):
             ]
         )
 
-    # btn.insert(0, [
-    #     InlineKeyboardButton("Hᴏᴡ ᴛᴏ Dᴏᴡɴʟᴏᴀᴅ⚡", url=await get_tutorial(query.message.chat.id))
-    # ])
+   
     if offset != "":
         try:
             if settings['max_btn']:
@@ -496,18 +483,6 @@ async def filter_languages_cb_handler(client: Client, query: CallbackQuery):
     except MessageNotModified:
         pass
     await query.answer()
-    # if lang != "homepage":
-    #     offset = 0
-        
-    #     btn.append(        [
-    #             InlineKeyboardButton(
-    #                 text="↭ ʙᴀᴄᴋ ᴛᴏ ꜰɪʟᴇs ​↭",
-    #                 callback_data=f"fl#homepage#search#{key}"
-    #                 ),
-    #         ])
-    
-    
-    #     await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(btn))
     
 @Client.on_callback_query(filters.regex(r"^seasons#"))
 async def seasons_cb_handler(client: Client, query: CallbackQuery):
@@ -522,11 +497,7 @@ async def seasons_cb_handler(client: Client, query: CallbackQuery):
         pass
     
     _, key = query.data.split("#")
-    # if BUTTONS.get(key+"2")!=None:
-    #     search = BUTTONS.get(key+"2")
-    # else:
-    #     search = BUTTONS.get(key)
-    #     BUTTONS[key+"2"] = search
+
     search = FRESH.get(key)
     BUTTONS[key] = None
     search = search.replace(' ', '_')
@@ -572,7 +543,7 @@ async def filter_seasons_cb_handler(client: Client, query: CallbackQuery):
     else:
         search = search
     
-    # await query.answer(f"search = {search}", show_alert=True)
+    
     req = query.from_user.id
     chat_id = query.message.chat.id
     message = query.message
@@ -617,11 +588,6 @@ async def filter_seasons_cb_handler(client: Client, query: CallbackQuery):
         return
     temp.GETALL[key] = files
     settings = await get_settings(message.chat.id)
-    # if 'is_shortlink' in settings.keys():
-    #     ENABLE_SHORTLINK = settings['is_shortlink']
-    # else:
-    #     await save_group_settings(message.chat.id, 'is_shortlink', False)
-    #     ENABLE_SHORTLINK = False
     pre = 'filep' if settings['file_secure'] else 'file'
     if settings["button"]:
         btn = [
@@ -664,7 +630,6 @@ async def filter_seasons_cb_handler(client: Client, query: CallbackQuery):
                 
 @Client.on_callback_query()
 async def cb_handler(client: Client, query: CallbackQuery):
-    # link = await client.create_chat_invite_link(int(REQST_CHANNEL))
     if query.data == "close_data":
         await query.message.delete()
     elif query.data == "gfiltersdeleteallconfirm":
@@ -1637,8 +1602,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
   
 async def auto_filter(client, msg, spoll=False):
     curr_time = datetime.now(pytz.timezone('Asia/Kolkata')).time()
-    # reqstr1 = msg.from_user.id if msg.from_user else 0
-    # reqstr = await client.get_users(reqstr1)
+    
     
     if not spoll:
         message = msg
@@ -1678,16 +1642,6 @@ async def auto_filter(client, msg, spoll=False):
         search, files, offset, total_results = spoll
         settings = await get_settings(message.chat.id)
         await msg.message.delete()
-    # if 'is_shortlink' in settings.keys():
-    #     ENABLE_SHORTLINK = settings['is_shortlink']
-    # else:
-    #     await save_group_settings(message.chat.id, 'is_shortlink', False)
-    #     ENABLE_SHORTLINK = False
-    # if 'is_tutorial' in settings.keys():
-    #     ENABLE_TUTORIAL = settings['is_tutorial']
-    # else:
-    #     await save_group_settings(message.chat.id, 'is_tutorial', False)
-    #     ENABLE_TUTORIAL = False
     pre = 'filep' if settings['file_secure'] else 'file'
     key = f"{message.chat.id}-{message.id}"
     FRESH[key] = search
@@ -1704,49 +1658,14 @@ async def auto_filter(client, msg, spoll=False):
             ]
             for file in files
         ]
-    # else:
-    #     btn = [
-    #         [
-    #             InlineKeyboardButton(
-    #                 text=f"{' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}",
-    #                 callback_data=f'{pre}#{file.file_id}',
-    #             ),
-    #             InlineKeyboardButton(
-    #                 text=f"{get_size(file.file_size)}",
-    #                 callback_data=f'{pre}#{file.file_id}',
-    #             ),
-    #         ]
-    #         for file in files
-    #     ]
+
         btn.insert(0, 
             [
                 InlineKeyboardButton("ʟᴀɴɢᴜᴀɢᴇs", callback_data=f"languages#{key}"),
                 InlineKeyboardButton("Sᴇᴀsᴏɴs", callback_data=f"seasons#{key}")
             ]
         )
-    # if ENABLE_SHORTLINK == True:
-    #     btn.insert(0, 
-    #        [
-    #            InlineKeyboardButton("ʟᴀɴɢᴜᴀɢᴇs", callback_data=f"languages#{key}"),
-    #            InlineKeyboardButton("Sᴇᴀsᴏɴs", callback_data=f"seasons#{key}")
-    #        ]
-    #    )
-    # else:
-    #     btn.insert(0, 
-    #        [
-    #           InlineKeyboardButton("ʟᴀɴɢᴜᴀɢᴇs", callback_data=f"languages#{key}"),
-    #            InlineKeyboardButton("Sᴇᴀsᴏɴs", callback_data=f"seasons#{key}")
-    #        ]
-    #    )
-        
-    # if ENABLE_TUTORIAL == True:
-    #     btn.insert(0, [
-    #     InlineKeyboardButton("Hᴏᴡ ᴛᴏ Dᴏᴡɴʟᴏᴀᴅ⚡", url=await get_tutorial(message.chat.id))
-    #     ])
-    # else:
-    #     btn.insert(0, [
-    #     InlineKeyboardButton("Hᴏᴡ ᴛᴏ Dᴏᴡɴʟᴏᴀᴅ⚡", url=TUTORIAL)
-    #     ])
+ 
     else:
         btn = []
     if offset != "":
@@ -1790,8 +1709,7 @@ async def auto_filter(client, msg, spoll=False):
         await asyncio.sleep(900)
         await fuk.delete()
         await message.delete()
-    # if spoll:
-    #     await msg.message.delete()
+     
 
 async def advantage_spell_chok(client, msg):
     mv_rqst = msg.text
