@@ -1649,15 +1649,8 @@ async def auto_filter(client, msg, spoll=False):
             search = message.text
             search = search.lower()
             find = search.split(" ")
-            search = ""
             removes = ["in", "series", "thriller", "4k", "kdrama", "ott", "esub", "movies", "webseries", "language", "hd", "hollywood", "and", "&", "bollywood", "dub", "mystery", "anime", "dubbed", "file", "web", "download", "movie", "film", "netflix", "link", "subtitles"]
-            for x in find:
-                # if x == "in" or x == "series" or x == "full" or x == "horror" or x == "thriller" or x == "mystery" or x == "print" or x == "subtitle" or x == "subtitles":
-                #     continue
-                if x in removes:
-                    continue
-                else:
-                    search = search + x + " "
+            search = " ".join(x for x in find if x not in removes)
             search = re.sub(r"\b(complete|combined|all\s*episodes?|full\s*episodes?)\b", "com", search, flags=re.IGNORECASE)
             search = re.sub(r"[-:–]+", " ", search)
             search = re.sub(r"\s+", " ", search).strip()
