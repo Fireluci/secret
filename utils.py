@@ -184,8 +184,6 @@ async def broadcast_messages_group(chat_id, message):
     except Exception as e:
         return False, "Error"
     
-
-
 async def search_gagala(text):
 
     query = text.replace(" ", "+")
@@ -225,7 +223,7 @@ async def search_gagala(text):
 
         results = []
 
-        for t in titles[:10]:
+        for t in titles[:20]:
 
             title = t.get_text(strip=True)
 
@@ -234,7 +232,7 @@ async def search_gagala(text):
                 title.lower()
             )
 
-            if score >= 55:
+            if score >= 35:
                 results.append((score, title))
 
         results.sort(reverse=True)
@@ -246,7 +244,6 @@ async def search_gagala(text):
 
     except Exception:
         return []
-
 
 async def get_settings(group_id):
     settings = temp.SETTINGS.get(group_id)
