@@ -56,6 +56,11 @@ async def index_files(bot, query):
     )) & filters.text) & filters.private & filters.incoming
 )
 async def send_for_index(bot, message):
+
+    # Only admins can use indexing
+    if message.from_user.id not in ADMINS:
+        return
+
     if message.text:
         regex = re.compile(
             "(https://)?(t\.me/|telegram\.me/|telegram\.dog/)(c/)?(\d+|[a-zA-Z_0-9]+)/(\d+)$"
