@@ -232,7 +232,7 @@ async def search_gagala(text):
                 title.lower()
             )
 
-            if score >= 35:
+            if score >= 25:
                 results.append((score, title))
 
         results.sort(reverse=True)
