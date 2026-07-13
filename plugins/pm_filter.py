@@ -1603,7 +1603,6 @@ async def cb_handler(client: Client, query: CallbackQuery):
 async def auto_filter(client, msg, spoll=False):
     curr_time = datetime.now(pytz.timezone('Asia/Kolkata')).time()
     
-    
     if not spoll:
         message = msg
         if message.text.startswith("/"): return  # ignore commands
@@ -1709,7 +1708,6 @@ async def auto_filter(client, msg, spoll=False):
         await asyncio.sleep(900)
         await fuk.delete()
         await message.delete()
-     
 
 async def advantage_spell_chok(client, msg):
     mv_rqst = msg.text
