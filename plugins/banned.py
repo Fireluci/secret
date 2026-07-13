@@ -17,7 +17,6 @@ async def disabled_chat(_, client, message: Message):
 
 disabled_group=filters.create(disabled_chat)
 
-
 @Client.on_message(filters.private & banned_user & filters.incoming)
 async def ban_reply(bot, message):
     ban = await db.get_ban_status(message.from_user.id)
@@ -26,7 +25,7 @@ async def ban_reply(bot, message):
 @Client.on_message(filters.group & disabled_group & filters.incoming)
 async def grp_bd(bot, message):
     buttons = [[
-        InlineKeyboardButton('Support', url=f'https://t.me/MOVIES_PROVIDE2')
+        InlineKeyboardButton('Support', url=f'https://t.me/herofeedbot')
     ]]
     reply_markup=InlineKeyboardMarkup(buttons)
     vazha = await db.get_chat(message.chat.id)
