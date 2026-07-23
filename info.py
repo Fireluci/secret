@@ -16,27 +16,28 @@ API_ID = int(environ.get('API_ID', '1736204'))
 API_HASH = environ.get('API_HASH', '890d40e0f91a4de32dec2965444b2cbe')
 BOT_TOKEN = environ.get('BOT_TOKEN', '')
 
-DATABASE_URI = environ.get('DATABASE_URI', "mongodb+srv://ariana:ariana@ariana.vxqvh5x.mongodb.net/?appName=ariana")
-DATABASE_NAME = environ.get('DATABASE_NAME', "heroflix")
-COLLECTION_NAME = environ.get('COLLECTION_NAME', 'heroflix')
+DATABASE_URI = environ.get('DATABASE_URI', "mongodb+srv://nora:nora@nora.g32ayec.mongodb.net/?retryWrites=true&w=majority&appName=nora")
+DATABASE_NAME = environ.get('DATABASE_NAME', "nora")
+COLLECTION_NAME = environ.get('COLLECTION_NAME', 'nora')
 
+DWLD = environ.get("DWLD", 'MiaFlix/15')
 CAPTION_INDEX_CHANNEL = int(environ.get('CAPTION_INDEX_CHANNEL', '-1002299214709'))
-DWLD = environ.get("DWLD", 'HeroFlixx/8')
+ 
 CACHE_TIME = int(environ.get('CACHE_TIME', 300))
 USE_CAPTION_FILTER = bool(environ.get('USE_CAPTION_FILTER', False))
 
-PICS = (environ.get('PICS', 'https://te.legra.ph/file/d6a23f16e002e86381656.jpg https://te.legra.ph/file/d6a23f16e002e86381656.jpg')).split()
-NOR_IMG = environ.get("NOR_IMG", "https://te.legra.ph/file/d6a23f16e002e86381656.jpg")
-MELCOW_PIC = environ.get("MELCOW_PIC", "https://te.legra.ph/file/d6a23f16e002e86381656.jpg")
+PICS = (environ.get('PICS', 'https://te.legra.ph/file/e709716b0b99ed944a533.jpg https://te.legra.ph/file/e709716b0b99ed944a533.jpg')).split()
+NOR_IMG = environ.get("NOR_IMG", "https://te.legra.ph/file/e709716b0b99ed944a533.jpg")
+MELCOW_PIC = environ.get("MELCOW_PIC", "https://graph.org/file/75d4fcc66598ea1ef4941.jpg")
 SPELL_IMG = environ.get("SPELL_IMG", "https://te.legra.ph/file/2d68d2c0fbf9385d48d70.jpg")
 
-FORCE = "https://telegram.me/+W6BkAHSGGME3OGY1"
+FORCE = "https://telegram.me/+hJOJfFgWkmg4NzY1"
 ADMINS = [int(admin) if id_pattern.search(admin) else admin for admin in environ.get('ADMINS', '1058015838').split()]
 CHANNELS = [int(ch) if id_pattern.search(ch) else ch for ch in environ.get('CHANNELS', '-1001638006524 -1002299214709').split()]
 auth_users = [int(user) if id_pattern.search(user) else user for user in environ.get('AUTH_USERS', '1058015838').split()]
 AUTH_USERS = (auth_users + ADMINS) if auth_users else []
 PREMIUM_USER = [int(user) if id_pattern.search(user) else user for user in environ.get('PREMIUM_USER', '').split()]
-auth_channel = environ.get('AUTH_CHANNEL', '-1002048881772')
+auth_channel = environ.get('AUTH_CHANNEL', '-1001587804996')
 auth_grp = environ.get('AUTH_GROUP', '')
 AUTH_CHANNEL = int(auth_channel) if auth_channel and id_pattern.search(auth_channel) else None
 AUTH_GROUPS = [int(ch) for ch in auth_grp.split()] if auth_grp else None
@@ -47,21 +48,21 @@ SUPPORT_CHAT_ID = int(support_chat_id) if support_chat_id and id_pattern.search(
 NO_RESULTS_MSG = bool(environ.get("NO_RESULTS_MSG", False))
 
 VERIFY = bool(environ.get('VERIFY', False))
-SHORTLINK_URL = environ.get('SHORTLINK_URL', 'softurl.in')
-SHORTLINK_API = environ.get('SHORTLINK_API', '373c1560e683c6254a5eb3c56209ef8e46ac8923')
-SECOND_SHORTLINK_URL = environ.get('SECOND_SHORTLINK_URL', 'softurl.in')
-SECOND_SHORTLINK_API = environ.get('SECOND_SHORTLINK_API', '373c1560e683c6254a5eb3c56209ef8e46ac8923')
+SHORTLINK_URL = environ.get('SHORTLINK_URL', 'nowshort.com')
+SHORTLINK_API = environ.get('SHORTLINK_API', 'c576b9cdd34ceb572a8df1f57eabf7c11efbda3a')
+SECOND_SHORTLINK_URL = environ.get('SECOND_SHORTLINK_URL', 'nowshort.com')
+SECOND_SHORTLINK_API = environ.get('SECOND_SHORTLINK_API', 'c576b9cdd34ceb572a8df1f57eabf7c11efbda3a')
 IS_SHORTLINK = bool(environ.get('IS_SHORTLINK', True))
 MAX_B_TN = environ.get("MAX_B_TN", "10")
 MAX_BTN = is_enabled((environ.get('MAX_BTN', "True")), True)
 PORT = environ.get("PORT", "8080")
-GRP_LNK = environ.get('GRP_LNK', 'https://t.me/heroflix')
-CHNL_LNK = environ.get('CHNL_LNK', 'heroflix')
-TUTORIAL = environ.get('TUTORIAL', 'HeroFlixx/54')
+GRP_LNK = environ.get('GRP_LNK', 'https://t.me/miaflix')
+CHNL_LNK = environ.get('CHNL_LNK', 'MiaFlix')
+TUTORIAL = environ.get('TUTORIAL', 'MiaFlix/15')
 IS_TUTORIAL = bool(environ.get('IS_TUTORIAL', True))
 MSG_ALRT = environ.get('MSG_ALRT', 'Wʜᴀᴛ Aʀᴇ Yᴏᴜ Lᴏᴏᴋɪɴɢ Aᴛ ?')
 LOG_CHANNEL = int(environ.get('LOG_CHANNEL', '-1001652564383'))
-SUPPORT_CHAT = environ.get('SUPPORT_CHAT', 'herofeedbot')
+SUPPORT_CHAT = environ.get('SUPPORT_CHAT', 'apnaflixbot')
 P_TTI_SHOW_OFF = is_enabled((environ.get('P_TTI_SHOW_OFF', "False")), False)
 IMDB = is_enabled((environ.get('IMDB', "False")), False)
 AUTO_FFILTER = is_enabled((environ.get('AUTO_FFILTER', "True")), True)
