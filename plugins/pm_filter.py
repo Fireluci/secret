@@ -58,6 +58,14 @@ def is_spam(uid, cooldown=2):
     return False
 False
 
+def add_tutorial_button(btn):
+    btn.insert(0, [
+        InlineKeyboardButton(
+            "🌟 How To Download ❓",
+            url=f"https://telegram.me/{TUTORIAL}"
+        )
+    ])
+
 @Client.on_message(filters.group & filters.text & filters.incoming)
 async def give_filter(client, message):
     success = await manual_filters(client, message)
@@ -496,7 +504,7 @@ async def filter_languages_cb_handler(client: Client, query: CallbackQuery):
         btn.append(
             [InlineKeyboardButton(text="✦ ───「 The End 」─── ✦",callback_data="pages")]
         )
-    btn.insert(0, [InlineKeyboardButton("🌟 How To Download ❓", url=f"https://telegram.me/{TUTORIAL}")])
+    add_tutorial_button(btn)
     try:
         await query.edit_message_reply_markup(
             reply_markup=InlineKeyboardMarkup(btn)
@@ -636,7 +644,7 @@ async def filter_seasons_cb_handler(client: Client, query: CallbackQuery):
     
     
 
-    btn.insert(0, [InlineKeyboardButton("🌟 How To Download ❓", url=f"https://telegram.me/{TUTORIAL}")])
+    add_tutorial_button(btn)
     offset = 0
 
     btn.append([
@@ -1712,7 +1720,7 @@ async def auto_filter(client, msg, spoll=False):
         for file in files:
             cap += f"<b>🍿 <a href='https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}'>[{get_size(file.file_size)}] {escape(file.file_name)}</a></b>\n\n"
 
-    btn.insert(0, [InlineKeyboardButton("🌟 How To Download ❓", url=f"https://telegram.me/{TUTORIAL}")])
+    add_tutorial_button(btn)
     fuk = await message.reply_text(text=cap, reply_markup=InlineKeyboardMarkup(btn), disable_web_page_preview=True)
     
     try:
