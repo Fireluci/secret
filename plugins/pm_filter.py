@@ -28,6 +28,27 @@ SPELL_CHECK = {}
 GLOBAL_SEM = asyncio.Semaphore(12)
 USER_COOLDOWN = {}
 
+REMOVES = [
+    "in", "series", "thriller", "4k", "kdrama", "ott", 
+    "movies", "webseries", "language", "hd", "hollywood", "webseries",
+    "and", "&", "bollywood", "dub", "anime",
+    "dubbed", "file", "download", "movie", "film",
+    "netflix", "link", "subtitles",
+
+    "full movie",
+    "web series",
+    "tv series",
+    "television series",
+    "tv show",
+    "with subtitles"
+]
+
+def remove_words(text):
+    text = " ".join(text.split())
+    for x in sorted(REMOVES, key=len, reverse=True):
+        text = re.sub(rf"\b{re.escape(x)}\b", " ", text, flags=re.I)
+    return " ".join(text.split())
+
 def is_spam(uid, cooldown=2):
     now = _time.monotonic()
     last = USER_COOLDOWN.get(uid, 0)
@@ -1609,11 +1630,7 @@ async def auto_filter(client, msg, spoll=False):
         if re.findall("((^\/|^,|^!|^\.|^[\U0001F900-\U000E007F]).*)", message.text):
             return
         if len(message.text) < 100:
-            search = message.text
-            search = search.lower()
-            find = search.split(" ")
-            removes = ["in", "series", "thriller", "4k", "kdrama", "ott", "esub", "movies", "webseries", "language", "hd", "hollywood", "and", "&", "bollywood", "dub", "mystery", "anime", "dubbed", "file", "web", "download", "movie", "film", "netflix", "link", "subtitles"]
-            search = " ".join(x for x in find if x not in removes)
+            search = remove_words(message.text.lower())
             search = re.sub(r"\b(complete|combined|all\s*episodes?|full\s*episodes?)\b", "com", search, flags=re.IGNORECASE)
             search = re.sub(r"[-:–]+", " ", search)
             search = re.sub(r"\s+", " ", search).strip()
@@ -1723,24 +1740,14 @@ async def advantage_spell_chok(client, msg):
     except:
         return await msg.reply("❌ Unable to fetch user.")
 
-    # -------- ORIGINAL CODE BELOW ----------
     settings = await get_settings(msg.chat.id)
-    find = mv_rqst.split(" ")
-    query = ""
-    removes = ["in", "series", "download", "hd", "kdrama", "thriller", "4k", "esub", "and", "movies", "language", "&", "hollywood", "session", "bollywood", "web", "episodes", "dub", "anime", "file", "movie", "film", "netflix", "dubbed", "link", "subtitles"]
-
-    for x in find:
-        if x in removes:
-            continue
-        else:
-            query = query + x + " "
+    query = remove_words(mv_rqst)
 
     query = re.sub(r"\s+", " ", query).strip() + "movie"
 
     g_s = await search_gagala(query)
     g_s += await search_gagala(msg.text)
-
-    # ---------------- SPELL CHECK ----------------
+     
     if not g_s:
         if NO_RESULTS_MSG:
             await client.send_message(
