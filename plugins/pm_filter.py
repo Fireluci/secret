@@ -52,7 +52,7 @@ async def pm_text(bot, message):
     if user_id in ADMINS: return # ignore admins
     await message.reply_text(
         text="<b>🌀 Unlimited Movies, Series, Anime\n🔆 New Releases Upload Same Day\n♻️ 24x7 Service 📆 Daily Updates</b>",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌟 Paid (No Ads)", url="https://telegram.me/HeroFlixx/49"), InlineKeyboardButton("🍿 Free (With Ads)", url="https://telegram.me/addlist/X5k2lnJLIGAyZjQ1")]])
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🎬 Click Here 🧤", url=f"https://telegram.me/apnaflix")]])
     )
     
 @Client.on_callback_query(filters.regex(r"^next"))
@@ -900,7 +900,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
                         reply_markup=InlineKeyboardMarkup(
                             [
                              [
-                          InlineKeyboardButton('🔆彡[ HEROFLiX ]彡🔆', url=f'https://telegram.me/{CHNL_LNK}'),
+                          InlineKeyboardButton('🔆彡[ APNAFLiX ]彡🔆', url=f'https://telegram.me/{CHNL_LNK}'),
                          ]
                             ]
                         )
@@ -990,7 +990,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
             reply_markup=InlineKeyboardMarkup(
                 [
                  [
-                          InlineKeyboardButton('🔆彡[ HEROFLiX ]彡🔆', url=f'https://telegram.me/{CHNL_LNK}'),
+                          InlineKeyboardButton('🔆彡[ APNAFLiX ]彡🔆', url=f'https://telegram.me/{CHNL_LNK}'),
                          ]
                 ]
             )
