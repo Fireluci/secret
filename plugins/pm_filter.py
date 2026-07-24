@@ -273,24 +273,19 @@ async def next_page(bot, query):
         except Exception:
             pass
 
-
 @Client.on_callback_query(filters.regex(r"^spolling"))
 async def advantage_spoll_choker(bot, query):
 
-    # ✅ INSTANT ACK — prevents QUERY_ID_INVALID
     try:
         await query.answer()
     except:
         pass
 
-    # 🚦 stop spam clicking
     if is_spam(query.from_user.id):
         return
 
-    # 🚦 limit concurrent heavy work
     async with GLOBAL_SEM:
 
-        # 🔒 basic safety
         if not query.from_user or not query.message:
             return
 
@@ -300,7 +295,6 @@ async def advantage_spoll_choker(bot, query):
         except:
             return
 
-        # 🔥 HONEY PROTECTION (wrong user)
         if user != 0 and query.from_user.id != user:
             try:
                 await query.answer(
@@ -311,11 +305,9 @@ async def advantage_spoll_choker(bot, query):
                 pass
             return
 
-        # 🔥 Close button clicked
         if movie_ == "close_spellcheck":
             return await query.message.delete()
 
-        # 🔥 Load stored spell check movie list
         movies = SPELL_CHECK.get(query.message.reply_to_message.id)
         if not movies:
             return await query.message.edit(
@@ -323,13 +315,11 @@ async def advantage_spoll_choker(bot, query):
                 disable_web_page_preview=True
             )
 
-        # 🔥 Get selected movie safely
         try:
             movie = movies[int(movie_)]
         except:
             return await query.message.edit("❗Invalid Option")
 
-        # ✅ SHOW WAIT MESSAGE AS ALERT (POPUP)
         try:
             await query.answer(
                 "Checking, Please Wait ♻️\n\n[ Don't Spam – Just Wait! ]",
@@ -338,10 +328,8 @@ async def advantage_spoll_choker(bot, query):
         except:
             pass
 
-        # 🔍 Try manual filters first
         k = await manual_filters(bot, query.message, text=movie)
 
-        # 🔍 Auto search fallback
         if k is False:
             files, offset, total_results = await get_search_results(
                 query.message.chat.id, movie, offset=0, filter=True
@@ -356,8 +344,6 @@ async def advantage_spoll_choker(bot, query):
                 )
                 await asyncio.sleep(60)
                 await msg.delete()
-
-
 
 @Client.on_callback_query(filters.regex(r"^languages#"))
 async def languages_cb_handler(client: Client, query: CallbackQuery):
@@ -482,7 +468,6 @@ async def filter_languages_cb_handler(client: Client, query: CallbackQuery):
                 InlineKeyboardButton("Sᴇᴀsᴏɴs", callback_data=f"seasons#{key}")
             ]
         )
-
    
     if offset != "":
         try:
@@ -572,7 +557,6 @@ async def filter_seasons_cb_handler(client: Client, query: CallbackQuery):
     else:
         search = search
     
-    
     req = query.from_user.id
     chat_id = query.message.chat.id
     message = query.message
@@ -642,8 +626,6 @@ async def filter_seasons_cb_handler(client: Client, query: CallbackQuery):
             for file in files
         ]
     
-    
-
     add_tutorial_button(btn)
     offset = 0
 
@@ -653,7 +635,6 @@ async def filter_seasons_cb_handler(client: Client, query: CallbackQuery):
                 callback_data=f"next_{req}_{key}_{offset}"
                 ),
     ])
-
 
     await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(btn))
                 
@@ -1059,7 +1040,6 @@ async def cb_handler(client: Client, query: CallbackQuery):
         
     elif query.data.startswith("killfilesdq"):
         ident, keyword = query.data.split("#")
-        #await query.message.edit_text(f"<b>Fetching Files for your query {keyword} on DB... Please wait...</b>")
         files, total = await get_bad_files(keyword)
         await query.message.edit_text("<b>File deletion process will start in 5 seconds !</b>")
         await asyncio.sleep(5)
@@ -1361,12 +1341,10 @@ async def auto_filter(client, msg, spoll=False):
 async def advantage_spell_chok(client, msg):
     mv_rqst = msg.text
 
-    # -------- SAFETY FIX ----------
     reqstr1 = msg.from_user.id if msg.from_user else None
     if not reqstr1 or reqstr1 == 0:
         return 
 
-    # user lookup protected
     try:
         reqstr = await client.get_users(reqstr1)
     except:
