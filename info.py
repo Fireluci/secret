@@ -21,7 +21,6 @@ DATABASE_NAME = environ.get('DATABASE_NAME', "heroflix")
 COLLECTION_NAME = environ.get('COLLECTION_NAME', 'heroflix')
 
 CAPTION_INDEX_CHANNEL = int(environ.get('CAPTION_INDEX_CHANNEL', '-1002299214709'))
-DWLD = environ.get("DWLD", 'HeroFlixx/8')
 CACHE_TIME = int(environ.get('CACHE_TIME', 300))
 USE_CAPTION_FILTER = bool(environ.get('USE_CAPTION_FILTER', False))
 
@@ -46,8 +45,6 @@ REQST_CHANNEL = int(reqst_channel) if reqst_channel and id_pattern.search(reqst_
 SUPPORT_CHAT_ID = int(support_chat_id) if support_chat_id and id_pattern.search(support_chat_id) else None
 NO_RESULTS_MSG = bool(environ.get("NO_RESULTS_MSG", False))
 
-
-VERIFY = bool(environ.get('VERIFY', False))
 SHORTLINK_URL = environ.get('SHORTLINK_URL', 'softurl.in')
 SHORTLINK_API = environ.get('SHORTLINK_API', '373c1560e683c6254a5eb3c56209ef8e46ac8923')
 SECOND_SHORTLINK_URL = environ.get('SECOND_SHORTLINK_URL', 'softurl.in')
