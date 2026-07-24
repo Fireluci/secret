@@ -7,7 +7,7 @@ umongo==3.0.1
 requests
 rapidfuzz
 bs4
-git+https://github.com/Joelkb/cinemagoer
+ 
 shortzy
 datetime
 pytz
