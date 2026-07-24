@@ -329,7 +329,7 @@ async def advantage_spoll_choker(bot, query):
                 await auto_filter(bot, query, (movie, files, offset, total_results))
             else:
                 msg = await query.message.edit(
-                    script.I_CUDNT,
+                    script.NO_RESULTS,
                     disable_web_page_preview=True
                 )
                 await asyncio.sleep(60)
@@ -1046,7 +1046,7 @@ async def advantage_spell_chok(client, msg):
             )
 
         k = await msg.reply(
-            script.I_CUDNT,
+            script.NO_RESULTS,
             disable_web_page_preview=True
         )
         await asyncio.sleep(60)
@@ -1107,7 +1107,7 @@ async def advantage_spell_chok(client, msg):
             )
 
         k = await msg.reply(
-            script.I_CUDNT,
+            script.NO_RESULTS,
             disable_web_page_preview=True
         )
         await asyncio.sleep(60)
