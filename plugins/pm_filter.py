@@ -87,22 +87,18 @@ async def pm_text(bot, message):
 @Client.on_callback_query(filters.regex(r"^next"))
 async def next_page(bot, query):
 
-    # ✅ Answer immediately (silent)
     try:
         await query.answer()
     except:
         pass
 
-    # 🚦 slow down spam clicks
     if is_spam(query.from_user.id):
         return
 
-    # 🚦 limit concurrent heavy work
     async with GLOBAL_SEM:
 
         ident, req, key, offset = query.data.split("_")
 
-        # ❌ Wrong user protection
         if int(req) not in [query.from_user.id, 0]:
             try:
                 await query.answer(
@@ -140,7 +136,6 @@ async def next_page(bot, query):
                 pass
             return
 
-        # ⏳ Heavy work AFTER answering
         files, n_offset, total = await get_search_results(
             query.message.chat.id,
             search,
@@ -173,10 +168,6 @@ async def next_page(bot, query):
                 for file in files
             ]
 
-            btn.insert(0, [
-                InlineKeyboardButton("ʟᴀɴɢᴜᴀɢᴇs", callback_data=f"languages#{key}"),
-                InlineKeyboardButton("Sᴇᴀsᴏɴs",  callback_data=f"seasons#{key}")
-            ])
         else:
             btn = []
 
@@ -344,299 +335,6 @@ async def advantage_spoll_choker(bot, query):
                 )
                 await asyncio.sleep(60)
                 await msg.delete()
-
-@Client.on_callback_query(filters.regex(r"^languages#"))
-async def languages_cb_handler(client: Client, query: CallbackQuery):
-
-    try:
-        if int(query.from_user.id) not in [query.message.reply_to_message.from_user.id, 0]:
-            return await query.answer(
-                f"🔆 Honey, It's Not For You❗\n🔆 हनी, ये तुम्हारे लिए नहीं है❗",
-                show_alert=True,
-            )
-    except:
-        pass
-    _, key = query.data.split("#")
-    search = FRESH.get(key)
-    search = search.replace(' ', '_')
-    btn = []
-    for i in range(0, len(LANGUAGES)-1, 2):
-        btn.append([
-            InlineKeyboardButton(
-                text=LANGUAGES[i].title(),
-                callback_data=f"fl#{LANGUAGES[i].lower()}#{key}"
-            ),
-            InlineKeyboardButton(
-                text=LANGUAGES[i+1].title(),
-                callback_data=f"fl#{LANGUAGES[i+1].lower()}#{key}"
-            ),
-        ])
-
-    btn.insert(
-        0,
-        [
-            InlineKeyboardButton(
-                text="👇 𝖲𝖾𝗅𝖾𝖼𝗍 𝖸𝗈𝗎𝗋 𝖫𝖺𝗇𝗀𝗎𝖺𝗀𝖾 👇", callback_data="ident"
-            )
-        ],
-    )
-    req = query.from_user.id
-    offset = 0
-    btn.append([InlineKeyboardButton(text="↭ ʙᴀᴄᴋ ᴛᴏ ꜰɪʟᴇs ​↭", callback_data=f"fl#homepage#{key}")])
-
-    await query.edit_message_reply_markup(InlineKeyboardMarkup(btn))
-    
-@Client.on_callback_query(filters.regex(r"^fl#"))
-async def filter_languages_cb_handler(client: Client, query: CallbackQuery):
-    _, lang, key = query.data.split("#")
-    search = FRESH.get(key)
-    search = search.replace("_", " ")
-    baal = lang in search
-    if baal:
-        search = search.replace(lang, "")
-    else:
-        search = search
-    req = query.from_user.id
-    chat_id = query.message.chat.id
-    message = query.message
-    try:
-        if int(req) not in [query.message.reply_to_message.from_user.id, 0]:
-            return await query.answer(
-                f"🔆 Honey, It's Not For You❗\n🔆 हनी, ये तुम्हारे लिए नहीं है❗",
-                show_alert=True,
-            )
-    except:
-        pass
-    searchagain = search
-    if lang != "homepage":
-        search = f"{search} {lang}" 
-    BUTTONS[key] = search
-
-    files, offset, total_results = await get_search_results(chat_id, search, offset=0, filter=True)
-    if not files:
-        await query.answer("🚫 𝗡𝗼 𝗙𝗶𝗹𝗲 𝗪𝗲𝗿𝗲 𝗙𝗼𝘂𝗻𝗱 🚫", show_alert=1)
-        return
-    temp.GETALL[key] = files
-    settings = await get_settings(message.chat.id)
-    pre = 'filep' if settings['file_secure'] else 'file'
-    if settings["button"]:
-        btn = [
-            [
-                InlineKeyboardButton(
-                    text=f"[{get_size(file.file_size)}] {file.file_name}", callback_data=f'{pre}#{file.file_id}'
-                ),
-            ]
-            for file in files
-        ]
-    else:
-        btn = [
-            [
-                InlineKeyboardButton(
-                    text=f"{' '.join(filter(lambda x: not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}",
-                    callback_data=f'{pre}#{file.file_id}',
-                ),
-                InlineKeyboardButton(
-                    text=f"{get_size(file.file_size)}",
-                    callback_data=f'{pre}#{file.file_id}',
-                ),
-            ]
-            for file in files
-        ]
-
-    try:
-        if settings['auto_delete']:
-            btn.insert(0, 
-                [
-                    InlineKeyboardButton("ʟᴀɴɢᴜᴀɢᴇs", callback_data=f"languages#{key}"),
-                    InlineKeyboardButton("Sᴇᴀsᴏɴs",  callback_data=f"seasons#{key}")
-                ]
-            )
-
-        else:
-            btn.insert(0, 
-                [
-                    InlineKeyboardButton("ʟᴀɴɢᴜᴀɢᴇs", callback_data=f"languages#{key}"),
-                    InlineKeyboardButton("Sᴇᴀsᴏɴs", callback_data=f"seasons#{key}")
-                ]
-            )
-                
-    except KeyError:
-        await save_group_settings(query.message.chat.id, 'auto_delete', True)
-        btn.insert(0, 
-            [           
-                InlineKeyboardButton("ʟᴀɴɢᴜᴀɢᴇs", callback_data=f"languages#{key}"),
-                InlineKeyboardButton("Sᴇᴀsᴏɴs", callback_data=f"seasons#{key}")
-            ]
-        )
-   
-    if offset != "":
-        try:
-            if settings['max_btn']:
-                btn.append(
-                    [InlineKeyboardButton("🔅 Page", callback_data="pages"), InlineKeyboardButton(text=f"1/{math.ceil(int(total_results)/10)}",callback_data="pages"), InlineKeyboardButton(text=" NEXT ⏩",callback_data=f"next_{req}_{key}_{offset}")]
-                )
-    
-            else:
-                btn.append(
-                    [InlineKeyboardButton("🔅 Page", callback_data="pages"), InlineKeyboardButton(text=f"1/{math.ceil(int(total_results)/int(MAX_B_TN))}",callback_data="pages"), InlineKeyboardButton(text=" NEXT ⏩",callback_data=f"next_{req}_{key}_{offset}")]
-                )
-        except KeyError:
-            await save_group_settings(query.message.chat.id, 'max_btn', True)
-            btn.append(
-                [InlineKeyboardButton("🔅 Page", callback_data="pages"), InlineKeyboardButton(text=f"1/{math.ceil(int(total_results)/10)}",callback_data="pages"), InlineKeyboardButton(text=" NEXT ⏩",callback_data=f"next_{req}_{key}_{offset}")]
-            )
-    else:
-        btn.append(
-            [InlineKeyboardButton(text="✦ ───「 The End 」─── ✦",callback_data="pages")]
-        )
-    add_tutorial_button(btn)
-    try:
-        await query.edit_message_reply_markup(
-            reply_markup=InlineKeyboardMarkup(btn)
-        )
-    except MessageNotModified:
-        pass
-    await query.answer()
-    
-@Client.on_callback_query(filters.regex(r"^seasons#"))
-async def seasons_cb_handler(client: Client, query: CallbackQuery):
-
-    try:
-        if int(query.from_user.id) not in [query.message.reply_to_message.from_user.id, 0]:
-            return await query.answer(
-                f"🔆 Honey, It's Not For You❗\n🔆 हनी, ये तुम्हारे लिए नहीं है❗",
-                show_alert=True,
-            )
-    except:
-        pass
-    
-    _, key = query.data.split("#")
-
-    search = FRESH.get(key)
-    BUTTONS[key] = None
-    search = search.replace(' ', '_')
-    btn = []
-    for i in range(0, len(SEASONS)-1, 2):
-        btn.append([
-            InlineKeyboardButton(
-                text=SEASONS[i].title(),
-                callback_data=f"fs#{SEASONS[i].lower()}#{key}"
-            ),
-            InlineKeyboardButton(
-                text=SEASONS[i+1].title(),
-                callback_data=f"fs#{SEASONS[i+1].lower()}#{key}"
-            ),
-        ])
-
-    btn.insert(
-        0,
-        [
-            InlineKeyboardButton(
-                text="👇 𝖲𝖾𝗅𝖾𝖼𝗍 Season 👇", callback_data="ident"
-            )
-        ],
-    )
-    req = query.from_user.id
-    offset = 0
-    btn.append([InlineKeyboardButton(text="↭ ʙᴀᴄᴋ ᴛᴏ ꜰɪʟᴇs ​↭", callback_data=f"next_{req}_{key}_{offset}")])
-
-    await query.edit_message_reply_markup(InlineKeyboardMarkup(btn))
-
-@Client.on_callback_query(filters.regex(r"^fs#"))
-async def filter_seasons_cb_handler(client: Client, query: CallbackQuery):
-    _, seas, key = query.data.split("#")
-    search = FRESH.get(key)
-    sea = ""
-    season_search = ["s01","s02", "s03", "s04", "s05", "s06", "s07", "s08", "s09", "s10", "season 01","season 02","season 03","season 04","season 05","season 06","season 07","season 08","season 09","season 10", "season 1","season 2","season 3","season 4","season 5","season 6","season 7","season 8","season 9"]
-    for x in range (len(season_search)):
-        if season_search[x] in search:
-            sea = season_search[x]
-            break
-    if sea:
-        search = search.replace(sea, "")
-    else:
-        search = search
-    
-    req = query.from_user.id
-    chat_id = query.message.chat.id
-    message = query.message
-    try:
-        if int(req) not in [query.message.reply_to_message.from_user.id, 0]:
-            return await query.answer(
-                f"🔆 Honey, It's Not For You❗\n🔆 हनी, ये तुम्हारे लिए नहीं है❗",
-                show_alert=True,
-            )
-    except:
-        pass
-    
-    searchagn = search
-    search1 = search
-    search2 = search
-    search = f"{search} {seas}"
-    BUTTONS0[key] = search
-    
-    files, _, _ = await get_search_results(chat_id, search, max_results=10)
-    files = [file for file in files if re.search(seas, file.file_name, re.IGNORECASE)]
-    
-    seas1 = "s01" if seas == "season 1" else "s02" if seas == "season 2" else "s03" if seas == "season 3" else "s04" if seas == "season 4" else "s05" if seas == "season 5" else "s06" if seas == "season 6" else "s07" if seas == "season 7" else "s08" if seas == "season 8" else "s09" if seas == "season 9" else "s10" if seas == "season 10" else ""
-    search1 = f"{search1} {seas1}"
-    BUTTONS1[key] = search1
-    files1, _, _ = await get_search_results(chat_id, search1, max_results=10)
-    files1 = [file for file in files1 if re.search(seas1, file.file_name, re.IGNORECASE)]
-    
-    if files1:
-        files.extend(files1)
-    
-    seas2 = "season 01" if seas == "season 1" else "season 02" if seas == "season 2" else "season 03" if seas == "season 3" else "season 04" if seas == "season 4" else "season 05" if seas == "season 5" else "season 06" if seas == "season 6" else "season 07" if seas == "season 7" else "season 08" if seas == "season 8" else "season 09" if seas == "season 9" else "s010"
-    search2 = f"{search2} {seas2}"
-    BUTTONS2[key] = search2
-    files2, _, _ = await get_search_results(chat_id, search2, max_results=10)
-    files2 = [file for file in files2 if re.search(seas2, file.file_name, re.IGNORECASE)]
-
-    if files2:
-        files.extend(files2)
-        
-    if not files:
-        await query.answer("🚫 𝗡𝗼 𝗙𝗶𝗹𝗲 𝗪𝗲𝗿𝗲 𝗙𝗼𝘂𝗻𝗱 🚫", show_alert=1)
-        return
-    temp.GETALL[key] = files
-    settings = await get_settings(message.chat.id)
-    pre = 'filep' if settings['file_secure'] else 'file'
-    if settings["button"]:
-        btn = [
-            [
-                InlineKeyboardButton(
-                    text=f"[{get_size(file.file_size)}] {file.file_name}", callback_data=f'{pre}#{file.file_id}'
-                ),
-            ]
-            for file in files
-        ]
-    else:
-        btn = [
-            [
-                InlineKeyboardButton(
-                    text=f"{' '.join(filter(lambda x: not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}",
-                    callback_data=f'{pre}#{file.file_id}',
-                ),
-                InlineKeyboardButton(
-                    text=f"{get_size(file.file_size)}",
-                    callback_data=f'{pre}#{file.file_id}',
-                ),
-            ]
-            for file in files
-        ]
-    
-    add_tutorial_button(btn)
-    offset = 0
-
-    btn.append([
-            InlineKeyboardButton(
-                text="↭ ʙᴀᴄᴋ ᴛᴏ ꜰɪʟᴇs ​↭",
-                callback_data=f"next_{req}_{key}_{offset}"
-                ),
-    ])
-
-    await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(btn))
                 
 @Client.on_callback_query()
 async def cb_handler(client: Client, query: CallbackQuery):
