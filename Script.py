@@ -90,15 +90,7 @@ Nᴀᴍᴇ - {}"""
     CAPTION = """
  <a href="https://telegram.me/HEROFLiX"><b><i>{file_name}</i></b></a>"""
 
-    IMDB_TEMPLATE_TXT = """
-<b>Query: {query}
-IMDb Data:
-
-🏷 Title: <a href={url}>{title}</a>
-🎭 Genres: {genres}
-📆 Year: <a href={url}/releaseinfo>{year}</a>
-⏱️ Result Shown in: {remaining_seconds} <i>seconds</i> 🔥
-🌟 Rating: <a href={url}/ratings>{rating}</a> / 10</b>"""
+ 
     
     ALL_FILTERS = """🔆彡[ @HEROFLiX ]彡🔆"""
     
