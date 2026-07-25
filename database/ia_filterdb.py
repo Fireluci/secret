@@ -52,7 +52,6 @@ class Media(Document):
     file_ref = fields.StrField(allow_none=True)
 
     file_name = fields.StrField(required=True)      # normalized for search
-    display_name = fields.StrField(required=True)   # original for UI
 
     file_size = fields.IntField(required=True)
     file_type = fields.StrField(allow_none=True)
@@ -78,7 +77,7 @@ async def save_file(media):
     # =====================================================
 
     source_text = original_name
-    display_source = original_name
+    
 
     # =====================================================
     # SPECIAL CHANNEL = caption
@@ -93,26 +92,16 @@ async def save_file(media):
         ):
 
             source_text = media.caption
-            display_source = media.caption
 
     except Exception:
         pass
 
     # avoid huge captions
     source_text = source_text[:1000]
-    display_source = display_source[:1000]
-
+    
     # searchable normalized text
     tmp = normalize_basic_episode(source_text)
     normalized_name = " ".join(normalize(tmp))
-
-    # display normalized text
-    display_tmp = normalize_basic_episode(display_source)
-
-    display_name = " ".join(
-        word.capitalize()
-        for word in normalize(display_tmp)
-    )
 
     try:
 
@@ -123,8 +112,6 @@ async def save_file(media):
             # searchable text
             file_name=normalized_name,
 
-            # clean display text
-            display_name=display_name,
 
             file_size=media.file_size,
             file_type=media.file_type,
@@ -156,8 +143,7 @@ async def save_file(media):
                     {
                         "$set": {
                             "file_name": normalized_name,
-                            "display_name": display_name,
-                            "caption": media.caption
+                                                        "caption": media.caption
                         }
                     }
                 )
@@ -237,17 +223,6 @@ async def get_search_results(
     )
 
     files = await cursor.to_list(length=max_results)
-
-    # format display name for UI only
-    for f in files:
-        out = []
-        for w in f.file_name.split():
-            if w.isdigit() and len(w) == 4 and 1900 <= int(w) <= 2100:
-                out.append(f"({w})")
-            else:
-                out.append(w.capitalize())
-        f.display_name = " ".join(out)
-
     return files, next_offset, total_results
 
 
