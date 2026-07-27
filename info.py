@@ -24,11 +24,7 @@ CAPTION_INDEX_CHANNEL = int(environ.get('CAPTION_INDEX_CHANNEL', '-1002299214709
 CACHE_TIME = int(environ.get('CACHE_TIME', 300))
 USE_CAPTION_FILTER = bool(environ.get('USE_CAPTION_FILTER', False))
 
-PICS = (environ.get('PICS', 'https://te.legra.ph/file/d6a23f16e002e86381656.jpg https://te.legra.ph/file/d6a23f16e002e86381656.jpg')).split()
- 
-MELCOW_PIC = environ.get("MELCOW_PIC", "https://te.legra.ph/file/d6a23f16e002e86381656.jpg")
- 
-
+PICS = environ.get("PICS", "https://te.legra.ph/file/d6a23f16e002e86381656.jpg")
 FORCE = "https://telegram.me/+W6BkAHSGGME3OGY1"
 ADMINS = [int(admin) if id_pattern.search(admin) else admin for admin in environ.get('ADMINS', '1058015838').split()]
 CHANNELS = [int(ch) if id_pattern.search(ch) else ch for ch in environ.get('CHANNELS', '-1001638006524 -1002299214709').split()]
