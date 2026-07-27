@@ -5,7 +5,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pyrogram import Client, filters
 from pyrogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from info import DATABASE_URI, DATABASE_NAME, UPI_ID, PREMIUM_GROUP_ID, ADMINS
-
+logger.warning("PREMIUM.PY IMPORTED")
 logger = logging.getLogger(__name__)
 
 db_client = AsyncIOMotorClient(DATABASE_URI)
@@ -105,6 +105,7 @@ async def member_join_handler(client: Client, member):
 
 @Client.on_message(filters.command("premium") & filters.private)
 async def premium_command(client: Client, message: Message):
+    logger.warning("/premium handler reached")
     user_id = message.from_user.id
     now_ts = datetime.utcnow().timestamp()
     if user_id in _cooldowns and now_ts - _cooldowns[user_id] < 4:
