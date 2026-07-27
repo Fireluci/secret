@@ -20,7 +20,7 @@ DATABASE_URI = environ.get('DATABASE_URI', "mongodb+srv://ariana:ariana@ariana.v
 DATABASE_NAME = environ.get('DATABASE_NAME', "heroflix")
 COLLECTION_NAME = environ.get('COLLECTION_NAME', 'heroflix')
 
-CAPTION_INDEX_CHANNEL = int(environ.get('CAPTION_INDEX_CHANNEL', ''))
+ 
 DWLD = environ.get("DWLD", 'HeroFlixx/8')
 CACHE_TIME = int(environ.get('CACHE_TIME', 300))
 USE_CAPTION_FILTER = bool(environ.get('USE_CAPTION_FILTER', False))
