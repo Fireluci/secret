@@ -337,8 +337,8 @@ async def advantage_spoll_choker(bot, query):
                 
 @Client.on_callback_query()
 async def cb_handler(client: Client, query: CallbackQuery):
-
-    if query.data.startswith(("premium_", "buy_plan_", "prem_")):
+    # Completely ignore all premium-related callback queries so they don't trigger alerts or fallback logic
+    if query.data and query.data.startswith(("premium_", "buy_plan_", "prem_")):
         return
 
     if query.data == "close_data":
@@ -384,7 +384,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
         if (st.status == enums.ChatMemberStatus.OWNER) or (str(userid) in ADMINS):
             await del_all(query.message, grp_id, title)
         else:
-            await query.answer("Yᴏᴜ ɴᴇᴇᴅ ᴛᴏ ʙᴇ Gʀᴏᴜᴘ Oᴡɴᴇʀ ᴏʀ ᴀɴ Aᴜᴛʜ Usᴇʀ ᴛᴏ ᴅᴏ ᴛʜᴀᴛ!", show_alert=True)
+            await query.answer("Yᴏᴜ ɴᴇᴇᴅ ᴛᴏ ʙᴇ Gʀᴏᴜᴘ Oᴡɴᴇʀ ᴏʀ ᴀɴ Aᴜᴛʜ Usᴇʀ ᴛᴏ ᴅᴏ ᴛ🇭ᴀᴛ!", show_alert=True)
     elif query.data == "delallcancel":
         userid = query.from_user.id
         chat_type = query.message.chat.type
@@ -548,7 +548,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
             alert = alert.replace("\\n", "\n").replace("\\t", "\t")
             await query.answer(alert, show_alert=True)
         
-    if query.data.startswith("file"):
+    elif query.data.startswith("file"):
         clicked = query.from_user.id
         try:
             typed = query.message.reply_to_message.from_user.id
@@ -975,7 +975,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
                 [
                     InlineKeyboardButton('Aᴜᴛᴏ-Dᴇʟᴇᴛᴇ',
                                          callback_data=f'setgs#auto_delete#{settings["auto_delete"]}#{str(grp_id)}'),
-                    InlineKeyboardButton('5 Mɪɴs' if settings["auto_delete"] else '✘ Oғғ',
+                    InlineKeyboardButton('5 Mɪns' if settings["auto_delete"] else '✘ Oғғ',
                                          callback_data=f'setgs#auto_delete#{settings["auto_delete"]}#{str(grp_id)}')
                 ],
                 [
@@ -999,7 +999,9 @@ async def cb_handler(client: Client, query: CallbackQuery):
             ]
             reply_markup = InlineKeyboardMarkup(buttons)
             await query.message.edit_reply_markup(reply_markup)
-    await query.answer(MSG_ALRT)
+    # Ensure this never triggers for premium buttons
+    if query.data and not query.data.startswith(("premium_", "buy_plan_", "prem_")):
+        await query.answer(MSG_ALRT)
 
 async def auto_filter(client, msg, spoll=False):
     curr_time = datetime.now(pytz.timezone('Asia/Kolkata')).time()
