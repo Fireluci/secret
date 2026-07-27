@@ -7,7 +7,7 @@ from pyrogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMa
 from info import DATABASE_URI, DATABASE_NAME, UPI_ID, PREMIUM_GROUP_ID, ADMINS
 
 logger = logging.getLogger(__name__)
-logger.warning("PREMIUM.PY IMPORTED")
+
 db_client = AsyncIOMotorClient(DATABASE_URI)
 db = db_client[DATABASE_NAME]
 
@@ -103,9 +103,8 @@ async def member_join_handler(client: Client, member):
             except Exception as e:
                 logger.error(f"Failed to revoke invite link for {user_id}: {e}")
 
-@Client.on_message(filters.command("premium") & filters.private)
+# Raw command logic functions (decorators removed here, handled in commands.py)
 async def premium_command(client: Client, message: Message):
-    logger.warning("/premium handler reached")
     user_id = message.from_user.id
     now_ts = datetime.utcnow().timestamp()
     if user_id in _cooldowns and now_ts - _cooldowns[user_id] < 4:
@@ -118,7 +117,6 @@ async def premium_command(client: Client, message: Message):
     ])
     await message.reply_text("💎 **Upgrade to Premium**\n\nSelect a plan below to proceed:", reply_markup=kb)
 
-@Client.on_message(filters.command("mypremium") & filters.private)
 async def my_premium_command(client: Client, message: Message):
     user_id = message.from_user.id
     user_doc = await users_col.find_one({"user_id": user_id})
