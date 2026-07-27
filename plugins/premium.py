@@ -5,9 +5,9 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pyrogram import Client, filters
 from pyrogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from info import DATABASE_URI, DATABASE_NAME, UPI_ID, PREMIUM_GROUP_ID, ADMINS
-logger.warning("PREMIUM.PY IMPORTED")
-logger = logging.getLogger(__name__)
 
+logger = logging.getLogger(__name__)
+logger.warning("PREMIUM.PY IMPORTED")
 db_client = AsyncIOMotorClient(DATABASE_URI)
 db = db_client[DATABASE_NAME]
 
