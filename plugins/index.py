@@ -98,9 +98,7 @@ async def send_for_index(bot, message):
     ]]
 
     return await message.reply(
-        f'<b>❓ Index This Channel Files ❓</b>
-
-'
+        f'<b>❓ Index This Channel Files ❓</b>\n\n'
         f'🗳 <b>Chat ID/Username ›</b> <code>{chat_id}</code>',
         reply_markup=InlineKeyboardMarkup(buttons)
     )
