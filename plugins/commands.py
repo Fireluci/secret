@@ -11,6 +11,8 @@ from database.users_chats_db import db
 from info import CHANNELS, ADMINS, AUTH_CHANNEL, LOG_CHANNEL, PICS, BATCH_FILE_CAPTION, CUSTOM_FILE_CAPTION, PROTECT_CONTENT, CHNL_LNK, FORCE, GRP_LNK, REQST_CHANNEL, SUPPORT_CHAT_ID, SUPPORT_CHAT, MAX_B_TN, SHORTLINK_API, SHORTLINK_URL, TUTORIAL, IS_TUTORIAL, PREMIUM_USER
 from utils import get_settings, get_size, is_subscribed, save_group_settings, temp, get_shortlink, get_tutorial
 from database.connections_mdb import active_connection
+# Add this import at the top of plugins/commands.py
+from plugins.premium import premium_command, my_premium_command
 import re, asyncio, os, sys
 import json
 import base64
@@ -722,3 +724,11 @@ async def stop_button(bot, message):
     await asyncio.sleep(3)
     await msg.edit("**✅️ 𝙱𝙾𝚃 𝙸𝚂 𝚁𝙴𝚂𝚃𝙰𝚁𝚃𝙴𝙳**")
     os.execl(sys.executable, sys.executable, *sys.argv)
+
+@Client.on_message(filters.command("premium") & filters.private)
+async def premium_entry(client, message):
+    await premium_command(client, message)
+
+@Client.on_message(filters.command("mypremium") & filters.private)
+async def mypremium_entry(client, message):
+    await my_premium_command(client, message)
