@@ -746,7 +746,7 @@ async def minimal_premium_command(client, message):
     )
     
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("💳 Pay Now", url=upi_link)],
+        [InlineKeyboardButton("💳 Pay Now", url="https://fireluci.github.io/pay/")],
         [InlineKeyboardButton("✅ I Have Paid (Send Screenshot)", callback_data="minimal_send_proof")]
     ])
     
