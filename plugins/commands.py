@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from urllib.parse import quote
 from Script import script
 from pyrogram import Client, filters, enums
-from pyrogram.errors import ChatAdminRequired, FloodWait
+from pyrogram.errors import ChatAdminRequired, FloodWait, RPCError
 from pyrogram.types import *
 from database.ia_filterdb import Media, get_file_details, unpack_new_file_id, get_bad_files
 from database.users_chats_db import db
@@ -20,8 +20,95 @@ logger = logging.getLogger(__name__)
 
 BATCH_FILES = {}
 
-# Temporary storage for minimal pending approval flow storing plan & price info (Single declaration)
 MINIMAL_PENDING_FLOW = {}
+
+# ==========================================
+# BACKGROUND LIFECYCLE & EXPIRY CHECKER LOOP
+# ==========================================
+async def premium_expiry_reminder_loop(client: Client):
+    """Background loop running every hour to handle 1-day reminders and automated expiry group kicks."""
+    await asyncio.sleep(10)  # Initial delay after bot start
+    while True:
+        try:
+            now = datetime.utcnow()
+            
+            # Target collections
+            col = None
+            if 'db' in globals() and hasattr(db, 'premium_users'):
+                col = db.premium_users
+            elif 'users_col' in globals():
+                col = users_col
+                
+            if col is not None:
+                async for user_doc in col.find({"active": True}):
+                    user_id = user_doc.get("user_id")
+                    expires_at = user_doc.get("expires_at") or user_doc.get("expiry_date")
+                    
+                    if not expires_at or not isinstance(expires_at, datetime):
+                        continue
+                        
+                    reminders = user_doc.get("reminders", {})
+                    
+                    # 1. On Expiry Check
+                    if now >= expires_at:
+                        # Automatically remove user from Premium group if configured
+                        if PREMIUM_GROUP_ID:
+                            try:
+                                await client.ban_chat_member(chat_id=PREMIUM_GROUP_ID, user_id=user_id)
+                                # Immediately unban so they can rejoin via a new invite link later if they renew
+                                await client.unban_chat_member(chat_id=PREMIUM_GROUP_ID, user_id=user_id)
+                            except Exception as e:
+                                logger.error(f"Failed to kick user {user_id} from premium group: {e}")
+                                
+                        # Send expiry DM with Renew button
+                        expiry_kb = InlineKeyboardMarkup([
+                            [InlineKeyboardButton("🔄 Renew Premium", callback_data="buy_premium_start")]
+                        ])
+                        expiry_msg = (
+                            "❌ **HeroFlix Premium Expired**\n\n"
+                            "Your Premium Membership has expired.\n\n"
+                            "Tap below to renew."
+                        )
+                        try:
+                            await client.send_message(user_id, expiry_msg, reply_markup=expiry_kb)
+                        except Exception as e:
+                            logger.error(f"Failed to send expiry DM to user {user_id}: {e}")
+                            
+                        # Delete the premium record from database
+                        await col.delete_one({"user_id": user_id})
+                        logger.info(f"🔄 Expired and removed premium record for user {user_id}")
+                        
+                    # 2. 1 Day Before Expiry Reminder Check
+                    elif expires_at - now <= timedelta(days=1) and not reminders.get("1_day", False):
+                        reminder_kb = InlineKeyboardMarkup([
+                            [InlineKeyboardButton("🔄 Renew Premium", callback_data="buy_premium_start")]
+                        ])
+                        reminder_text = (
+                            "⚠ **HeroFlix Premium**\n\n"
+                            "Your Premium expires tomorrow.\n\n"
+                            "Renew now to continue enjoying Premium without interruption."
+                        )
+                        try:
+                            await client.send_message(user_id, reminder_text, reply_markup=reminder_kb)
+                            # Update reminder flag (simplified to only 1_day)
+                            await col.update_one(
+                                {"user_id": user_id},
+                                {"$set": {"reminders.1_day": True}}
+                            )
+                            logger.info(f"📧 Sent 1-day expiry reminder to user {user_id}")
+                        except Exception as e:
+                            logger.error(f"Failed to send 1-day reminder to user {user_id}: {e}")
+                            
+        except Exception as e:
+            logger.error(f"Error in premium expiry background task: {e}")
+            
+        await asyncio.sleep(3600)  # Check every hour
+
+# Automatically start the background task when any client starts up
+@Client.on_start()
+async def start_background_tasks(client, *args):
+    asyncio.create_task(premium_expiry_reminder_loop(client))
+
 
 @Client.on_message(filters.command("start") & filters.incoming)
 async def start(client, message):
@@ -729,10 +816,15 @@ async def stop_button(bot, message):
     os.execl(sys.executable, sys.executable, *sys.argv)
 
 # ==========================================
-# MINIMAL INTEGRATED PREMIUM SYSTEM
+# MINIMAL INTEGRATED PREMIUM SYSTEM & WORKFLOW
 # ==========================================
 @Client.on_message(filters.command("premium") & filters.private)
-async def minimal_premium_command(client, message):
+@Client.on_callback_query(filters.regex("^buy_premium_start$"))
+async def minimal_premium_command(client, update):
+    message = update.message if isinstance(update, CallbackQuery) else update
+    if isinstance(update, CallbackQuery):
+        await update.answer()
+
     plan_name = "30 Days"
     price = "39"
     
@@ -756,7 +848,11 @@ async def minimal_premium_command(client, message):
         f"📱 **UPI ID:** `{UPI_ID}`\n\n"
         f"Tap **Pay Now** to complete your payment, then click **I Have Paid** below to send your screenshot."
     )
-    await message.reply_text(text, reply_markup=kb)
+    
+    if isinstance(update, CallbackQuery):
+        await message.edit_text(text, reply_markup=kb)
+    else:
+        await message.reply_text(text, reply_markup=kb)
 
 @Client.on_callback_query(filters.regex("^minimal_send_proof$"))
 async def minimal_send_proof_cb(client, callback: CallbackQuery):
@@ -807,51 +903,276 @@ async def minimal_screenshot_handler(client, message):
         except Exception as e:
             logger.error(f"Failed to send minimal payment proof to admin {admin_id}: {e}")
 
-@Client.on_callback_query(filters.regex("^min_(app|rej)_"))
+@Client.on_callback_query(filters.regex("^min_app_"))
 async def minimal_admin_action_cb(client, callback: CallbackQuery):
     if str(callback.from_user.id) not in map(str, ADMINS):
         return await callback.answer("Unauthorized.", show_alert=True)
     
-    _, action, target_user_str = callback.data.split("_")
+    parts = callback.data.split("_")
+    target_user_str = parts[2] if len(parts) > 2 else parts[-1]
     target_user_id = int(target_user_str)
     
-    if action == "rej":
-        await callback.answer("Rejected.")
-        try:
-            await callback.message.edit_caption(f"{callback.message.caption or ''}\n\n❌ **Status:** REJECTED")
-            await callback.message.edit_reply_markup(reply_markup=None)
-        except Exception:
-            pass
-        try:
-            await client.send_message(target_user_id, "Payment could not be verified. Please contact the admin.")
-        except Exception:
-            pass
-        return
+    kb = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🟣 30 Days (₹39)", callback_data=f"selplan_{target_user_id}_30_39"),
+            InlineKeyboardButton("🟣 90 Days (₹99)", callback_data=f"selplan_{target_user_id}_90_99")
+        ],
+        [
+            InlineKeyboardButton("🟣 180 Days (₹179)", callback_data=f"selplan_{target_user_id}_180_179"),
+            InlineKeyboardButton("🟣 365 Days (₹299)", callback_data=f"selplan_{target_user_id}_365_299")
+        ],
+        [
+            InlineKeyboardButton("❌ Cancel", callback_data=f"min_rej_{target_user_id}")
+        ]
+    ])
     
-    if action == "app":
-        await callback.answer("Approved!")
+    await callback.answer()
+    try:
+        await callback.message.edit_caption(
+            "💎 **Select Premium Plan**\n\nChoose the subscription to activate.",
+            reply_markup=kb,
+            parse_mode=enums.ParseMode.MARKDOWN
+        )
+    except Exception:
+        await callback.message.edit_text(
+            "💎 **Select Premium Plan**\n\nChoose the subscription to activate.",
+            reply_markup=kb,
+            parse_mode=enums.ParseMode.MARKDOWN
+        )
+
+@Client.on_callback_query(filters.regex("^selplan_"))
+async def select_plan_cb(client, callback: CallbackQuery):
+    if str(callback.from_user.id) not in map(str, ADMINS):
+        return await callback.answer("Unauthorized.", show_alert=True)
+    
+    _, target_user_str, days_str, price_str = callback.data.split("_")
+    target_user_id = int(target_user_str)
+    days = int(days_str)
+    price = price_str
+    
+    now = datetime.utcnow()
+    
+    existing_user = None
+    if 'users_col' in globals():
+        existing_user = await users_col.find_one({"user_id": target_user_id})
+    elif 'db' in globals() and hasattr(db, 'premium_users'):
+        existing_user = await db.premium_users.find_one({"user_id": target_user_id})
+        
+    current_expiry = None
+    if existing_user:
+        current_expiry = existing_user.get("expires_at") or existing_user.get("expiry_date")
+        
+    is_active_renewal = False
+    if current_expiry and isinstance(current_expiry, datetime) and current_expiry > now:
+        start_date = current_expiry
+        is_active_renewal = True
+    else:
+        start_date = now
+        
+    expiry_date = start_date + timedelta(days=days)
+    
+    if is_active_renewal:
+        mode_text = "🔄 Extend Existing"
+    else:
+        mode_text = "🟢 Fresh Activation"
+    
+    try:
+        target_user = await client.get_users(target_user_id)
+        username = f"@{target_user.username}" if target_user.username else str(target_user_id)
+    except Exception:
+        username = str(target_user_id)
+    
+    pending_state = {
+        "user_id": target_user_id,
+        "username": username,
+        "plan": f"{days} Days",
+        "price": price,
+        "days": days,
+        "start_date": start_date,
+        "expiry_date": expiry_date,
+        "is_active_renewal": is_active_renewal,
+        "current_expiry": current_expiry,
+        "updated_at": now
+    }
+    
+    if 'db' in globals() and hasattr(db, 'premium_pending'):
+        await db.premium_pending.update_one({"user_id": target_user_id}, {"$set": pending_state}, upsert=True)
+    elif 'users_col' in globals():
+        db_ref = users_col.database
+        await db_ref.premium_pending.update_one({"user_id": target_user_id}, {"$set": pending_state}, upsert=True)
+    
+    kb = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ Confirm", callback_data=f"confact_{target_user_id}"),
+            InlineKeyboardButton("◀ Back", callback_data=f"min_app_{target_user_id}")
+        ],
+        [
+            InlineKeyboardButton("❌ Cancel", callback_data=f"min_rej_{target_user_id}")
+        ]
+    ])
+    
+    preview_text = (
+        f"💎 **Premium Activation Preview**\n\n"
+        f"👤 **User**: {username}\n"
+        f"🆔 **User ID**: `{target_user_id}`\n"
+        f"📦 **New Plan**: {days} Days\n"
+        f"💰 **Amount**: ₹{price}\n"
+        f"⚙️ **Mode**: {mode_text}\n"
+    )
+    
+    if is_active_renewal and current_expiry:
+        preview_text += (
+            f"📅 **Current Expiry**: {current_expiry.strftime('%d %b %Y')}\n"
+            f"⌛ **Result Expiry**: {expiry_date.strftime('%d %b %Y')}\n"
+        )
+    else:
+        preview_text += (
+            f"📅 **Current Expiry**: Expired\n"
+            f"⌛ **Result Expiry**: {expiry_date.strftime('%d %b %Y')}\n"
+        )
+        
+    preview_text += "\nProceed with activation?"
+    
+    await callback.answer()
+    try:
+        await callback.message.edit_caption(preview_text, reply_markup=kb, parse_mode=enums.ParseMode.MARKDOWN)
+    except Exception:
+        await callback.message.edit_text(preview_text, reply_markup=kb, parse_mode=enums.ParseMode.MARKDOWN)
+
+@Client.on_callback_query(filters.regex("^confact_"))
+async def confirm_activation_cb(client, callback: CallbackQuery):
+    if str(callback.from_user.id) not in map(str, ADMINS):
+        return await callback.answer("Unauthorized.", show_alert=True)
+    
+    _, target_user_str = callback.data.split("_")
+    target_user_id = int(target_user_str)
+    
+    flow = None
+    if 'db' in globals() and hasattr(db, 'premium_pending'):
+        flow = await db.premium_pending.find_one({"user_id": target_user_id})
+    elif 'users_col' in globals():
+        db_ref = users_col.database
+        flow = await db_ref.premium_pending.find_one({"user_id": target_user_id})
+        
+    if not flow:
+        return await callback.answer("Activation session expired or already processed.", show_alert=True)
+        
+    plan = flow["plan"]
+    price = flow["price"]
+    days = flow["days"]
+    start_date = flow["start_date"]
+    expiry_date = flow["expiry_date"]
+    username = flow["username"]
+    
+    await callback.answer("Processing activation...")
+    now = datetime.utcnow()
+    
+    # Simplified reminder state containing only the 1_day flag
+    reminders_state = {
+        "1_day": False
+    }
+    
+    activation_data = {
+        "user_id": target_user_id,
+        "username": username,
+        "plan": plan,
+        "plan_days": days,
+        "price": price,
+        "purchased_at": now,
+        "start_date": start_date,
+        "expires_at": expiry_date,
+        "expiry_date": expiry_date,
+        "active": True,
+        "status": "active",
+        "approved_by": callback.from_user.id,
+        "approved_at": now,
+        "reminders": reminders_state
+    }
+    
+    if 'users_col' in globals():
+        await users_col.update_one({"user_id": target_user_id}, {"$set": activation_data}, upsert=True)
+        db_ref = users_col.database
+        await db_ref.premium_pending.delete_one({"user_id": target_user_id})
+    elif 'db' in globals() and hasattr(db, 'premium_users'):
+        await db.premium_users.update_one({"user_id": target_user_id}, {"$set": activation_data}, upsert=True)
+        await db.premium_pending.delete_one({"user_id": target_user_id})
+        
+    invite_link = None
+    if PREMIUM_GROUP_ID:
         try:
-            await callback.message.edit_caption(f"{callback.message.caption or ''}\n\n✅ **Status:** APPROVED")
-            await callback.message.edit_reply_markup(reply_markup=None)
+            link_obj = await client.create_chat_invite_link(
+                chat_id=PREMIUM_GROUP_ID,
+                member_limit=1,
+                expire_date=now + timedelta(hours=24)
+            )
+            invite_link = link_obj.invite_link
+        except Exception as e:
+            logger.error(f"Failed to create invite link for {target_user_id}: {e}")
+            
+    user_msg = (
+        f"🎉 **HeroFlix Premium Activated**\n\n"
+        f"📦 **Plan**: {plan}\n"
+        f"📅 **Start**: {start_date.strftime('%d %b %Y')}\n"
+        f"⌛ **Expires**: {expiry_date.strftime('%d %b %Y')}\n\n"
+    )
+    if invite_link:
+        user_msg += f"👇 **Join Premium Group**\n{invite_link}\n\n"
+    user_msg += "Enjoy your Premium Membership."
+    
+    try:
+        await client.send_message(target_user_id, user_msg, disable_web_page_preview=True)
+    except Exception as e:
+        logger.error(f"Failed to notify user {target_user_id}: {e}")
+        
+    success_admin_text = (
+        f"✅ **Premium Activated**\n\n"
+        f"• **User**: {username} (`{target_user_id}`)\n"
+        f"• **Plan**: {plan} (₹{price})\n"
+        f"• **Started**: {start_date.strftime('%d %b %Y')}\n"
+        f"• **Expires**: {expiry_date.strftime('%d %b %Y')}\n"
+        f"• **Admin ID**: `{callback.from_user.id}`\n"
+        f"• **Activation Time**: {now.strftime('%d %b %Y, %H:%M:%S UTC')}\n"
+        f"• **Invite Link**: Generated\n"
+        f"• **Database**: Updated\n"
+        f"• **Notification**: Sent"
+    )
+    
+    try:
+        await callback.message.edit_caption(success_admin_text, reply_markup=None, parse_mode=enums.ParseMode.MARKDOWN)
+    except Exception:
+        await callback.message.edit_text(success_admin_text, reply_markup=None, parse_mode=enums.ParseMode.MARKDOWN)
+        
+    logger.info(
+        f"✅ Premium Activated | User: {target_user_id} ({username}) | Plan: {plan} | "
+        f"Price: ₹{price} | Start: {start_date.strftime('%Y-%m-%d')} | "
+        f"Expiry: {expiry_date.strftime('%Y-%m-%d')} | Admin: {callback.from_user.id} | Time: {now.strftime('%Y-%m-%d %H:%M:%S')}"
+    )
+
+@Client.on_callback_query(filters.regex("^min_rej_"))
+async def minimal_admin_reject_cb(client, callback: CallbackQuery):
+    if str(callback.from_user.id) not in map(str, ADMINS):
+        return await callback.answer("Unauthorized.", show_alert=True)
+    
+    parts = callback.data.split("_")
+    target_user_str = parts[2] if len(parts) > 2 else parts[-1]
+    target_user_id = int(target_user_str)
+    
+    if 'db' in globals() and hasattr(db, 'premium_pending'):
+        await db.premium_pending.delete_one({"user_id": target_user_id})
+    elif 'users_col' in globals():
+        db_ref = users_col.database
+        await db_ref.premium_pending.delete_one({"user_id": target_user_id})
+    
+    await callback.answer("Rejected.")
+    try:
+        await callback.message.edit_caption(f"{callback.message.caption or ''}\n\n❌ **Status:** REJECTED", reply_markup=None, parse_mode=enums.ParseMode.MARKDOWN)
+    except Exception:
+        try:
+            await callback.message.edit_text(f"{callback.message.text or ''}\n\n❌ **Status:** REJECTED", reply_markup=None, parse_mode=enums.ParseMode.MARKDOWN)
         except Exception:
             pass
-        
-        invite_link = None
-        if PREMIUM_GROUP_ID:
-            try:
-                link_obj = await client.create_chat_invite_link(
-                    chat_id=PREMIUM_GROUP_ID,
-                    member_limit=1,
-                    expire_date=datetime.utcnow() + timedelta(hours=24)
-                )
-                invite_link = link_obj.invite_link
-            except Exception as e:
-                logger.error(f"Failed to create invite link for {target_user_id}: {e}")
-        
-        try:
-            msg = "Payment approved."
-            if invite_link:
-                msg += f"\n\n👉 Join Premium Group: {invite_link}"
-            await client.send_message(target_user_id, msg)
-        except Exception as e:
-            logger.error(f"Failed to notify user {target_user_id}: {e}")
+            
+    try:
+        await client.send_message(target_user_id, "Payment could not be verified. Please contact the admin.")
+    except Exception:
+        pass
