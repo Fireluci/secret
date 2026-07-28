@@ -2,23 +2,26 @@ import os
 import logging
 import random
 import asyncio
+from datetime import datetime, timedelta
+from urllib.parse import quote
 from Script import script
 from pyrogram import Client, filters, enums
 from pyrogram.errors import ChatAdminRequired, FloodWait
 from pyrogram.types import *
 from database.ia_filterdb import Media, get_file_details, unpack_new_file_id, get_bad_files
 from database.users_chats_db import db
-from info import CHANNELS, ADMINS, AUTH_CHANNEL, LOG_CHANNEL, PICS, BATCH_FILE_CAPTION, CUSTOM_FILE_CAPTION, PROTECT_CONTENT, CHNL_LNK, FORCE, GRP_LNK, REQST_CHANNEL, SUPPORT_CHAT_ID, SUPPORT_CHAT, MAX_B_TN, SHORTLINK_API, SHORTLINK_URL, TUTORIAL, IS_TUTORIAL, PREMIUM_USER
+from info import CHANNELS, ADMINS, AUTH_CHANNEL, LOG_CHANNEL, PICS, BATCH_FILE_CAPTION, CUSTOM_FILE_CAPTION, PROTECT_CONTENT, CHNL_LNK, FORCE, GRP_LNK, REQST_CHANNEL, SUPPORT_CHAT_ID, SUPPORT_CHAT, MAX_B_TN, SHORTLINK_API, SHORTLINK_URL, TUTORIAL, IS_TUTORIAL, PREMIUM_USER, UPI_ID, PREMIUM_GROUP_ID
 from utils import get_settings, get_size, is_subscribed, save_group_settings, temp, get_shortlink, get_tutorial
 from database.connections_mdb import active_connection
-# Add this import at the top of plugins/commands.py
-from plugins.premium import premium_command, my_premium_command
-import re, asyncio, os, sys
+import re, sys
 import json
 import base64
 logger = logging.getLogger(__name__)
 
 BATCH_FILES = {}
+
+# Temporary storage for minimal pending approval flow storing plan & price info (Single declaration)
+MINIMAL_PENDING_FLOW = {}
 
 @Client.on_message(filters.command("start") & filters.incoming)
 async def start(client, message):
@@ -321,7 +324,7 @@ async def start(client, message):
     user = message.from_user.id
     files_ = await get_file_details(file_id)           
     if not files_:
-        pre, file_id = ((base64.urlsafe_b64decode(data + "=" * (-len(data) % 4))).decode("ascii")).split("_", 1)
+        pre, file_id = ((base64.urlsafe_b64decode(data + "=" * (-len(b_string) % 4))).decode("ascii")).split("_", 1)
         try:
 
             msg = await client.send_cached_media(
@@ -602,7 +605,7 @@ async def settings(client, message):
                     callback_data=f'setgs#auto_delete#{settings["auto_delete"]}#{grp_id}',
                 ),
                 InlineKeyboardButton(
-                    '10 Mɪɴs' if settings["auto_delete"] else '✘ Oғғ',
+                    '10 Mɪns' if settings["auto_delete"] else '✘ Oғғ',
                     callback_data=f'setgs#auto_delete#{settings["auto_delete"]}#{grp_id}',
                 ),
             ],
@@ -725,10 +728,130 @@ async def stop_button(bot, message):
     await msg.edit("**✅️ 𝙱𝙾𝚃 𝙸𝚂 𝚁𝙴𝚂𝚃𝙰𝚁𝚃𝙴𝙳**")
     os.execl(sys.executable, sys.executable, *sys.argv)
 
+# ==========================================
+# MINIMAL INTEGRATED PREMIUM SYSTEM
+# ==========================================
 @Client.on_message(filters.command("premium") & filters.private)
-async def premium_entry(client, message):
-    await premium_command(client, message)
+async def minimal_premium_command(client, message):
+    plan_name = "30 Days"
+    price = "39"
+    
+    upi_link = (
+        f"upi://pay?"
+        f"pa={quote(UPI_ID)}"
+        f"&pn={quote('HeroFlix')}"
+        f"&am={price}"
+        f"&cu=INR"
+        f"&tn={quote(f'HeroFlix Premium | {plan_name} | ₹{price}')}"
+    )
+    
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("💳 Pay Now", url=upi_link)],
+        [InlineKeyboardButton("✅ I Have Paid (Send Screenshot)", callback_data="minimal_send_proof")]
+    ])
+    
+    text = (
+        f"🛒 **Plan:** {plan_name}\n"
+        f"💰 **Price:** ₹{price}\n\n"
+        f"📱 **UPI ID:** `{UPI_ID}`\n\n"
+        f"Tap **Pay Now** to complete your payment, then click **I Have Paid** below to send your screenshot."
+    )
+    await message.reply_text(text, reply_markup=kb)
 
-@Client.on_message(filters.command("mypremium") & filters.private)
-async def mypremium_entry(client, message):
-    await my_premium_command(client, message)
+@Client.on_callback_query(filters.regex("^minimal_send_proof$"))
+async def minimal_send_proof_cb(client, callback: CallbackQuery):
+    user_id = callback.from_user.id
+    MINIMAL_PENDING_FLOW[user_id] = {
+        "plan": "30 Days",
+        "price": "39"
+    }
+    await callback.answer()
+    await callback.message.edit_text(
+        "📸 **Please send your payment screenshot now in this chat.**\n\n"
+        "Your request will be forwarded to the admin immediately after you upload the image."
+    )
+
+@Client.on_message(filters.private & filters.photo & ~filters.command(["start", "premium"]))
+async def minimal_screenshot_handler(client, message):
+    user_id = message.from_user.id
+    if user_id not in MINIMAL_PENDING_FLOW:
+        return
+    
+    flow = MINIMAL_PENDING_FLOW.pop(user_id)
+    plan = flow["plan"]
+    price = flow["price"]
+    
+    await message.reply_text("✅ Payment proof submitted! Please wait for admin verification.")
+    
+    user_name = message.from_user.first_name or "Unknown"
+    username = f"@{message.from_user.username}" if message.from_user.username else "None"
+    
+    admin_kb = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ Approve", callback_data=f"min_app_{user_id}"),
+            InlineKeyboardButton("❌ Reject", callback_data=f"min_rej_{user_id}")
+        ]
+    ])
+    
+    admin_text = (
+        f"🔔 **New Payment Verification**\n\n"
+        f"👤 Name: {user_name}\n"
+        f"🆔 User ID: `{user_id}`\n"
+        f"📦 Plan: {plan}\n"
+        f"💰 Amount: ₹{price}"
+    )
+    
+    for admin_id in ADMINS:
+        try:
+            await client.send_photo(admin_id, message.photo.file_id, caption=admin_text, reply_markup=admin_kb)
+        except Exception as e:
+            logger.error(f"Failed to send minimal payment proof to admin {admin_id}: {e}")
+
+@Client.on_callback_query(filters.regex("^min_(app|rej)_"))
+async def minimal_admin_action_cb(client, callback: CallbackQuery):
+    if str(callback.from_user.id) not in map(str, ADMINS):
+        return await callback.answer("Unauthorized.", show_alert=True)
+    
+    _, action, target_user_str = callback.data.split("_")
+    target_user_id = int(target_user_str)
+    
+    if action == "rej":
+        await callback.answer("Rejected.")
+        try:
+            await callback.message.edit_caption(f"{callback.message.caption or ''}\n\n❌ **Status:** REJECTED")
+            await callback.message.edit_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+        try:
+            await client.send_message(target_user_id, "Payment could not be verified. Please contact the admin.")
+        except Exception:
+            pass
+        return
+    
+    if action == "app":
+        await callback.answer("Approved!")
+        try:
+            await callback.message.edit_caption(f"{callback.message.caption or ''}\n\n✅ **Status:** APPROVED")
+            await callback.message.edit_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+        
+        invite_link = None
+        if PREMIUM_GROUP_ID:
+            try:
+                link_obj = await client.create_chat_invite_link(
+                    chat_id=PREMIUM_GROUP_ID,
+                    member_limit=1,
+                    expire_date=datetime.utcnow() + timedelta(hours=24)
+                )
+                invite_link = link_obj.invite_link
+            except Exception as e:
+                logger.error(f"Failed to create invite link for {target_user_id}: {e}")
+        
+        try:
+            msg = "Payment approved."
+            if invite_link:
+                msg += f"\n\n👉 Join Premium Group: {invite_link}"
+            await client.send_message(target_user_id, msg)
+        except Exception as e:
+            logger.error(f"Failed to notify user {target_user_id}: {e}")
