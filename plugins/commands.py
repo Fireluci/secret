@@ -39,7 +39,6 @@ def get_premium_collection():
     except Exception as e:
         logger.error(f"Error fetching premium collection: {e}")
     
-    # Fallback global check
     if 'users_col' in globals() and hasattr(users_col, 'database'):
         return users_col.database.premium_users
     return None
@@ -1101,7 +1100,7 @@ async def select_plan_cb(client, callback: CallbackQuery):
 
     kb = InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("✅ Confirm", callback_data=f"confact_{target_user_id}"),
+            InlineKeyboardButton("✅ Confirm & Generate Link", callback_data=f"confact_{target_user_id}"),
             InlineKeyboardButton("◀ Back", callback_data=f"min_app_{target_user_id}")
         ],
         [
@@ -1137,7 +1136,7 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
     if 'db' in globals() and hasattr(db, 'premium_pending'):
         flow = await db.premium_pending.find_one({"user_id": target_user_id})
     elif hasattr(client, 'fallback_pending') and target_user_id in client.fallback_pending:
-        flow = client.fallback_pending.pop(target_user_id)
+        flow = client.fallback_pending.get(target_user_id) # keep until successful link gen
         
     if not flow:
         return await callback.answer("Activation session expired or already processed.", show_alert=True)
@@ -1149,43 +1148,17 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
     expiry_date = flow.get("expiry_date", datetime.utcnow() + timedelta(minutes=1 if days == 30 else days))
     username = flow.get("username", str(target_user_id))
     
-    await callback.answer("Processing activation...")
+    await callback.answer("Generating single-use invite link...")
     now = datetime.utcnow()
     
-    activation_data = {
-        "user_id": target_user_id,
-        "username": username,
-        "plan": plan,
-        "plan_days": days,
-        "price": price,
-        "purchased_at": now,
-        "start_date": start_date,
-        "expires_at": expiry_date,
-        "expiry_date": expiry_date,
-        "active": True,
-        "status": "active",
-        "approved_by": callback.from_user.id,
-        "approved_at": now,
-        "reminders": {"1_day": False}
-    }
-    
-    # Save using the guaranteed unified collection helper
-    col = get_premium_collection()
-    if col is not None:
-        await col.update_one({"user_id": target_user_id}, {"$set": activation_data}, upsert=True)
-        if hasattr(db, 'premium_pending'):
-            await db.premium_pending.delete_one({"user_id": target_user_id})
-        
     invite_link = None
     if PREMIUM_GROUP_ID:
         try:
             chat_id_int = int(PREMIUM_GROUP_ID)
-            
             try:
                 peer = await client.resolve_peer(chat_id_int)
             except Exception:
-                async for _ in client.get_dialogs(limit=50):
-                    break
+                await client.get_chat(chat_id_int)
                 peer = await client.resolve_peer(chat_id_int)
 
             channel = InputChannel(channel_id=peer.channel_id, access_hash=peer.access_hash)
@@ -1201,40 +1174,146 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
             )
             invite_link = exported.link
         except Exception as e:
-            logger.error(f"Foolproof invite generation failed: {e}")
+            logger.error(f"Single-use link generation failed: {e}")
             try:
                 chat_obj = await client.get_chat(int(PREMIUM_GROUP_ID))
                 invite_link = chat_obj.invite_link
             except Exception as fallback_err:
-                logger.error(f"Secondary fallback link generation also failed: {fallback_err}")
-            
-    user_msg = (
+                logger.error(f"Permanent fallback link failed: {fallback_err}")
+
+    # IF LINK GENERATION FAILED: Show Retry Button to Admin, DO NOT activate yet!
+    if not invite_link:
+        retry_kb = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("🔄 Try Again", callback_data=f"confact_{target_user_id}"),
+                InlineKeyboardButton("❌ Cancel", callback_data=f"min_rej_{target_user_id}")
+            ]
+        ])
+        fail_text = (
+            f"❌ **Link Generation Failed!**\n\n"
+            f"Could not generate an invite link for the premium group (Peer/Admin error).\n"
+            f"Make sure the bot is an admin in the group with invite permissions.\n\n"
+            f"Tap **Try Again** to retry generating the link."
+        )
+        try:
+            await callback.message.edit_caption(fail_text, reply_markup=retry_kb)
+        except Exception:
+            await callback.message.edit_text(fail_text, reply_markup=retry_kb)
+        return
+
+    # SUCCESS: Now record data and send activation to user
+    if hasattr(client, 'fallback_pending') and target_user_id in client.fallback_pending:
+        client.fallback_pending.pop(target_user_id, None)
+
+    activation_data = {
+        "user_id": target_user_id,
+        "username": username,
+        "plan": plan,
+        "plan_days": days,
+        "price": price,
+        "purchased_at": now,
+        "start_date": start_date,
+        "expires_at": expiry_date,
+        "expiry_date": expiry_date,
+        "active": True,
+        "status": "active",
+        "approved_by": callback.from_user.id,
+        "approved_at": now,
+        "welcomed": False,
+        "reminders": {"1_day": False}
+    }
+    
+    col = get_premium_collection()
+    if col is not None:
+        await col.update_one({"user_id": target_user_id}, {"$set": activation_data}, upsert=True)
+        if hasattr(db, 'premium_pending'):
+            await db.premium_pending.delete_one({"user_id": target_user_id})
+        
+    user_msg_sent = None
+    user_msg_text = (
         f"🎉 **HeroFlix Premium Activated**\n\n"
         f"📦 **Plan**: {plan}\n"
         f"📅 **Start**: {start_date.strftime('%d %b %Y, %H:%M:%S')}\n"
         f"⌛ **Expires**: {expiry_date.strftime('%d %b %Y, %H:%M:%S')}\n\n"
+        f"👇 **Join Premium Group** (Single-Use Link):\n{invite_link}\n\n"
+        f"<i>Once you join the group, this message will update and your welcome notice will appear in the group!</i>"
     )
-    if invite_link:
-        user_msg += f"👇 **Join Premium Group**\n{invite_link}\n\n"
-    user_msg += "Enjoy your Premium Membership."
     
     try:
-        await client.send_message(target_user_id, user_msg, disable_web_page_preview=True)
+        user_msg_sent = await client.send_message(target_user_id, user_msg_text, disable_web_page_preview=False)
+        if col is not None and user_msg_sent:
+            await col.update_one({"user_id": target_user_id}, {"$set": {"dm_msg_id": user_msg_sent.id}})
     except Exception as e:
         logger.error(f"Failed to notify user {target_user_id}: {e}")
         
     success_admin_text = (
-        f"✅ **Premium Activated**\n\n"
+        f"✅ **Premium Activated Successfully**\n\n"
         f"• **User**: {username} (`{target_user_id}`)\n"
         f"• **Plan**: {plan} (₹{price})\n"
         f"• **Expires**: {expiry_date.strftime('%d %b %Y, %H:%M:%S')}\n"
-        f"• **Invite Link Generated**: {'Yes' if invite_link else 'No'}"
+        f"• **Single-Use Link Generated**: Yes"
     )
     
     try:
         await callback.message.edit_caption(success_admin_text, reply_markup=None, parse_mode=enums.ParseMode.MARKDOWN)
     except Exception:
         await callback.message.edit_text(success_admin_text, reply_markup=None, parse_mode=enums.ParseMode.MARKDOWN)
+
+# ==========================================
+# AUTO WELCOME LISTENER (Universal Pyrogram Handler Function)
+# ==========================================
+async def welcome_premium_user_handler(client, member_update: ChatMemberUpdated):
+    if not PREMIUM_GROUP_ID or member_update.chat.id != int(PREMIUM_GROUP_ID):
+        return
+        
+    old_status = member_update.old_chat_member.status if member_update.old_chat_member else enums.ChatMemberStatus.LEFT
+    new_status = member_update.new_chat_member.status if member_update.new_chat_member else enums.ChatMemberStatus.LEFT
+    
+    joined_statuses = [enums.ChatMemberStatus.MEMBER, enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER]
+    left_statuses = [enums.ChatMemberStatus.LEFT, enums.ChatMemberStatus.BANNED]
+    
+    if old_status in left_statuses and new_status in joined_statuses:
+        user = member_update.new_chat_member.user
+        if not user or user.is_bot:
+            return
+            
+        user_id = user.id
+        col = get_premium_collection()
+        if col is None:
+            return
+            
+        user_doc = await col.find_one({"user_id": user_id, "active": True})
+        if not user_doc or user_doc.get("welcomed", False):
+            return
+            
+        plan = user_doc.get("plan", "Active Plan")
+        expires_at = user_doc.get("expires_at") or user_doc.get("expiry_date")
+        expiry_str = expires_at.strftime('%d %b %Y, %H:%M:%S') if isinstance(expires_at, datetime) else "N/A"
+        
+        group_welcome_text = (
+            f"✨ **Welcome to HeroFlix Premium, {user.mention}!** ✨\n\n"
+            f"📦 **Plan**: {plan}\n"
+            f"⌛ **Valid Until**: {expiry_str}\n\n"
+            f"Enjoy your ad-free content and exclusive access!"
+        )
+        try:
+            await client.send_message(member_update.chat.id, group_welcome_text)
+        except Exception as e:
+            logger.error(f"Failed to send welcome message in group for {user_id}: {e}")
+            
+        await col.update_one({"user_id": user_id}, {"$set": {"welcomed": True}})
+        
+        dm_msg_id = user_doc.get("dm_msg_id")
+        if dm_msg_id:
+            try:
+                await client.delete_messages(chat_id=user_id, message_ids=dm_msg_id)
+                await client.send_message(
+                    user_id,
+                    f"✅ **You have successfully joined the Premium Group!**\n\n"
+                    f"Your welcome notice has been posted in the group. Enjoy your membership!"
+                )
+            except Exception as e:
+                logger.error(f"Failed to delete DM join link message for {user_id}: {e}")
 
 @Client.on_callback_query(filters.regex("^min_rej_"))
 async def minimal_admin_reject_cb(client, callback: CallbackQuery):
