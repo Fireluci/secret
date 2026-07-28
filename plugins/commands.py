@@ -32,7 +32,6 @@ async def premium_expiry_reminder_loop(client: Client):
         try:
             now = datetime.utcnow()
             
-            # Target collections
             col = None
             if 'db' in globals() and hasattr(db, 'premium_users'):
                 col = db.premium_users
@@ -51,16 +50,13 @@ async def premium_expiry_reminder_loop(client: Client):
                     
                     # 1. On Expiry Check
                     if now >= expires_at:
-                        # Automatically remove user from Premium group if configured
                         if PREMIUM_GROUP_ID:
                             try:
                                 await client.ban_chat_member(chat_id=PREMIUM_GROUP_ID, user_id=user_id)
-                                # Immediately unban so they can rejoin via a new invite link later if they renew
                                 await client.unban_chat_member(chat_id=PREMIUM_GROUP_ID, user_id=user_id)
                             except Exception as e:
                                 logger.error(f"Failed to kick user {user_id} from premium group: {e}")
                                 
-                        # Send expiry DM with Renew button
                         expiry_kb = InlineKeyboardMarkup([
                             [InlineKeyboardButton("🔄 Renew Premium", callback_data="buy_premium_start")]
                         ])
@@ -74,7 +70,6 @@ async def premium_expiry_reminder_loop(client: Client):
                         except Exception as e:
                             logger.error(f"Failed to send expiry DM to user {user_id}: {e}")
                             
-                        # Delete the premium record from database
                         await col.delete_one({"user_id": user_id})
                         logger.info(f"🔄 Expired and removed premium record for user {user_id}")
                         
@@ -90,7 +85,6 @@ async def premium_expiry_reminder_loop(client: Client):
                         )
                         try:
                             await client.send_message(user_id, reminder_text, reply_markup=reminder_kb)
-                            # Update reminder flag (simplified to only 1_day)
                             await col.update_one(
                                 {"user_id": user_id},
                                 {"$set": {"reminders.1_day": True}}
@@ -104,7 +98,7 @@ async def premium_expiry_reminder_loop(client: Client):
             
         await asyncio.sleep(3600)  # Check every hour
 
- 
+
 @Client.on_message(filters.command("start") & filters.incoming)
 async def start(client, message):
     if message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
@@ -541,8 +535,6 @@ async def delete(bot, message):
         if result.deleted_count:
             await msg.edit('🛃 Deleted File!')
         else:
-            # files indexed before https://github.com/EvamariaTG/EvaMaria/commit/f3d2a1bcb155faf44178e5d7a685a1b533e714bf#diff-86b613edf1748372103e94cacff3b578b36b698ef9c16817bb98fe9ef22fb669R39 
-            # have original file name.
             result = await Media.collection.delete_many({
                 'file_name': media.file_name,
                 'file_size': media.file_size,
@@ -811,6 +803,102 @@ async def stop_button(bot, message):
     os.execl(sys.executable, sys.executable, *sys.argv)
 
 # ==========================================
+# USER /MYPLAN COMMAND
+# ==========================================
+@Client.on_message(filters.command("myplan") & filters.private)
+async def check_my_plan(client, message):
+    user_id = message.from_user.id
+    now = datetime.utcnow()
+    
+    user_doc = None
+    if 'users_col' in globals():
+        user_doc = await users_col.find_one({"user_id": user_id, "active": True})
+    elif 'db' in globals() and hasattr(db, 'premium_users'):
+        user_doc = await db.premium_users.find_one({"user_id": user_id, "active": True})
+        
+    if not user_doc:
+        await message.reply_text(
+            "❌ **You do not have an active Premium subscription.**\n\n"
+            "Use /premium to check plans and upgrade!",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🌟 Buy Premium", callback_data="buy_premium_start")]
+            ])
+        )
+        return
+
+    plan = user_doc.get("plan", "N/A")
+    expires_at = user_doc.get("expires_at") or user_doc.get("expiry_date")
+    
+    if expires_at and isinstance(expires_at, datetime):
+        if expires_at > now:
+            remaining = expires_at - now
+            days_left = remaining.days
+            hours_left = remaining.seconds // 3600
+            expiry_str = expires_at.strftime('%d %b %Y, %H:%M UTC')
+            time_left_str = f"{days_left} days, {hours_left} hours"
+        else:
+            expiry_str = "Expired"
+            time_left_str = "0 days"
+    else:
+        expiry_str = "Unknown"
+        time_left_str = "N/A"
+
+    plan_text = (
+        f"✨ **Your Premium Status** ✨\n\n"
+        f"📦 **Plan**: {plan}\n"
+        f"🟢 **Status**: Active\n"
+        f"⏳ **Expires On**: {expiry_str}\n"
+        f"⏱️ **Remaining Time**: {time_left_str}\n\n"
+        f"Enjoy your ad-free experience!"
+    )
+    
+    await message.reply_text(plan_text, parse_mode=enums.ParseMode.MARKDOWN)
+
+# ==========================================
+# ADMIN REMOVE PREMIUM COMMAND
+# ==========================================
+@Client.on_message(filters.command("removepremium") & filters.user(ADMINS))
+async def remove_premium_command(client, message):
+    if len(message.command) != 2:
+        return await message.reply_text("<b>Usage:</b> /removepremium <code>user_id</code>")
+    
+    try:
+        target_user_id = int(message.command[1])
+    except ValueError:
+        return await message.reply_text("<b>Invalid User ID format.</b>")
+    
+    col = None
+    if 'db' in globals() and hasattr(db, 'premium_users'):
+        col = db.premium_users
+    elif 'users_col' in globals():
+        col = users_col
+        
+    if col is None:
+        return await message.reply_text("<b>Database collection not found.</b>")
+        
+    result = await col.delete_one({"user_id": target_user_id})
+    
+    if result.deleted_count > 0:
+        if PREMIUM_GROUP_ID:
+            try:
+                await client.ban_chat_member(chat_id=PREMIUM_GROUP_ID, user_id=target_user_id)
+                await client.unban_chat_member(chat_id=PREMIUM_GROUP_ID, user_id=target_user_id)
+            except Exception as e:
+                logger.error(f"Failed to kick user {target_user_id} from premium group during manual removal: {e}")
+                
+        try:
+            await client.send_message(
+                target_user_id,
+                "❌ **HeroFlix Premium Revoked**\n\nYour Premium Membership has been manually removed by an administrator."
+            )
+        except Exception:
+            pass
+            
+        await message.reply_text(f"<b>Successfully removed premium status for user <code>{target_user_id}</code> and kicked them from the group.</b>")
+    else:
+        await message.reply_text(f"<b>No active premium record found for user <code>{target_user_id}</code>.</b>")
+
+# ==========================================
 # MINIMAL INTEGRATED PREMIUM SYSTEM & WORKFLOW
 # ==========================================
 @Client.on_message(filters.command("premium") & filters.private)
@@ -820,7 +908,7 @@ async def minimal_premium_command(client, update):
     if isinstance(update, CallbackQuery):
         await update.answer()
 
-    plan_name = "30 Days"
+    plan_name = "1 Month"
     price = "39"
     
     upi_link = (
@@ -853,7 +941,7 @@ async def minimal_premium_command(client, update):
 async def minimal_send_proof_cb(client, callback: CallbackQuery):
     user_id = callback.from_user.id
     MINIMAL_PENDING_FLOW[user_id] = {
-        "plan": "30 Days",
+        "plan": "1 Month",
         "price": "39"
     }
     await callback.answer()
@@ -909,12 +997,12 @@ async def minimal_admin_action_cb(client, callback: CallbackQuery):
     
     kb = InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("🟣 30 Days (₹39)", callback_data=f"selplan_{target_user_id}_30_39"),
-            InlineKeyboardButton("🟣 90 Days (₹99)", callback_data=f"selplan_{target_user_id}_90_99")
+            InlineKeyboardButton("1 Month (₹39)", callback_data=f"selplan_{target_user_id}_30_39"),
+            InlineKeyboardButton("2 Months (₹78)", callback_data=f"selplan_{target_user_id}_60_78")
         ],
         [
-            InlineKeyboardButton("🟣 180 Days (₹179)", callback_data=f"selplan_{target_user_id}_180_179"),
-            InlineKeyboardButton("🟣 365 Days (₹299)", callback_data=f"selplan_{target_user_id}_365_299")
+            InlineKeyboardButton("6 Months (₹234)", callback_data=f"selplan_{target_user_id}_180_234"),
+            InlineKeyboardButton("1 Year (₹468)", callback_data=f"selplan_{target_user_id}_365_468")
         ],
         [
             InlineKeyboardButton("❌ Cancel", callback_data=f"min_rej_{target_user_id}")
@@ -945,6 +1033,17 @@ async def select_plan_cb(client, callback: CallbackQuery):
     days = int(days_str)
     price = price_str
     
+    if days == 30:
+        plan_label = "1 Month"
+    elif days == 60:
+        plan_label = "2 Months"
+    elif days == 180:
+        plan_label = "6 Months"
+    elif days == 365:
+        plan_label = "1 Year (12 Months)"
+    else:
+        plan_label = f"{days} Days"
+
     now = datetime.utcnow()
     
     existing_user = None
@@ -980,7 +1079,7 @@ async def select_plan_cb(client, callback: CallbackQuery):
     pending_state = {
         "user_id": target_user_id,
         "username": username,
-        "plan": f"{days} Days",
+        "plan": plan_label,
         "price": price,
         "days": days,
         "start_date": start_date,
@@ -1010,7 +1109,7 @@ async def select_plan_cb(client, callback: CallbackQuery):
         f"💎 **Premium Activation Preview**\n\n"
         f"👤 **User**: {username}\n"
         f"🆔 **User ID**: `{target_user_id}`\n"
-        f"📦 **New Plan**: {days} Days\n"
+        f"📦 **New Plan**: {plan_label}\n"
         f"💰 **Amount**: ₹{price}\n"
         f"⚙️ **Mode**: {mode_text}\n"
     )
@@ -1042,7 +1141,6 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
     _, target_user_str = callback.data.split("_")
     target_user_id = int(target_user_str)
     
-    # Retrieve pending state securely from the separate 'premium_pending' collection
     flow = None
     if 'db' in globals() and hasattr(db, 'premium_pending'):
         flow = await db.premium_pending.find_one({"user_id": target_user_id})
@@ -1053,7 +1151,7 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
     if not flow:
         return await callback.answer("Activation session expired or already processed.", show_alert=True)
         
-    plan = flow.get("plan", "30 Days")
+    plan = flow.get("plan", "1 Month")
     price = flow.get("price", "39")
     days = flow.get("days", 30)
     start_date = flow.get("start_date", datetime.utcnow())
@@ -1084,7 +1182,6 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
         "reminders": reminders_state
     }
     
-    # Safe Atomic Write: Update live collection and clean up pending collection immediately
     if 'users_col' in globals():
         await users_col.update_one({"user_id": target_user_id}, {"$set": activation_data}, upsert=True)
         db_ref = users_col.database
