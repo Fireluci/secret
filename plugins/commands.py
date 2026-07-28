@@ -942,6 +942,76 @@ async def remove_premium_command(client, message):
         await message.reply_text(f"<b>No active premium record found for user <code>{target_user_id}</code>.</b>")
 
 # ==========================================
+# ADMIN INVITE LINK GENERATOR COMMAND
+# ==========================================
+@Client.on_message(filters.command("invite") & filters.user(ADMINS))
+async def generate_invite_command(client, message):
+    if len(message.command) < 2:
+        return await message.reply_text(
+            "<b>Usage:</b> /invite <code>chat_id</code> [expire_hours] [usage_limit]\n\n"
+            "<b>Example:</b> /invite <code>-1001234567890</code> 24 1\n"
+            "<i>expire_hours</i> defaults to 24 (0 = never expires).\n"
+            "<i>usage_limit</i> defaults to 1 (0 = unlimited)."
+        )
+
+    try:
+        target_chat_id = int(message.command[1])
+    except ValueError:
+        return await message.reply_text("<b>Invalid chat ID format.</b>")
+
+    try:
+        expire_hours = int(message.command[2]) if len(message.command) > 2 else 24
+    except ValueError:
+        return await message.reply_text("<b>Invalid expire_hours value.</b>")
+
+    try:
+        usage_limit = int(message.command[3]) if len(message.command) > 3 else 1
+    except ValueError:
+        return await message.reply_text("<b>Invalid usage_limit value.</b>")
+
+    status_msg = await message.reply_text("<b>Generating invite link...</b>")
+
+    try:
+        try:
+            await client.resolve_peer(target_chat_id)
+        except Exception:
+            await client.get_chat(target_chat_id)
+            await client.resolve_peer(target_chat_id)
+
+        chat_obj = await client.get_chat(target_chat_id)
+
+        link = await client.create_chat_invite_link(
+            chat_id=target_chat_id,
+            expire_date=(datetime.utcnow() + timedelta(hours=expire_hours)) if expire_hours > 0 else None,
+            member_limit=usage_limit if usage_limit > 0 else None
+        )
+
+        await status_msg.edit_text(
+            f"✅ <b>Invite link generated!</b>\n\n"
+            f"<b>Chat:</b> {chat_obj.title or target_chat_id} (<code>{target_chat_id}</code>)\n"
+            f"<b>Expires:</b> {'Never' if expire_hours == 0 else f'{expire_hours}h'}\n"
+            f"<b>Usage limit:</b> {'Unlimited' if usage_limit == 0 else usage_limit}\n\n"
+            f"🔗 {link.invite_link}"
+        )
+    except ChatAdminRequired:
+        await status_msg.edit_text(
+            "❌ <b>Failed to generate invite link.</b>\n\n"
+            "The bot is not an admin in that chat, or lacks the "
+            "<b>Invite Users via Link</b> permission."
+        )
+    except Exception as e:
+        logger.error(f"/invite command failed for chat {target_chat_id}: {e}")
+        try:
+            chat_obj = await client.get_chat(target_chat_id)
+            if chat_obj.invite_link:
+                return await status_msg.edit_text(
+                    f"✅ <b>Permanent invite link (fallback):</b>\n\n{chat_obj.invite_link}"
+                )
+        except Exception:
+            pass
+        await status_msg.edit_text(f"❌ <b>Failed to generate invite link:</b>\n<code>{e}</code>")
+
+# ==========================================
 # MULTI-PLAN /PREMIUM COMMAND & WORKFLOW
 # ==========================================
 @Client.on_message(filters.command("premium") & filters.private)
