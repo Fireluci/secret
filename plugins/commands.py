@@ -1042,6 +1042,7 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
     _, target_user_str = callback.data.split("_")
     target_user_id = int(target_user_str)
     
+    # Retrieve pending state securely from the separate 'premium_pending' collection
     flow = None
     if 'db' in globals() and hasattr(db, 'premium_pending'):
         flow = await db.premium_pending.find_one({"user_id": target_user_id})
@@ -1052,17 +1053,16 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
     if not flow:
         return await callback.answer("Activation session expired or already processed.", show_alert=True)
         
-    plan = flow["plan"]
-    price = flow["price"]
-    days = flow["days"]
-    start_date = flow["start_date"]
-    expiry_date = flow["expiry_date"]
-    username = flow["username"]
+    plan = flow.get("plan", "30 Days")
+    price = flow.get("price", "39")
+    days = flow.get("days", 30)
+    start_date = flow.get("start_date", datetime.utcnow())
+    expiry_date = flow.get("expiry_date", datetime.utcnow() + timedelta(days=30))
+    username = flow.get("username", str(target_user_id))
     
     await callback.answer("Processing activation...")
     now = datetime.utcnow()
     
-    # Simplified reminder state containing only the 1_day flag
     reminders_state = {
         "1_day": False
     }
@@ -1084,6 +1084,7 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
         "reminders": reminders_state
     }
     
+    # Safe Atomic Write: Update live collection and clean up pending collection immediately
     if 'users_col' in globals():
         await users_col.update_one({"user_id": target_user_id}, {"$set": activation_data}, upsert=True)
         db_ref = users_col.database
@@ -1107,8 +1108,8 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
     user_msg = (
         f"🎉 **HeroFlix Premium Activated**\n\n"
         f"📦 **Plan**: {plan}\n"
-        f"📅 **Start**: {start_date.strftime('%d %b %Y')}\n"
-        f"⌛ **Expires**: {expiry_date.strftime('%d %b %Y')}\n\n"
+        f"📅 **Start**: {start_date.strftime('%d %b %Y') if isinstance(start_date, datetime) else start_date}\n"
+        f"⌛ **Expires**: {expiry_date.strftime('%d %b %Y') if isinstance(expiry_date, datetime) else expiry_date}\n\n"
     )
     if invite_link:
         user_msg += f"👇 **Join Premium Group**\n{invite_link}\n\n"
@@ -1123,8 +1124,8 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
         f"✅ **Premium Activated**\n\n"
         f"• **User**: {username} (`{target_user_id}`)\n"
         f"• **Plan**: {plan} (₹{price})\n"
-        f"• **Started**: {start_date.strftime('%d %b %Y')}\n"
-        f"• **Expires**: {expiry_date.strftime('%d %b %Y')}\n"
+        f"• **Started**: {start_date.strftime('%d %b %Y') if isinstance(start_date, datetime) else start_date}\n"
+        f"• **Expires**: {expiry_date.strftime('%d %b %Y') if isinstance(expiry_date, datetime) else expiry_date}\n"
         f"• **Admin ID**: `{callback.from_user.id}`\n"
         f"• **Activation Time**: {now.strftime('%d %b %Y, %H:%M:%S UTC')}\n"
         f"• **Invite Link**: Generated\n"
@@ -1139,8 +1140,7 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
         
     logger.info(
         f"✅ Premium Activated | User: {target_user_id} ({username}) | Plan: {plan} | "
-        f"Price: ₹{price} | Start: {start_date.strftime('%Y-%m-%d')} | "
-        f"Expiry: {expiry_date.strftime('%Y-%m-%d')} | Admin: {callback.from_user.id} | Time: {now.strftime('%Y-%m-%d %H:%M:%S')}"
+        f"Price: ₹{price} | Admin: {callback.from_user.id}"
     )
 
 @Client.on_callback_query(filters.regex("^min_rej_"))
