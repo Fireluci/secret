@@ -31,6 +31,11 @@ async def safe_kick_user(client: Client, chat_id, user_id):
     try:
         chat_id_int = int(chat_id)
         try:
+            await client.get_chat(chat_id_int)
+        except Exception:
+            pass
+
+        try:
             await client.promote_chat_member(
                 chat_id=chat_id_int,
                 user_id=user_id,
@@ -1192,8 +1197,11 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
     invite_link = None
     if PREMIUM_GROUP_ID:
         try:
+            chat_id_int = int(PREMIUM_GROUP_ID)
+            await client.get_chat(chat_id_int)
+            
             link_obj = await client.create_chat_invite_link(
-                chat_id=int(PREMIUM_GROUP_ID),
+                chat_id=chat_id_int,
                 member_limit=1,
                 expire_date=now + timedelta(hours=24)
             )
