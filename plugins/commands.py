@@ -25,6 +25,26 @@ BATCH_FILES = {}
 MINIMAL_PENDING_FLOW = {}
 
 # ==========================================
+# UNIFIED DATABASE COLLECTION HELPER
+# ==========================================
+def get_premium_collection():
+    """Safely retrieves the premium users collection regardless of DB structure initialization."""
+    try:
+        if hasattr(db, 'premium_users') and db.premium_users is not None:
+            return db.premium_users
+        if hasattr(db, 'db') and hasattr(db.db, 'premium_users'):
+            return db.db.premium_users
+        if hasattr(db, 'get_collection'):
+            return db.get_collection('premium_users')
+    except Exception as e:
+        logger.error(f"Error fetching premium collection: {e}")
+    
+    # Fallback global check
+    if 'users_col' in globals() and hasattr(users_col, 'database'):
+        return users_col.database.premium_users
+    return None
+
+# ==========================================
 # ROBUST EJECTION HELPER (Handles Ex-Admins & Non-Participants)
 # ==========================================
 async def safe_kick_user(client: Client, chat_id, user_id):
@@ -73,17 +93,7 @@ async def premium_expiry_reminder_loop(client: Client):
     while True:
         try:
             now = datetime.utcnow()
-            
-            col = None
-            if 'db' in globals() and hasattr(db, 'premium_users'):
-                col = db.premium_users
-            elif 'users_col' in globals():
-                col = users_col
-            elif 'db' in globals() and hasattr(db, 'db'):
-                try:
-                    col = db.db.premium_users
-                except Exception:
-                    pass
+            col = get_premium_collection()
                 
             if col is not None:
                 async for user_doc in col.find({"active": True}):
@@ -734,7 +744,7 @@ async def settings(client, message):
             ],
             [
                 InlineKeyboardButton(
-                    'Mᴀx Bᴜᴛᴛᴏɴs',
+                    'Mᴀx Bᴜᴛᴛᴏns',
                     callback_data=f'setgs#max_btn#{settings["max_btn"]}#{grp_id}',
                 ),
                 InlineKeyboardButton(
@@ -842,29 +852,17 @@ async def stop_button(bot, message):
     os.execl(sys.executable, sys.executable, *sys.argv)
 
 # ==========================================
-# USER /MYPLAN COMMAND
+# USER /MYPLAN COMMAND (Unified Lookup)
 # ==========================================
 @Client.on_message(filters.command("myplan") & filters.private)
 async def check_my_plan(client, message):
     user_id = message.from_user.id
     now = datetime.utcnow()
     
+    col = get_premium_collection()
     user_doc = None
-    if 'users_col' in globals():
-        user_doc = await users_col.find_one({"user_id": user_id, "active": True})
-    elif 'db' in globals() and hasattr(db, 'premium_users'):
-        user_doc = await db.premium_users.find_one({"user_id": user_id, "active": True})
-    elif 'db' in globals() and hasattr(db, 'db'):
-        try:
-            user_doc = await db.db.premium_users.find_one({"user_id": user_id, "active": True})
-        except Exception:
-            pass
-            
-    if not user_doc and hasattr(db, 'get_collection'):
-        try:
-            user_doc = await db.get_collection('premium_users').find_one({"user_id": user_id, "active": True})
-        except Exception:
-            pass
+    if col is not None:
+        user_doc = await col.find_one({"user_id": user_id, "active": True})
         
     if not user_doc:
         await message.reply_text(
@@ -906,7 +904,7 @@ async def check_my_plan(client, message):
     await message.reply_text(plan_text, parse_mode=enums.ParseMode.MARKDOWN)
 
 # ==========================================
-# ADMIN REMOVE PREMIUM COMMAND
+# ADMIN REMOVE PREMIUM COMMAND (Unified Lookup)
 # ==========================================
 @Client.on_message(filters.command("removepremium") & filters.user(ADMINS))
 async def remove_premium_command(client, message):
@@ -918,23 +916,7 @@ async def remove_premium_command(client, message):
     except ValueError:
         return await message.reply_text("<b>Invalid User ID format.</b>")
     
-    col = None
-    if 'db' in globals() and hasattr(db, 'premium_users'):
-        col = db.premium_users
-    elif 'users_col' in globals():
-        col = users_col
-    elif 'db' in globals() and hasattr(db, 'db'):
-        try:
-            col = db.db.premium_users
-        except Exception:
-            pass
-
-    if col is None and hasattr(db, 'get_collection'):
-        try:
-            col = db.get_collection('premium_users')
-        except Exception:
-            pass
-
+    col = get_premium_collection()
     if col is None:
         return await message.reply_text("<b>Database collection not found.</b>")
         
@@ -1112,8 +1094,6 @@ async def select_plan_cb(client, callback: CallbackQuery):
     
     if 'db' in globals() and hasattr(db, 'premium_pending'):
         await db.premium_pending.update_one({"user_id": target_user_id}, {"$set": pending_state}, upsert=True)
-    elif 'users_col' in globals():
-        await users_col.database.premium_pending.update_one({"user_id": target_user_id}, {"$set": pending_state}, upsert=True)
     else:
         if not hasattr(client, 'fallback_pending'):
             client.fallback_pending = {}
@@ -1189,10 +1169,10 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
         "reminders": {"1_day": False}
     }
     
-    if 'users_col' in globals():
-        await users_col.update_one({"user_id": target_user_id}, {"$set": activation_data}, upsert=True)
-    elif 'db' in globals() and hasattr(db, 'premium_users'):
-        await db.premium_users.update_one({"user_id": target_user_id}, {"$set": activation_data}, upsert=True)
+    # Save using the guaranteed unified collection helper
+    col = get_premium_collection()
+    if col is not None:
+        await col.update_one({"user_id": target_user_id}, {"$set": activation_data}, upsert=True)
         if hasattr(db, 'premium_pending'):
             await db.premium_pending.delete_one({"user_id": target_user_id})
         
@@ -1200,7 +1180,14 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
     if PREMIUM_GROUP_ID:
         try:
             chat_id_int = int(PREMIUM_GROUP_ID)
-            peer = await client.resolve_peer(chat_id_int)
+            
+            try:
+                peer = await client.resolve_peer(chat_id_int)
+            except Exception:
+                async for _ in client.get_dialogs(limit=50):
+                    break
+                peer = await client.resolve_peer(chat_id_int)
+
             channel = InputChannel(channel_id=peer.channel_id, access_hash=peer.access_hash)
             
             exported = await client.invoke(
@@ -1214,12 +1201,12 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
             )
             invite_link = exported.link
         except Exception as e:
-            logger.error(f"Raw invite generation failed: {e}")
+            logger.error(f"Foolproof invite generation failed: {e}")
             try:
                 chat_obj = await client.get_chat(int(PREMIUM_GROUP_ID))
                 invite_link = chat_obj.invite_link
             except Exception as fallback_err:
-                logger.error(f"Fallback link generation also failed: {fallback_err}")
+                logger.error(f"Secondary fallback link generation also failed: {fallback_err}")
             
     user_msg = (
         f"🎉 **HeroFlix Premium Activated**\n\n"
