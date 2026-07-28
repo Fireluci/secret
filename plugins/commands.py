@@ -1265,13 +1265,13 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
     if PREMIUM_GROUP_ID:
         try:
             link_obj = await client.create_chat_invite_link(
-                chat_id=PREMIUM_GROUP_ID,
+                chat_id=int(PREMIUM_GROUP_ID),
                 member_limit=1,
                 expire_date=now + timedelta(hours=24)
             )
             invite_link = link_obj.invite_link
         except Exception as e:
-            logger.error(f"Failed to create invite link for {target_user_id}: {e}")
+            logger.error(f"Failed to create invite link for {target_user_id} in group {PREMIUM_GROUP_ID}: {e}")
             
     user_msg = (
         f"🎉 **HeroFlix Premium Activated**\n\n"
@@ -1281,6 +1281,9 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
     )
     if invite_link:
         user_msg += f"👇 **Join Premium Group**\n{invite_link}\n\n"
+    else:
+        user_msg += "⚠️ *Note: Invite link could not be generated. Please contact an admin.*\n\n"
+        
     user_msg += "Enjoy your Premium Membership."
     
     try:
@@ -1295,10 +1298,7 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
         f"• **Started**: {start_date.strftime('%d %b %Y, %H:%M:%S') if isinstance(start_date, datetime) else start_date}\n"
         f"• **Expires**: {expiry_date.strftime('%d %b %Y, %H:%M:%S') if isinstance(expiry_date, datetime) else expiry_date}\n"
         f"• **Admin ID**: `{callback.from_user.id}`\n"
-        f"• **Activation Time**: {now.strftime('%d %b %Y, %H:%M:%S UTC')}\n"
-        f"• **Invite Link**: Generated\n"
-        f"• **Database**: Updated\n"
-        f"• **Notification**: Sent"
+        f"• **Invite Link Generated**: {'Yes' if invite_link else 'No (Check PREMIUM_GROUP_ID or Admin Permissions)'}"
     )
     
     try:
@@ -1310,7 +1310,7 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
         f"✅ Premium Activated | User: {target_user_id} ({username}) | Plan: {plan} | "
         f"Price: ₹{price} | Admin: {callback.from_user.id}"
     )
-
+    
 @Client.on_callback_query(filters.regex("^min_rej_"))
 async def minimal_admin_reject_cb(client, callback: CallbackQuery):
     if str(callback.from_user.id) not in map(str, ADMINS):
