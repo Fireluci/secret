@@ -104,12 +104,7 @@ async def premium_expiry_reminder_loop(client: Client):
             
         await asyncio.sleep(3600)  # Check every hour
 
-# Automatically start the background task when any client starts up
-@Client.on_start()
-async def start_background_tasks(client, *args):
-    asyncio.create_task(premium_expiry_reminder_loop(client))
-
-
+ 
 @Client.on_message(filters.command("start") & filters.incoming)
 async def start(client, message):
     if message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
