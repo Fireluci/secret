@@ -12,7 +12,7 @@ from pyrogram.raw.functions.messages import ExportChatInvite
 from pyrogram.raw.types import InputChannel
 from database.ia_filterdb import Media, get_file_details, unpack_new_file_id, get_bad_files
 from database.users_chats_db import db
-from info import CHANNELS, ADMINS, AUTH_CHANNEL, LOG_CHANNEL, PICS, BATCH_FILE_CAPTION, CUSTOM_FILE_CAPTION, PROTECT_CONTENT, CHNL_LNK, FORCE, GRP_LNK, REQST_CHANNEL, SUPPORT_CHAT_ID, SUPPORT_CHAT, MAX_B_TN, SHORTLINK_API, SHORTLINK_URL, TUTORIAL, IS_TUTORIAL, PREMIUM_USER, UPI_ID, PREMIUM_GROUP_ID
+from info import CHANNELS, ADMINS, AUTH_CHANNEL, LOG_CHANNEL, PICS, BATCH_FILE_CAPTION, CUSTOM_FILE_CAPTION, PROTECT_CONTENT, CHNL_LNK, FORCE, GRP_LNK, REQST_CHANNEL, SUPPORT_CHAT_ID, SUPPORT_CHAT, MAX_B_TN, SHORTLINK_API, SHORTLINK_URL, TUTORIAL, IS_TUTORIAL, PREMIUM_USER, UPI_ID, PREMIUM_GROUP_ID, PREMIUM_LOG_CHANNEL
 from utils import get_settings, get_size, is_subscribed, save_group_settings, temp, get_shortlink, get_tutorial
 from database.connections_mdb import active_connection
 import re, sys
@@ -42,6 +42,18 @@ def get_premium_collection():
     if 'users_col' in globals() and hasattr(users_col, 'database'):
         return users_col.database.premium_users
     return None
+
+# ==========================================
+# PREMIUM LOGGING HELPER
+# ==========================================
+async def log_premium_action(client: Client, text: str):
+    """Helper to send important premium events to the dedicated premium log channel."""
+    if not PREMIUM_LOG_CHANNEL:
+        return
+    try:
+        await client.send_message(int(PREMIUM_LOG_CHANNEL), text, disable_web_page_preview=True)
+    except Exception as e:
+        logger.error(f"Failed to send log to PREMIUM_LOG_CHANNEL: {e}")
 
 # ==========================================
 # ROBUST EJECTION HELPER (Handles Ex-Admins & Non-Participants)
@@ -82,6 +94,13 @@ async def safe_kick_user(client: Client, chat_id, user_id):
             logger.info(f"User {user_id} was not in the premium group.")
         else:
             logger.error(f"Failed to kick user {user_id} from premium group: {e}")
+            await log_premium_action(
+                client, 
+                f"⚠️ **Warning: Failed to Kick User**\n\n"
+                f"• **User ID**: `{user_id}`\n"
+                f"• **Group ID**: `{chat_id}`\n"
+                f"• **Error**: `{e}`"
+            )
 
 # ==========================================
 # BACKGROUND LIFECYCLE & EXPIRY CHECKER LOOP
@@ -111,6 +130,16 @@ async def premium_expiry_reminder_loop(client: Client):
                         if PREMIUM_GROUP_ID:
                             await safe_kick_user(client, PREMIUM_GROUP_ID, user_id)
                                 
+                        ist_offset = timedelta(hours=5, minutes=30)
+                        ist_expiry = (expires_at + ist_offset).strftime('%d %b %Y, %H:%M:%S') if isinstance(expires_at, datetime) else "N/A"
+                        log_text = (
+                            f"❌ **HeroFlix Premium Expired & Ejected**\n\n"
+                            f"👤 **User ID**: `{user_id}`\n"
+                            f"⌛ **Expired At**: {ist_expiry} IST\n"
+                            f"🚪 **Action**: Removed from database and kicked from group."
+                        )
+                        await log_premium_action(client, log_text)
+
                         expiry_kb = InlineKeyboardMarkup([
                             [InlineKeyboardButton("🔄 Renew Premium", callback_data="buy_premium_start")]
                         ])
@@ -925,6 +954,14 @@ async def remove_premium_command(client, message):
         if PREMIUM_GROUP_ID:
             await safe_kick_user(client, PREMIUM_GROUP_ID, target_user_id)
                 
+        log_revocation_text = (
+            f"⚠️ **HeroFlix Premium Manually Revoked**\n\n"
+            f"👤 **Target User ID**: `{target_user_id}`\n"
+            f"🛡️ **Revoked By Admin ID**: `{message.from_user.id}`\n"
+            f"🚪 **Action**: Record deleted and user ejected from group."
+        )
+        await log_premium_action(client, log_revocation_text)
+
         try:
             revocation_kb = InlineKeyboardMarkup([
                 [InlineKeyboardButton("🔄 Renew Premium", callback_data="buy_premium_start")]
@@ -1214,15 +1251,59 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
     plan = flow.get("plan", "1 Month")
     price = flow.get("price", "39")
     days = flow.get("days", 30)
-    start_date = flow.get("start_date", datetime.utcnow())
-    expiry_date = flow.get("expiry_date", datetime.utcnow() + timedelta(minutes=1 if days == 30 else days))
     username = flow.get("username", str(target_user_id))
     
-    await callback.answer("Generating single-use invite link...")
+    await callback.answer("Processing renewal/activation...")
     now = datetime.utcnow()
     
-    invite_link = None
+    # ==========================================
+    # CUMULATIVE EXPIRY & START DATE CONTINUITY
+    # ==========================================
+    col = get_premium_collection()
+    existing_user_doc = None
+    if col is not None:
+        existing_user_doc = await col.find_one({"user_id": target_user_id, "active": True})
+        
+    is_test_minute = (days == 30 and "Test" in plan)
+    
+    if existing_user_doc:
+        old_expiry = existing_user_doc.get("expires_at") or existing_user_doc.get("expiry_date")
+        if old_expiry and isinstance(old_expiry, datetime) and old_expiry > now:
+            start_date = old_expiry
+            if is_test_minute:
+                expiry_date = start_date + timedelta(minutes=1)
+            else:
+                expiry_date = start_date + timedelta(days=days)
+        else:
+            start_date = now
+            if is_test_minute:
+                expiry_date = start_date + timedelta(minutes=1)
+            else:
+                expiry_date = start_date + timedelta(days=days)
+    else:
+        start_date = now
+        if is_test_minute:
+            expiry_date = start_date + timedelta(minutes=1)
+        else:
+            expiry_date = start_date + timedelta(days=days)
+
+    # ==========================================
+    # CHECK IF ALREADY IN PREMIUM GROUP
+    # ==========================================
+    already_joined = False
     if PREMIUM_GROUP_ID:
+        try:
+            member = await client.get_chat_member(int(PREMIUM_GROUP_ID), target_user_id)
+            already_joined = member.status in [
+                enums.ChatMemberStatus.MEMBER,
+                enums.ChatMemberStatus.ADMINISTRATOR,
+                enums.ChatMemberStatus.OWNER
+            ]
+        except Exception:
+            already_joined = False
+
+    invite_link = None
+    if not already_joined and PREMIUM_GROUP_ID:
         try:
             chat_id_int = int(PREMIUM_GROUP_ID)
             try:
@@ -1252,7 +1333,7 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
                 logger.error(f"Permanent fallback link failed: {fallback_err}")
 
     # IF LINK GENERATION FAILED: Show Retry Button to Admin, DO NOT activate yet!
-    if not invite_link:
+    if not invite_link and not already_joined:
         retry_kb = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton("🔄 Try Again", callback_data=f"confact_{target_user_id}"),
@@ -1289,40 +1370,66 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
         "status": "active",
         "approved_by": callback.from_user.id,
         "approved_at": now,
-        "welcomed": False,
+        "welcomed": already_joined,
         "reminders": {"1_day": False}
     }
     
-    col = get_premium_collection()
     if col is not None:
         await col.update_one({"user_id": target_user_id}, {"$set": activation_data}, upsert=True)
         if hasattr(db, 'premium_pending'):
             await db.premium_pending.delete_one({"user_id": target_user_id})
         
-    user_msg_sent = None
-    user_msg_text = (
-        f"🎉 **HeroFlix Premium Activated**\n\n"
-        f"📦 **Plan**: {plan}\n"
-        f"📅 **Start**: {start_date.strftime('%d %b %Y, %H:%M:%S')}\n"
-        f"⌛ **Expires**: {expiry_date.strftime('%d %b %Y, %H:%M:%S')}\n\n"
-        f"👇 **Join Premium Group** (Single-Use Link):\n{invite_link}\n\n"
-        f"<i>Once you join the group, this message will update and your welcome notice will appear in the group!</i>"
-    )
+    ist_offset = timedelta(hours=5, minutes=30)
+    ist_start = start_date + ist_offset
+    ist_expiry = expiry_date + ist_offset
+
+    if already_joined:
+        user_msg_text = (
+            f"🎉 **HeroFlix Premium Renewed**\n\n"
+            f"📦 **Plan**: {plan}\n"
+            f"📅 **Start**: {ist_start.strftime('%d %b %Y, %H:%M:%S')} IST\n"
+            f"⌛ **Expires**: {ist_expiry.strftime('%d %b %Y, %H:%M:%S')} IST\n\n"
+            f"Your subscription has been extended successfully.\n"
+            f"You are already a member of the Premium group."
+        )
+    else:
+        user_msg_text = (
+            f"🎉 **HeroFlix Premium Activated**\n\n"
+            f"📦 **Plan**: {plan}\n"
+            f"📅 **Start**: {ist_start.strftime('%d %b %Y, %H:%M:%S')} IST\n"
+            f"⌛ **Expires**: {ist_expiry.strftime('%d %b %Y, %H:%M:%S')} IST\n\n"
+            f"👇 **Join Premium Group** (Single-Use Link):\n{invite_link}\n\n"
+            f"<i>Once you join the group, this message will update and your welcome notice will appear in the group!</i>"
+        )
     
+    user_msg_sent = None
     try:
         user_msg_sent = await client.send_message(target_user_id, user_msg_text, disable_web_page_preview=False)
-        if col is not None and user_msg_sent:
+        if not already_joined and col is not None and user_msg_sent:
             await col.update_one({"user_id": target_user_id}, {"$set": {"dm_msg_id": user_msg_sent.id}})
     except Exception as e:
         logger.error(f"Failed to notify user {target_user_id}: {e}")
         
     success_admin_text = (
-        f"✅ **Premium Activated Successfully**\n\n"
+        f"✅ **Premium Updated Successfully**\n\n"
         f"• **User**: {username} (`{target_user_id}`)\n"
         f"• **Plan**: {plan} (₹{price})\n"
-        f"• **Expires**: {expiry_date.strftime('%d %b %Y, %H:%M:%S')}\n"
-        f"• **Single-Use Link Generated**: Yes"
+        f"• **New Start**: {ist_start.strftime('%d %b %Y, %H:%M:%S')} IST\n"
+        f"• **New Expiry**: {ist_expiry.strftime('%d %b %Y, %H:%M:%S')} IST\n"
+        f"• **Already in Group**: {'Yes' if already_joined else 'No'}"
     )
+
+    action_type = "Renewal" if existing_user_doc else "New Activation"
+    log_event_text = (
+        f"💎 **HeroFlix Premium {action_type}**\n\n"
+        f"👤 **User**: {username} (`{target_user_id}`)\n"
+        f"📦 **Plan**: {plan} (₹{price})\n"
+        f"📅 **Start**: {ist_start.strftime('%d %b %Y, %H:%M:%S')} IST\n"
+        f"⌛ **New Expiry**: {ist_expiry.strftime('%d %b %Y, %H:%M:%S')} IST\n"
+        f"🛡️ **Approved By Admin ID**: `{callback.from_user.id}`\n"
+        f"🔗 **Single-Use Link Generated**: {'No (Already in Group)' if already_joined else 'Yes'}"
+    )
+    await log_premium_action(client, log_event_text)
     
     try:
         await callback.message.edit_caption(success_admin_text, reply_markup=None, parse_mode=enums.ParseMode.MARKDOWN)
@@ -1353,26 +1460,9 @@ async def welcome_premium_user_handler(client, member_update: ChatMemberUpdated)
             return
             
         user_doc = await col.find_one({"user_id": user_id, "active": True})
-        if not user_doc or user_doc.get("welcomed", False):
+        if not user_doc:
             return
             
-        plan = user_doc.get("plan", "Active Plan")
-        expires_at = user_doc.get("expires_at") or user_doc.get("expiry_date")
-        expiry_str = expires_at.strftime('%d %b %Y, %H:%M:%S') if isinstance(expires_at, datetime) else "N/A"
-        
-        group_welcome_text = (
-            f"✨ **Welcome to HeroFlix Premium, {user.mention}!** ✨\n\n"
-            f"📦 **Plan**: {plan}\n"
-            f"⌛ **Valid Until**: {expiry_str}\n\n"
-            f"Enjoy your ad-free content and exclusive access!"
-        )
-        try:
-            await client.send_message(member_update.chat.id, group_welcome_text)
-        except Exception as e:
-            logger.error(f"Failed to send welcome message in group for {user_id}: {e}")
-            
-        await col.update_one({"user_id": user_id}, {"$set": {"welcomed": True}})
-        
         dm_msg_id = user_doc.get("dm_msg_id")
         if dm_msg_id:
             try:
@@ -1380,7 +1470,7 @@ async def welcome_premium_user_handler(client, member_update: ChatMemberUpdated)
                 await client.send_message(
                     user_id,
                     f"✅ **You have successfully joined the Premium Group!**\n\n"
-                    f"Your welcome notice has been posted in the group. Enjoy your membership!"
+                    f"Enjoy your membership!"
                 )
             except Exception as e:
                 logger.error(f"Failed to delete DM join link message for {user_id}: {e}")
