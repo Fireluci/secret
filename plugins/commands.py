@@ -8,6 +8,8 @@ from Script import script
 from pyrogram import Client, filters, enums
 from pyrogram.errors import ChatAdminRequired, FloodWait, RPCError
 from pyrogram.types import *
+from pyrogram.raw.functions.messages import ExportChatInvite
+from pyrogram.raw.types import InputChannel
 from database.ia_filterdb import Media, get_file_details, unpack_new_file_id, get_bad_files
 from database.users_chats_db import db
 from info import CHANNELS, ADMINS, AUTH_CHANNEL, LOG_CHANNEL, PICS, BATCH_FILE_CAPTION, CUSTOM_FILE_CAPTION, PROTECT_CONTENT, CHNL_LNK, FORCE, GRP_LNK, REQST_CHANNEL, SUPPORT_CHAT_ID, SUPPORT_CHAT, MAX_B_TN, SHORTLINK_API, SHORTLINK_URL, TUTORIAL, IS_TUTORIAL, PREMIUM_USER, UPI_ID, PREMIUM_GROUP_ID
@@ -31,7 +33,7 @@ async def safe_kick_user(client: Client, chat_id, user_id):
     try:
         chat_id_int = int(chat_id)
         try:
-            await client.get_chat(chat_id_int)
+            peer = await client.resolve_peer(chat_id_int)
         except Exception:
             pass
 
@@ -1198,21 +1200,26 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
     if PREMIUM_GROUP_ID:
         try:
             chat_id_int = int(PREMIUM_GROUP_ID)
-            await client.get_chat(chat_id_int)
+            peer = await client.resolve_peer(chat_id_int)
+            channel = InputChannel(channel_id=peer.channel_id, access_hash=peer.access_hash)
             
-            link_obj = await client.create_chat_invite_link(
-                chat_id=chat_id_int,
-                member_limit=1,
-                expire_date=now + timedelta(hours=24)
+            exported = await client.invoke(
+                ExportChatInvite(
+                    peer=channel,
+                    legacy_revoke_permanent=False,
+                    request_needed=False,
+                    expire_date=int((now + timedelta(hours=24)).timestamp()),
+                    usage_limit=1
+                )
             )
-            invite_link = link_obj.invite_link
+            invite_link = exported.link
         except Exception as e:
-            logger.error(f"Failed to create invite link: {e}")
+            logger.error(f"Raw invite generation failed: {e}")
             try:
                 chat_obj = await client.get_chat(int(PREMIUM_GROUP_ID))
                 invite_link = chat_obj.invite_link
-            except Exception:
-                pass
+            except Exception as fallback_err:
+                logger.error(f"Fallback link generation also failed: {fallback_err}")
             
     user_msg = (
         f"🎉 **HeroFlix Premium Activated**\n\n"
