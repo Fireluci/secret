@@ -1243,7 +1243,7 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
     if 'db' in globals() and hasattr(db, 'premium_pending'):
         flow = await db.premium_pending.find_one({"user_id": target_user_id})
     elif hasattr(client, 'fallback_pending') and target_user_id in client.fallback_pending:
-        flow = client.fallback_pending.get(target_user_id) # keep until successful link gen
+        flow = client.fallback_pending.get(target_user_id)
         
     if not flow:
         return await callback.answer("Activation session expired or already processed.", show_alert=True)
@@ -1332,27 +1332,26 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
             except Exception as fallback_err:
                 logger.error(f"Permanent fallback link failed: {fallback_err}")
 
-    # IF LINK GENERATION FAILED: Show Retry Button to Admin, DO NOT activate yet!
-    if not invite_link and not already_joined:
-        retry_kb = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("🔄 Try Again", callback_data=f"confact_{target_user_id}"),
-                InlineKeyboardButton("❌ Cancel", callback_data=f"min_rej_{target_user_id}")
-            ]
-        ])
-        fail_text = (
-            f"❌ **Link Generation Failed!**\n\n"
-            f"Could not generate an invite link for the premium group (Peer/Admin error).\n"
-            f"Make sure the bot is an admin in the group with invite permissions.\n\n"
-            f"Tap **Try Again** to retry generating the link."
-        )
-        try:
-            await callback.message.edit_caption(fail_text, reply_markup=retry_kb)
-        except Exception:
-            await callback.message.edit_text(fail_text, reply_markup=retry_kb)
-        return
+        # Only trigger failure retry if we genuinely need a link and completely failed to get one
+        if not invite_link:
+            retry_kb = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("🔄 Try Again", callback_data=f"confact_{target_user_id}"),
+                    InlineKeyboardButton("❌ Cancel", callback_data=f"min_rej_{target_user_id}")
+                ]
+            ])
+            fail_text = (
+                f"❌ **Link Generation Failed!**\n\n"
+                f"Could not generate an invite link for the premium group (Peer/Admin error).\n"
+                f"Make sure the bot is an admin in the group with invite permissions.\n\n"
+                f"Tap **Try Again** to retry generating the link."
+            )
+            try:
+                await callback.message.edit_caption(fail_text, reply_markup=retry_kb)
+            except Exception:
+                await callback.message.edit_text(fail_text, reply_markup=retry_kb)
+            return
 
-    # SUCCESS: Now record data and send activation to user
     if hasattr(client, 'fallback_pending') and target_user_id in client.fallback_pending:
         client.fallback_pending.pop(target_user_id, None)
 
@@ -1435,7 +1434,6 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
         await callback.message.edit_caption(success_admin_text, reply_markup=None, parse_mode=enums.ParseMode.MARKDOWN)
     except Exception:
         await callback.message.edit_text(success_admin_text, reply_markup=None, parse_mode=enums.ParseMode.MARKDOWN)
-
 # ==========================================
 # AUTO WELCOME LISTENER (Universal Pyrogram Handler Function)
 # ==========================================
