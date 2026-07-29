@@ -15,7 +15,7 @@ SESSION = environ.get('SESSION', 'Media_search')
 API_ID = int(environ.get('API_ID', '1736204'))
 API_HASH = environ.get('API_HASH', '890d40e0f91a4de32dec2965444b2cbe')
 BOT_TOKEN = environ.get('BOT_TOKEN', '')
-
+PREMIUM_PERMANENT_LINK = environ.get('PREMIUM_PERMANENT_LINK', 'https://t.me/+uDXrCoOxroFiMzY1')
 DATABASE_URI = environ.get('DATABASE_URI', "mongodb+srv://jang:jang@jang.gph0sd9.mongodb.net/?appName=jang")
 DATABASE_NAME = environ.get('DATABASE_NAME', "heroflix")
 COLLECTION_NAME = environ.get('COLLECTION_NAME', 'heroflix')
@@ -27,7 +27,7 @@ USE_CAPTION_FILTER = bool(environ.get('USE_CAPTION_FILTER', False))
 PREMIUM_LOG_CHANNEL = int(environ.get('PREMIUM_LOG_CHANNEL', '-1003911194697'))
 PICS = environ.get("PICS", "https://te.legra.ph/file/d6a23f16e002e86381656.jpg")
 FORCE = "https://telegram.me/+W6BkAHSGGME3OGY1"
-ADMINS = [int(admin) if id_pattern.search(admin) else admin for admin in environ.get('ADMINS', '1058015838 6167872503').split()]
+ADMINS = [int(admin) if id_pattern.search(admin) else admin for admin in environ.get('ADMINS', '1058015838').split()]
 CHANNELS = [int(ch) if id_pattern.search(ch) else ch for ch in environ.get('CHANNELS', '-1001638006524 -1002299214709').split()]
 auth_users = [int(user) if id_pattern.search(user) else user for user in environ.get('AUTH_USERS', '1058015838').split()]
 AUTH_USERS = (auth_users + ADMINS) if auth_users else []
