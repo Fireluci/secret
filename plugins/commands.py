@@ -8,11 +8,9 @@ from Script import script
 from pyrogram import Client, filters, enums
 from pyrogram.errors import ChatAdminRequired, FloodWait, RPCError
 from pyrogram.types import *
-from pyrogram.raw.functions.messages import ExportChatInvite
-from pyrogram.raw.types import InputChannel
 from database.ia_filterdb import Media, get_file_details, unpack_new_file_id, get_bad_files
 from database.users_chats_db import db
-from info import CHANNELS, ADMINS, AUTH_CHANNEL, LOG_CHANNEL, PICS, BATCH_FILE_CAPTION, CUSTOM_FILE_CAPTION, PROTECT_CONTENT, CHNL_LNK, FORCE, GRP_LNK, REQST_CHANNEL, SUPPORT_CHAT_ID, SUPPORT_CHAT, MAX_B_TN, SHORTLINK_API, SHORTLINK_URL, TUTORIAL, IS_TUTORIAL, PREMIUM_USER, UPI_ID, PREMIUM_GROUP_ID, PREMIUM_LOG_CHANNEL
+from info import CHANNELS, ADMINS, AUTH_CHANNEL, LOG_CHANNEL, PICS, BATCH_FILE_CAPTION, CUSTOM_FILE_CAPTION, PROTECT_CONTENT, CHNL_LNK, FORCE, GRP_LNK, REQST_CHANNEL, SUPPORT_CHAT_ID, SUPPORT_CHAT, MAX_B_TN, SHORTLINK_API, SHORTLINK_URL, TUTORIAL, IS_TUTORIAL, PREMIUM_USER, UPI_ID, PREMIUM_GROUP_ID, PREMIUM_LOG_CHANNEL, PREMIUM_PERMANENT_LINK
 from utils import get_settings, get_size, is_subscribed, save_group_settings, temp, get_shortlink, get_tutorial
 from database.connections_mdb import active_connection
 import re, sys
@@ -1060,14 +1058,6 @@ async def minimal_premium_command(client, update):
 
     kb = InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("1 Month (Test 1 Min) - ₹39", callback_data="buyplan_30_39"),
-            InlineKeyboardButton("2 Months - ₹78", callback_data="buyplan_60_78")
-        ],
-        [
-            InlineKeyboardButton("6 Months - ₹234", callback_data="buyplan_180_234"),
-            InlineKeyboardButton("1 Year - ₹468", callback_data="buyplan_365_468")
-        ],
-        [
             InlineKeyboardButton("🔗 Click Here To Buy", url="https://fireluci.github.io/pay/")
         ],
         [
@@ -1077,10 +1067,10 @@ async def minimal_premium_command(client, update):
     
     text = (
         "💎 **HeroFlix Premium Plans**\n\n"
-        "• **1 Month:** ₹39\n"
-        "• **2 Months:** ₹78\n"
-        "• **6 Months:** ₹234\n"
-        "• **1 Year:** ₹468\n\n"
+        "• **1 Month:** ₹40\n"
+        "• **2 Months:** ₹80\n"
+        "• **6 Months:** ₹240\n"
+        "• **1 Year:** ₹480\n\n"
         "1. Tap **Click Here To Buy** to complete payment.\n"
         "2. Click **I Have Paid** below to send your screenshot."
     )
@@ -1119,7 +1109,7 @@ async def minimal_screenshot_handler(client, message):
     
     admin_text = (
         f"🔔 **New Payment Verification**\n\n"
-        f"👤 Name: {user_name}\n"
+        f"👤 Name: [{user_name}](tg://user?id={user_id})\n"
         f"🆔 User ID: `{user_id}`"
     )
     
@@ -1139,12 +1129,12 @@ async def minimal_admin_action_cb(client, callback: CallbackQuery):
     
     kb = InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("1 Month (Test 1 Min)", callback_data=f"selplan_{target_user_id}_30_39"),
-            InlineKeyboardButton("2 Months (₹78)", callback_data=f"selplan_{target_user_id}_60_78")
+            InlineKeyboardButton("1 Month (Test 1 Min) - ₹40", callback_data=f"selplan_{target_user_id}_30_40"),
+            InlineKeyboardButton("2 Months - ₹80", callback_data=f"selplan_{target_user_id}_60_80")
         ],
         [
-            InlineKeyboardButton("6 Months (₹234)", callback_data=f"selplan_{target_user_id}_180_234"),
-            InlineKeyboardButton("1 Year (₹468)", callback_data=f"selplan_{target_user_id}_365_468")
+            InlineKeyboardButton("6 Months - ₹240", callback_data=f"selplan_{target_user_id}_180_240"),
+            InlineKeyboardButton("1 Year - ₹480", callback_data=f"selplan_{target_user_id}_365_480")
         ],
         [
             InlineKeyboardButton("❌ Cancel", callback_data=f"min_rej_{target_user_id}")
@@ -1207,7 +1197,7 @@ async def select_plan_cb(client, callback: CallbackQuery):
 
     kb = InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("✅ Confirm & Generate Link", callback_data=f"confact_{target_user_id}"),
+            InlineKeyboardButton("✅ Confirm & Activate", callback_data=f"confact_{target_user_id}"),
             InlineKeyboardButton("◀ Back", callback_data=f"min_app_{target_user_id}")
         ],
         [
@@ -1249,11 +1239,11 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
         return await callback.answer("Activation session expired or already processed.", show_alert=True)
         
     plan = flow.get("plan", "1 Month")
-    price = flow.get("price", "39")
+    price = flow.get("price", "40")
     days = flow.get("days", 30)
     username = flow.get("username", str(target_user_id))
     
-    await callback.answer("Processing renewal/activation...")
+    await callback.answer("Processing activation/renewal...")
     now = datetime.utcnow()
     
     # ==========================================
@@ -1288,7 +1278,7 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
             expiry_date = start_date + timedelta(days=days)
 
     # ==========================================
-    # CHECK IF ALREADY IN PREMIUM GROUP
+    # CHECK IF ALREADY IN GROUP & AUTO-APPROVE
     # ==========================================
     already_joined = False
     if PREMIUM_GROUP_ID:
@@ -1302,55 +1292,11 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
         except Exception:
             already_joined = False
 
-    invite_link = None
-    if not already_joined and PREMIUM_GROUP_ID:
         try:
-            chat_id_int = int(PREMIUM_GROUP_ID)
-            try:
-                peer = await client.resolve_peer(chat_id_int)
-            except Exception:
-                await client.get_chat(chat_id_int)
-                peer = await client.resolve_peer(chat_id_int)
-
-            channel = InputChannel(channel_id=peer.channel_id, access_hash=peer.access_hash)
-            
-            exported = await client.invoke(
-                ExportChatInvite(
-                    peer=channel,
-                    legacy_revoke_permanent=False,
-                    request_needed=False,
-                    expire_date=int((now + timedelta(hours=24)).timestamp()),
-                    usage_limit=1
-                )
-            )
-            invite_link = exported.link
-        except Exception as e:
-            logger.error(f"Single-use link generation failed: {e}")
-            try:
-                chat_obj = await client.get_chat(int(PREMIUM_GROUP_ID))
-                invite_link = chat_obj.invite_link
-            except Exception as fallback_err:
-                logger.error(f"Permanent fallback link failed: {fallback_err}")
-
-        # Only trigger failure retry if we genuinely need a link and completely failed to get one
-        if not invite_link:
-            retry_kb = InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton("🔄 Try Again", callback_data=f"confact_{target_user_id}"),
-                    InlineKeyboardButton("❌ Cancel", callback_data=f"min_rej_{target_user_id}")
-                ]
-            ])
-            fail_text = (
-                f"❌ **Link Generation Failed!**\n\n"
-                f"Could not generate an invite link for the premium group (Peer/Admin error).\n"
-                f"Make sure the bot is an admin in the group with invite permissions.\n\n"
-                f"Tap **Try Again** to retry generating the link."
-            )
-            try:
-                await callback.message.edit_caption(fail_text, reply_markup=retry_kb)
-            except Exception:
-                await callback.message.edit_text(fail_text, reply_markup=retry_kb)
-            return
+            await client.approve_chat_join_request(chat_id=int(PREMIUM_GROUP_ID), user_id=target_user_id)
+            already_joined = True
+        except Exception:
+            pass
 
     if hasattr(client, 'fallback_pending') and target_user_id in client.fallback_pending:
         client.fallback_pending.pop(target_user_id, None)
@@ -1382,24 +1328,16 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
     ist_start = start_date + ist_offset
     ist_expiry = expiry_date + ist_offset
 
-    if already_joined:
-        user_msg_text = (
-            f"🎉 **HeroFlix Premium Renewed**\n\n"
-            f"📦 **Plan**: {plan}\n"
-            f"📅 **Start**: {ist_start.strftime('%d %b %Y, %H:%M:%S')} IST\n"
-            f"⌛ **Expires**: {ist_expiry.strftime('%d %b %Y, %H:%M:%S')} IST\n\n"
-            f"Your subscription has been extended successfully.\n"
-            f"You are already a member of the Premium group."
-        )
-    else:
-        user_msg_text = (
-            f"🎉 **HeroFlix Premium Activated**\n\n"
-            f"📦 **Plan**: {plan}\n"
-            f"📅 **Start**: {ist_start.strftime('%d %b %Y, %H:%M:%S')} IST\n"
-            f"⌛ **Expires**: {ist_expiry.strftime('%d %b %Y, %H:%M:%S')} IST\n\n"
-            f"👇 **Join Premium Group** (Single-Use Link):\n{invite_link}\n\n"
-            f"<i>Once you join the group, this message will update and your welcome notice will appear in the group!</i>"
-        )
+    perm_link = PREMIUM_PERMANENT_LINK if 'PREMIUM_PERMANENT_LINK' in globals() and PREMIUM_PERMANENT_LINK else "https://t.me/your_group_link"
+
+    user_msg_text = (
+        f"🎉 **HeroFlix Premium Activated**\n\n"
+        f"📦 **Plan**: {plan}\n"
+        f"📅 **Start**: {ist_start.strftime('%d %b %Y, %H:%M:%S')} IST\n"
+        f"⌛ **Expires**: {ist_expiry.strftime('%d %b %Y, %H:%M:%S')} IST\n\n"
+        f"👇 **Tap below to join the Premium Group**:\n{perm_link}\n\n"
+        f"<i>(Send a join request through the link above, and your account will be accepted automatically!)</i>"
+    )
     
     user_msg_sent = None
     try:
@@ -1415,7 +1353,7 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
         f"• **Plan**: {plan} (₹{price})\n"
         f"• **New Start**: {ist_start.strftime('%d %b %Y, %H:%M:%S')} IST\n"
         f"• **New Expiry**: {ist_expiry.strftime('%d %b %Y, %H:%M:%S')} IST\n"
-        f"• **Already in Group**: {'Yes' if already_joined else 'No'}"
+        f"• **Auto-Approved Join Request**: Yes"
     )
 
     action_type = "Renewal" if existing_user_doc else "New Activation"
@@ -1426,7 +1364,7 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
         f"📅 **Start**: {ist_start.strftime('%d %b %Y, %H:%M:%S')} IST\n"
         f"⌛ **New Expiry**: {ist_expiry.strftime('%d %b %Y, %H:%M:%S')} IST\n"
         f"🛡️ **Approved By Admin ID**: `{callback.from_user.id}`\n"
-        f"🔗 **Single-Use Link Generated**: {'No (Already in Group)' if already_joined else 'Yes'}"
+        f"🟢 **Join Request Auto-Approved**: Yes"
     )
     await log_premium_action(client, log_event_text)
     
@@ -1434,11 +1372,29 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
         await callback.message.edit_caption(success_admin_text, reply_markup=None, parse_mode=enums.ParseMode.MARKDOWN)
     except Exception:
         await callback.message.edit_text(success_admin_text, reply_markup=None, parse_mode=enums.ParseMode.MARKDOWN)
+
 # ==========================================
-# AUTO WELCOME LISTENER (Universal Pyrogram Handler Function)
+# AUTO JOIN REQUEST HANDLER & WELCOME LISTENER
 # ==========================================
+@Client.on_chat_join_request()
+async def auto_accept_join_request(client, join_request: ChatJoinRequest):
+    if PREMIUM_GROUP_ID and join_request.chat.id == int(PREMIUM_GROUP_ID):
+        if await get_premium_collection().find_one({"user_id": join_request.from_user.id, "active": True}):
+            try:
+                await client.approve_chat_join_request(chat_id=join_request.chat.id, user_id=join_request.from_user.id)
+                logger.info(f"Auto-approved join request for active premium user {join_request.from_user.id}")
+            except Exception as e:
+                logger.error(f"Failed to auto-approve join request for {join_request.from_user.id}: {e}")
+
+@Client.on_chat_member_updated()
 async def welcome_premium_user_handler(client, member_update: ChatMemberUpdated):
-    if not PREMIUM_GROUP_ID or member_update.chat.id != int(PREMIUM_GROUP_ID):
+    if not PREMIUM_GROUP_ID:
+        return
+        
+    try:
+        if member_update.chat.id != int(PREMIUM_GROUP_ID):
+            return
+    except ValueError:
         return
         
     old_status = member_update.old_chat_member.status if member_update.old_chat_member else enums.ChatMemberStatus.LEFT
