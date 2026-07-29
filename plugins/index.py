@@ -13,7 +13,6 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 lock = asyncio.Lock()
 
-# Self-contained state collection using your existing db
 index_state_col = db["index_state"]
 
 async def get_index_state():
@@ -256,9 +255,8 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, resume_current=0, resume
             except FloodWait as e:
                 logger.warning(f"FloodWait while sending final result: {e.value} seconds.")
 
-# Auto-check and resume on startup automatically from inside this file
-@Client.on_start()
-async def auto_resume_indexing(client):
+# Helper function to auto-resume when your bot starts up
+async def check_pending_index_on_startup(client):
     state = await get_index_state()
     if state:
         chat_id = state.get("chat_id")
