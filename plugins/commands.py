@@ -52,16 +52,28 @@ def get_premium_collection():
     return None
 
 # ==========================================
-# PREMIUM LOGGING HELPER
+# PREMIUM LOGGING HELPER (With Admin DM Fallback)
 # ==========================================
 async def log_premium_action(client: Client, text: str):
-    """Helper to send important premium events to the dedicated premium log channel."""
+    """Helper to send important premium events to the dedicated premium log channel with admin fallback."""
     if not PREMIUM_LOG_CHANNEL:
         return
     try:
         await client.send_message(int(PREMIUM_LOG_CHANNEL), text, disable_web_page_preview=True, parse_mode=enums.ParseMode.HTML)
     except Exception as e:
-        logger.error(f"Failed to send log to PREMIUM_LOG_CHANNEL: {e}")
+        if "PEER_ID_INVALID" in str(e) or "CHANNEL_INVALID" in str(e) or "CHAT_ADMIN_REQUIRED" in str(e):
+            for admin_id in ADMINS:
+                try:
+                    await client.send_message(
+                        int(admin_id), 
+                        f"<b>⚠️ Log Channel Error Fallback</b>\n\nFailed to send log to <code>PREMIUM_LOG_CHANNEL</code> (<code>{PREMIUM_LOG_CHANNEL}</code>). Error: <code>{e}</code>\n\n--- Original Log ---\n\n{text}", 
+                        disable_web_page_preview=True, 
+                        parse_mode=enums.ParseMode.HTML
+                    )
+                except Exception as admin_err:
+                    logger.error(f"Failed to send fallback log to admin {admin_id}: {admin_err}")
+        else:
+            logger.error(f"Failed to send log to PREMIUM_LOG_CHANNEL: {e}")
 
 # ==========================================
 # ROBUST EJECTION HELPER (Handles Ex-Admins & Non-Participants)
@@ -217,10 +229,7 @@ async def start(client, message):
         await client.send_message(LOG_CHANNEL, script.LOG_TEXT_P.format(message.from_user.id, message.from_user.mention))
     if len(message.command) != 2:
         buttons = [
-            [InlineKeyboardButton("🌟 Paid (No Ads)", url="https://telegram.me/HeroFlixx/49"),
-             InlineKeyboardButton("🍿 Free (With Ads)", url="https://telegram.me/addlist/X5k2lnJLIGAyZjQ1")],
-            [InlineKeyboardButton("👤 Admin", url=f"https://telegram.me/{SUPPORT_CHAT}"),
-             InlineKeyboardButton("⚜ Updates", url=FORCE)]
+            [InlineKeyboardButton("💎 Buy Premium", callback_data="buy_premium_start")]
         ]
         reply_markup = InlineKeyboardMarkup(buttons)
         await message.reply_photo(
@@ -250,10 +259,7 @@ async def start(client, message):
 
     if len(message.command) == 2 and message.command[1] in ["subscribe", "error", "okay", "help"]:
         buttons = [
-            [InlineKeyboardButton("🌟 Paid (No Ads)", url="https://telegram.me/HeroFlixx/49"),
-             InlineKeyboardButton("🍿 Free (With Ads)", url="https://telegram.me/addlist/X5k2lnJLIGAyZjQ1")],
-            [InlineKeyboardButton("👤 Admin", url=f"https://telegram.me/{SUPPORT_CHAT}"),
-             InlineKeyboardButton("⚜ Updates", url=FORCE)]
+            [InlineKeyboardButton("💎 Buy Premium", callback_data="buy_premium_start")]
         ]
         reply_markup = InlineKeyboardMarkup(buttons)      
         await message.reply_photo(
@@ -416,7 +422,7 @@ async def start(client, message):
                     ], [
                         InlineKeyboardButton('❓ How To Download ❓', url=f'https://telegram.me/{TUTORIAL}')
                     ], [
-                        InlineKeyboardButton('🌟 Direct Download 🌟', url="https://telegram.me/HeroFlixx/49")
+                        InlineKeyboardButton('💎 Buy Premium', callback_data="buy_premium_start")
                     ]
                 ]
             )
@@ -483,7 +489,7 @@ async def start(client, message):
                         ], [
                             InlineKeyboardButton('❓ How To Download ❓', url=f"https://telegram.me/{TUTORIAL}")
                         ], [
-                            InlineKeyboardButton('🌟 Direct Download 🌟', url="https://telegram.me/HeroFlixx/49")
+                            InlineKeyboardButton('💎 Buy Premium', callback_data="buy_premium_start")
                         ]
                     ]
                 )
@@ -1105,7 +1111,8 @@ async def generate_invite_command(client, message):
             f"<b>Expires:</b> {'Never' if expire_hours == 0 else f'{expire_hours}h'}\n"
             f"<b>Usage limit:</b> {'Unlimited' if usage_limit == 0 else usage_limit}\n\n"
             f"🔗 {link.invite_link}",
-            parse_mode=enums.ParseMode.HTML
+            parse_mode=enums.ParseMode.HTML,
+            disable_web_page_preview=True
         )
     except ChatAdminRequired:
         await status_msg.edit_text(
@@ -1121,7 +1128,8 @@ async def generate_invite_command(client, message):
             if chat_obj.invite_link:
                 return await status_msg.edit_text(
                     f"✅ <b>Permanent invite link (fallback):</b>\n\n{chat_obj.invite_link}",
-                    parse_mode=enums.ParseMode.HTML
+                    parse_mode=enums.ParseMode.HTML,
+                    disable_web_page_preview=True
                 )
         except Exception:
             pass
@@ -1416,17 +1424,21 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
 
     perm_link = PREMIUM_PERMANENT_LINK if 'PREMIUM_PERMANENT_LINK' in globals() and PREMIUM_PERMANENT_LINK else "https://t.me/your_group_link"
 
+    user_msg_kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ Click Here To Join", url=perm_link)]
+    ])
+
     user_msg_text = (
         f"<b>🎉 HeroFlix Premium Activated</b>\n\n"
         f"📦 <b>Plan</b>: {plan}\n"
         f"📅 <b>Start</b>: {ist_start_str} IST\n"
         f"⌛ <b>Expires</b>: {ist_expiry_str} IST\n\n"
-        f"👇 <b>Tap below to join the Premium Group</b>:\n{perm_link}"
+        f"👇 <b>Tap below to join the Premium Group</b>:"
     )
     
     user_msg_sent = None
     try:
-        user_msg_sent = await client.send_message(target_user_id, user_msg_text, disable_web_page_preview=False, parse_mode=enums.ParseMode.HTML)
+        user_msg_sent = await client.send_message(target_user_id, user_msg_text, reply_markup=user_msg_kb, disable_web_page_preview=True, parse_mode=enums.ParseMode.HTML)
         if not already_joined and col is not None and user_msg_sent:
             await col.update_one({"user_id": target_user_id}, {"$set": {"dm_msg_id": user_msg_sent.id}})
     except Exception as e:
