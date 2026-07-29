@@ -59,7 +59,7 @@ async def log_premium_action(client: Client, text: str):
     if not PREMIUM_LOG_CHANNEL:
         return
     try:
-        await client.send_message(int(PREMIUM_LOG_CHANNEL), text, disable_web_page_preview=True)
+        await client.send_message(int(PREMIUM_LOG_CHANNEL), text, disable_web_page_preview=True, parse_mode=enums.ParseMode.HTML)
     except Exception as e:
         logger.error(f"Failed to send log to PREMIUM_LOG_CHANNEL: {e}")
 
@@ -97,7 +97,6 @@ async def safe_kick_user(client: Client, chat_id, user_id):
         await asyncio.sleep(0.5)
         await client.unban_chat_member(chat_id=chat_id_int, user_id=user_id)
         
-        # Safe profile name and ID logging with UTF-8 support
         try:
             user_obj = await client.get_users(user_id)
             p_name = user_obj.first_name or "User"
@@ -111,10 +110,10 @@ async def safe_kick_user(client: Client, chat_id, user_id):
             logger.error(f"Failed to kick user ID {user_id} from premium group: {e}")
             await log_premium_action(
                 client, 
-                f"⚠️ **Warning: Failed to Kick User**\n\n"
-                f"• **User ID**: `{user_id}`\n"
-                f"• **Group ID**: `{chat_id}`\n"
-                f"• **Error**: `{e}`"
+                f"<b>⚠️ Warning: Failed to Kick User</b>\n\n"
+                f"• <b>User ID</b>: <code>{user_id}</code>\n"
+                f"• <b>Group ID</b>: <code>{chat_id}</code>\n"
+                f"• <b>Error</b>: <code>{e}</code>"
             )
 
 # ==========================================
@@ -154,10 +153,10 @@ async def premium_expiry_reminder_loop(client: Client):
                                 
                         ist_expiry = format_ist_time(expires_at)
                         log_text = (
-                            f"❌ **HeroFlix Premium Expired & Ejected**\n\n"
-                            f"👤 **User**: <a href=\"tg://user?id={user_id}\">{u_name}</a> (`{user_id}`)\n"
-                            f"⌛ **Expired At**: {ist_expiry} IST\n"
-                            f"🚪 **Action**: Removed from database and kicked from group."
+                            f"<b>❌ HeroFlix Premium Expired & Ejected</b>\n\n"
+                            f"👤 <b>User</b>: <a href=\"tg://user?id={user_id}\">{u_name}</a> (<code>{user_id}</code>)\n"
+                            f"⌛ <b>Expired At</b>: {ist_expiry} IST\n"
+                            f"🚪 <b>Action</b>: Removed from database and kicked from group."
                         )
                         await log_premium_action(client, log_text)
 
@@ -165,12 +164,12 @@ async def premium_expiry_reminder_loop(client: Client):
                             [InlineKeyboardButton("🔄 Renew Premium", callback_data="buy_premium_start")]
                         ])
                         expiry_msg = (
-                            "❌ **HeroFlix Premium Expired**\n\n"
+                            "<b>❌ HeroFlix Premium Expired</b>\n\n"
                             "Your Premium Membership has expired.\n\n"
                             "Tap below to renew."
                         )
                         try:
-                            await client.send_message(user_id, expiry_msg, reply_markup=expiry_kb)
+                            await client.send_message(user_id, expiry_msg, reply_markup=expiry_kb, parse_mode=enums.ParseMode.HTML)
                         except Exception as e:
                             logger.error(f"Failed to send expiry DM to user {user_id}: {e}")
                             
@@ -179,12 +178,12 @@ async def premium_expiry_reminder_loop(client: Client):
                             [InlineKeyboardButton("🔄 Renew Premium", callback_data="buy_premium_start")]
                         ])
                         reminder_text = (
-                            "⚠ **HeroFlix Premium**\n\n"
+                            "<b>⚠ HeroFlix Premium</b>\n\n"
                             "Your Premium expires tomorrow.\n\n"
                             "Renew now to continue enjoying Premium without interruption."
                         )
                         try:
-                            await client.send_message(user_id, reminder_text, reply_markup=reminder_kb)
+                            await client.send_message(user_id, reminder_text, reply_markup=reminder_kb, parse_mode=enums.ParseMode.HTML)
                             await col.update_one(
                                 {"user_id": user_id},
                                 {"$set": {"reminders.1_day": True}}
@@ -242,10 +241,10 @@ async def start(client, message):
 
         await client.send_message(
             message.from_user.id,
-            "**🔆 First Join Our Main Channel & Then Click Try Again ♻\n\n"
-            "🔆 पहले हमारे मैन चैनल से जुड़ें और फिर Try Again दबाएँ ♻**",
+            "<b>🔆 First Join Our Main Channel & Then Click Try Again ♻\n\n"
+            "🔆 पहले हमारे मैन चैनल से जुड़ें और फिर Try Again दबाएँ ♻</b>",
             reply_markup=InlineKeyboardMarkup(btn),
-            parse_mode=enums.ParseMode.MARKDOWN
+            parse_mode=enums.ParseMode.HTML
         )
         return
 
@@ -571,18 +570,18 @@ async def channel_info(bot, message):
     else:
         raise ValueError("Unexpected type of CHANNELS")
 
-    text = '📑 **Indexed channels/groups**\n'
+    text = '<b>📑 Indexed channels/groups</b>\n'
     for channel in channels:
         chat = await bot.get_chat(channel)
         if chat.username:
             text += '\n@' + chat.username
         else:
-            text += '\n' + chat.title or chat.first_name
+            text += '\n' + (chat.title or chat.first_name)
 
-    text += f'\n\n**Total:** {len(CHANNELS)}'
+    text += f'\n\n<b>Total:</b> {len(CHANNELS)}'
 
     if len(text) < 4096:
-        await message.reply(text)
+        await message.reply(text, parse_mode=enums.ParseMode.HTML)
     else:
         file = 'Indexed channels.txt'
         with open(file, 'w') as f:
@@ -895,9 +894,9 @@ async def shortlink(bot, message):
     
 @Client.on_message(filters.command("restart") & filters.user(ADMINS))
 async def stop_button(bot, message):
-    msg = await bot.send_message(text="**🔄 𝙱𝙾𝚃 𝙸𝚂 𝚁𝙴𝚂𝚃𝙰𝚁𝚃𝙸𝙽𝙶**", chat_id=message.chat.id)       
+    msg = await bot.send_message(text="<b>🔄 𝙱𝙾𝚃 𝙸𝚂 𝚁𝙴𝚂𝚃𝙰𝚁𝚃𝙸𝙽𝙶</b>", chat_id=message.chat.id, parse_mode=enums.ParseMode.HTML)       
     await asyncio.sleep(3)
-    await msg.edit("**✅️ 𝙱𝙾𝚃 𝙸𝚂 𝚁𝙴𝚂𝚃𝙰𝚁𝚃𝙴𝙳**")
+    await msg.edit("<b>✅️ 𝙱𝙾𝚃 𝙸𝚂 𝚁𝙴𝚂𝚃𝙰𝚁𝚃𝙴𝙳</b>", parse_mode=enums.ParseMode.HTML)
     os.execl(sys.executable, sys.executable, *sys.argv)
 
 # ==========================================
@@ -915,11 +914,12 @@ async def check_my_plan(client, message):
         
     if not user_doc:
         await message.reply_text(
-            "❌ **You do not have an active Premium subscription.**\n\n"
+            "<b>❌ You do not have an active Premium subscription.</b>\n\n"
             "Use /premium to check plans and upgrade!",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🌟 Buy Premium", callback_data="buy_premium_start")]
-            ])
+            ]),
+            parse_mode=enums.ParseMode.HTML
         )
         return
 
@@ -942,15 +942,15 @@ async def check_my_plan(client, message):
         time_left_str = "N/A"
 
     plan_text = (
-        f"✨ **Your Premium Status** ✨\n\n"
-        f"📦 **Plan**: {plan}\n"
-        f"🟢 **Status**: Active\n"
-        f"⏳ **Expires On**: {expiry_str} IST\n"
-        f"⏱️ **Remaining Time**: {time_left_str}\n\n"
+        f"<b>✨ Your Premium Status ✨</b>\n\n"
+        f"📦 <b>Plan</b>: {plan}\n"
+        f"🟢 <b>Status</b>: Active\n"
+        f"⏳ <b>Expires On</b>: {expiry_str} IST\n"
+        f"⏱️ <b>Remaining Time</b>: {time_left_str}\n\n"
         f"Enjoy your ad-free experience!"
     )
     
-    await message.reply_text(plan_text, parse_mode=enums.ParseMode.MARKDOWN)
+    await message.reply_text(plan_text, parse_mode=enums.ParseMode.HTML)
 
 # ==========================================
 # ADMIN REVOKE PREMIUM COMMAND (Replaces /removepremium)
@@ -958,16 +958,16 @@ async def check_my_plan(client, message):
 @Client.on_message(filters.command("revoke") & filters.user(ADMINS))
 async def revoke_premium_command(client, message):
     if len(message.command) != 2:
-        return await message.reply_text("<b>Usage:</b> /revoke <code>user_id</code>")
+        return await message.reply_text("<b>Usage:</b> /revoke <code>user_id</code>", parse_mode=enums.ParseMode.HTML)
     
     try:
         target_user_id = int(message.command[1])
     except ValueError:
-        return await message.reply_text("<b>Invalid User ID format.</b>")
+        return await message.reply_text("<b>Invalid User ID format.</b>", parse_mode=enums.ParseMode.HTML)
     
     col = get_premium_collection()
     if col is None:
-        return await message.reply_text("<b>Database collection not found.</b>")
+        return await message.reply_text("<b>Database collection not found.</b>", parse_mode=enums.ParseMode.HTML)
         
     result = await col.delete_one({"user_id": target_user_id})
     
@@ -988,10 +988,10 @@ async def revoke_premium_command(client, message):
             await safe_kick_user(client, PREMIUM_GROUP_ID, target_user_id)
                 
         log_revocation_text = (
-            f"⚠️ **HeroFlix Premium Manually Revoked**\n\n"
-            f"👤 **Target User**: <a href=\"tg://user?id={target_user_id}\">{t_name}</a> (`{target_user_id}`)\n"
-            f"🛡️ **Revoked By Admin**: <a href=\"tg://user?id={message.from_user.id}\">{a_name}</a> (`{message.from_user.id}`)\n"
-            f"🚪 **Action**: Record deleted and user ejected from group."
+            f"<b>⚠️ HeroFlix Premium Manually Revoked</b>\n\n"
+            f"👤 <b>Target User</b>: <a href=\"tg://user?id={target_user_id}\">{t_name}</a> (<code>{target_user_id}</code>)\n"
+            f"🛡️ <b>Revoked By Admin</b>: <a href=\"tg://user?id={message.from_user.id}\">{a_name}</a> (<code>{message.from_user.id}</code>)\n"
+            f"🚪 <b>Action</b>: Record deleted and user ejected from group."
         )
         await log_premium_action(client, log_revocation_text)
 
@@ -1001,8 +1001,9 @@ async def revoke_premium_command(client, message):
             ])
             await client.send_message(
                 target_user_id,
-                "❌ **HeroFlix Premium Revoked**\n\nYour Premium Membership has been manually removed by an administrator.\n\nTap below to renew.",
-                reply_markup=revocation_kb
+                "<b>❌ HeroFlix Premium Revoked</b>\n\nYour Premium Membership has been manually removed by an administrator.\n\nTap below to renew.",
+                reply_markup=revocation_kb,
+                parse_mode=enums.ParseMode.HTML
             )
         except Exception:
             pass
@@ -1018,7 +1019,7 @@ async def revoke_premium_command(client, message):
 async def list_premiums_command(client, message):
     col = get_premium_collection()
     if col is None:
-        return await message.reply_text("<b>Database collection not found.</b>")
+        return await message.reply_text("<b>Database collection not found.</b>", parse_mode=enums.ParseMode.HTML)
     
     now = datetime.utcnow()
     active_users = []
@@ -1028,9 +1029,9 @@ async def list_premiums_command(client, message):
             active_users.append(doc)
             
     if not active_users:
-        return await message.reply_text("<b>No active premium users found at the moment.</b>")
+        return await message.reply_text("<b>No active premium users found at the moment.</b>", parse_mode=enums.ParseMode.HTML)
         
-    text = f"💎 **Active Premium Users List** ({len(active_users)})\n\n"
+    text = f"<b>💎 Active Premium Users List</b> ({len(active_users)})\n\n"
     for idx, doc in enumerate(active_users, 1):
         uid = doc.get("user_id")
         plan = doc.get("plan", "Standard")
@@ -1043,7 +1044,7 @@ async def list_premiums_command(client, message):
         except Exception:
             u_name = doc.get("username", "User")
             
-        text += f"{idx}. <a href=\"tg://user?id={uid}\">{u_name}</a> (`{uid}`) | 📦 {plan} | ⏳ {exp_str}\n"
+        text += f"{idx}. <a href=\"tg://user?id={uid}\">{u_name}</a> (<code>{uid}</code>) | 📦 {plan} | ⏳ {exp_str}\n"
         
         if len(text) > 3800:
             await message.reply_text(text, parse_mode=enums.ParseMode.HTML)
@@ -1062,25 +1063,26 @@ async def generate_invite_command(client, message):
             "<b>Usage:</b> /invite <code>chat_id</code> [expire_hours] [usage_limit]\n\n"
             "<b>Example:</b> /invite <code>-1001234567890</code> 24 1\n"
             "<i>expire_hours</i> defaults to 24 (0 = never expires).\n"
-            "<i>usage_limit</i> defaults to 1 (0 = unlimited)."
+            "<i>usage_limit</i> defaults to 1 (0 = unlimited).",
+            parse_mode=enums.ParseMode.HTML
         )
 
     try:
         target_chat_id = int(message.command[1])
     except ValueError:
-        return await message.reply_text("<b>Invalid chat ID format.</b>")
+        return await message.reply_text("<b>Invalid chat ID format.</b>", parse_mode=enums.ParseMode.HTML)
 
     try:
         expire_hours = int(message.command[2]) if len(message.command) > 2 else 24
     except ValueError:
-        return await message.reply_text("<b>Invalid expire_hours value.</b>")
+        return await message.reply_text("<b>Invalid expire_hours value.</b>", parse_mode=enums.ParseMode.HTML)
 
     try:
         usage_limit = int(message.command[3]) if len(message.command) > 3 else 1
     except ValueError:
-        return await message.reply_text("<b>Invalid usage_limit value.</b>")
+        return await message.reply_text("<b>Invalid usage_limit value.</b>", parse_mode=enums.ParseMode.HTML)
 
-    status_msg = await message.reply_text("<b>Generating invite link...</b>")
+    status_msg = await message.reply_text("<b>Generating invite link...</b>", parse_mode=enums.ParseMode.HTML)
 
     try:
         try:
@@ -1102,13 +1104,15 @@ async def generate_invite_command(client, message):
             f"<b>Chat:</b> {chat_obj.title or target_chat_id} (<code>{target_chat_id}</code>)\n"
             f"<b>Expires:</b> {'Never' if expire_hours == 0 else f'{expire_hours}h'}\n"
             f"<b>Usage limit:</b> {'Unlimited' if usage_limit == 0 else usage_limit}\n\n"
-            f"🔗 {link.invite_link}"
+            f"🔗 {link.invite_link}",
+            parse_mode=enums.ParseMode.HTML
         )
     except ChatAdminRequired:
         await status_msg.edit_text(
             "❌ <b>Failed to generate invite link.</b>\n\n"
             "The bot is not an admin in that chat, or lacks the "
-            "<b>Invite Users via Link</b> permission."
+            "<b>Invite Users via Link</b> permission.",
+            parse_mode=enums.ParseMode.HTML
         )
     except Exception as e:
         logger.error(f"/invite command failed for chat {target_chat_id}: {e}")
@@ -1116,11 +1120,12 @@ async def generate_invite_command(client, message):
             chat_obj = await client.get_chat(target_chat_id)
             if chat_obj.invite_link:
                 return await status_msg.edit_text(
-                    f"✅ <b>Permanent invite link (fallback):</b>\n\n{chat_obj.invite_link}"
+                    f"✅ <b>Permanent invite link (fallback):</b>\n\n{chat_obj.invite_link}",
+                    parse_mode=enums.ParseMode.HTML
                 )
         except Exception:
             pass
-        await status_msg.edit_text(f"❌ <b>Failed to generate invite link:</b>\n<code>{e}</code>")
+        await status_msg.edit_text(f"❌ <b>Failed to generate invite link:</b>\n<code>{e}</code>", parse_mode=enums.ParseMode.HTML)
 
 # ==========================================
 # MULTI-PLAN /PREMIUM COMMAND & WORKFLOW
@@ -1142,19 +1147,19 @@ async def minimal_premium_command(client, update):
     ])
     
     text = (
-        "💎 **HeroFlix Premium Plans**\n\n"
-        "• **1 Month:** ₹40\n"
-        "• **2 Months:** ₹80\n"
-        "• **6 Months:** ₹240\n"
-        "• **1 Year:** ₹480\n\n"
-        "1. Tap **Click Here To Buy** to complete payment.\n"
-        "2. Click **I Have Paid** below to send your screenshot."
+        "<b>💎 HeroFlix Premium Plans</b>\n\n"
+        "• <b>1 Month</b>: ₹40\n"
+        "• <b>2 Months</b>: ₹80\n"
+        "• <b>6 Months</b>: ₹240\n"
+        "• <b>1 Year</b>: ₹480\n\n"
+        "1. Tap <b>Click Here To Buy</b> to complete payment.\n"
+        "2. Click <b>I Have Paid</b> below to send your screenshot."
     )
     
     if isinstance(update, CallbackQuery):
-        await message.edit_text(text, reply_markup=kb)
+        await message.edit_text(text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
     else:
-        await message.reply_text(text, reply_markup=kb)
+        await message.reply_text(text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
 
 @Client.on_callback_query(filters.regex("^minimal_send_proof$"))
 async def minimal_send_proof_cb(client, callback: CallbackQuery):
@@ -1162,8 +1167,9 @@ async def minimal_send_proof_cb(client, callback: CallbackQuery):
     MINIMAL_PENDING_FLOW[user_id] = {"status": "waiting_screenshot"}
     await callback.answer()
     await callback.message.edit_text(
-        "📸 **Please send your payment screenshot now in this chat.**\n\n"
-        "Your request will be forwarded to the admin immediately."
+        "<b>📸 Please send your payment screenshot now in this chat.</b>\n\n"
+        "Your request will be forwarded to the admin immediately.",
+        parse_mode=enums.ParseMode.HTML
     )
 
 @Client.on_message(filters.private & filters.photo & ~filters.command(["start", "premium"]))
@@ -1184,9 +1190,9 @@ async def minimal_screenshot_handler(client, message):
     ])
     
     admin_text = (
-        f"🔔 **New Payment Verification**\n\n"
+        f"<b>🔔 New Payment Verification</b>\n\n"
         f"👤 User: <a href=\"tg://user?id={user_id}\">{user_name}</a>\n"
-        f"🆔 User ID: `{user_id}`"
+        f"🆔 User ID: <code>{user_id}</code>"
     )
     
     for admin_id in ADMINS:
@@ -1220,15 +1226,15 @@ async def minimal_admin_action_cb(client, callback: CallbackQuery):
     await callback.answer()
     try:
         await callback.message.edit_caption(
-            "💎 **Select Premium Plan**\n\nChoose the subscription to activate.",
+            "<b>💎 Select Premium Plan</b>\n\nChoose the subscription to activate.",
             reply_markup=kb,
-            parse_mode=enums.ParseMode.MARKDOWN
+            parse_mode=enums.ParseMode.HTML
         )
     except Exception:
         await callback.message.edit_text(
-            "💎 **Select Premium Plan**\n\nChoose the subscription to activate.",
+            "<b>💎 Select Premium Plan</b>\n\nChoose the subscription to activate.",
             reply_markup=kb,
-            parse_mode=enums.ParseMode.MARKDOWN
+            parse_mode=enums.ParseMode.HTML
         )
 
 @Client.on_callback_query(filters.regex("^selplan_"))
@@ -1282,12 +1288,12 @@ async def select_plan_cb(client, callback: CallbackQuery):
     ])
     
     preview_text = (
-        f"💎 **Premium Activation Preview**\n\n"
-        f"👤 **User**: <a href=\"tg://user?id={target_user_id}\">{username}</a>\n"
-        f"🆔 **User ID**: `{target_user_id}`\n"
-        f"📦 **New Plan**: {plan_label}\n"
-        f"💰 **Amount**: ₹{price}\n"
-        f"⌛ **Result Expiry**: {format_ist_time(expiry_date)} IST\n\n"
+        f"<b>💎 Premium Activation Preview</b>\n\n"
+        f"👤 <b>User</b>: <a href=\"tg://user?id={target_user_id}\">{username}</a>\n"
+        f"🆔 <b>User ID</b>: <code>{target_user_id}</code>\n"
+        f"📦 <b>New Plan</b>: {plan_label}\n"
+        f"💰 <b>Amount</b>: ₹{price}\n"
+        f"⌛ <b>Result Expiry</b>: {format_ist_time(expiry_date)} IST\n\n"
         f"Proceed with activation?"
     )
     
@@ -1411,40 +1417,39 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
     perm_link = PREMIUM_PERMANENT_LINK if 'PREMIUM_PERMANENT_LINK' in globals() and PREMIUM_PERMANENT_LINK else "https://t.me/your_group_link"
 
     user_msg_text = (
-        f"🎉 **HeroFlix Premium Activated**\n\n"
-        f"📦 **Plan**: {plan}\n"
-        f"📅 **Start**: {ist_start_str} IST\n"
-        f"⌛ **Expires**: {ist_expiry_str} IST\n\n"
-        f"👇 **Tap below to join the Premium Group**:\n{perm_link}\n\n"
-        f"<i>(Send a join request through the link above, and your account will be accepted automatically!)</i>"
+        f"<b>🎉 HeroFlix Premium Activated</b>\n\n"
+        f"📦 <b>Plan</b>: {plan}\n"
+        f"📅 <b>Start</b>: {ist_start_str} IST\n"
+        f"⌛ <b>Expires</b>: {ist_expiry_str} IST\n\n"
+        f"👇 <b>Tap below to join the Premium Group</b>:\n{perm_link}"
     )
     
     user_msg_sent = None
     try:
-        user_msg_sent = await client.send_message(target_user_id, user_msg_text, disable_web_page_preview=False)
+        user_msg_sent = await client.send_message(target_user_id, user_msg_text, disable_web_page_preview=False, parse_mode=enums.ParseMode.HTML)
         if not already_joined and col is not None and user_msg_sent:
             await col.update_one({"user_id": target_user_id}, {"$set": {"dm_msg_id": user_msg_sent.id}})
     except Exception as e:
         logger.error(f"Failed to notify user {target_user_id}: {e}")
         
     success_admin_text = (
-        f"✅ **Premium Updated Successfully**\n\n"
-        f"• **User**: <a href=\"tg://user?id={target_user_id}\">{username}</a> (`{target_user_id}`)\n"
-        f"• **Plan**: {plan} (₹{price})\n"
-        f"• **New Start**: {ist_start_str} IST\n"
-        f"• **New Expiry**: {ist_expiry_str} IST\n"
-        f"• **Auto-Approved Join Request**: Yes"
+        f"<b>✅ Premium Updated Successfully</b>\n\n"
+        f"• <b>User</b>: <a href=\"tg://user?id={target_user_id}\">{username}</a> (<code>{target_user_id}</code>)\n"
+        f"• <b>Plan</b>: {plan} (₹{price})\n"
+        f"• <b>New Start</b>: {ist_start_str} IST\n"
+        f"• <b>New Expiry</b>: {ist_expiry_str} IST\n"
+        f"• <b>Auto-Approved Join Request</b>: Yes"
     )
 
     action_type = "Renewal" if existing_user_doc else "New Activation"
     log_event_text = (
-        f"💎 **HeroFlix Premium {action_type}**\n\n"
-        f"👤 **User**: <a href=\"tg://user?id={target_user_id}\">{username}</a> (`{target_user_id}`)\n"
-        f"📦 **Plan**: {plan} (₹{price})\n"
-        f"📅 **Start**: {ist_start_str} IST\n"
-        f"⌛ **New Expiry**: {ist_expiry_str} IST\n"
-        f"🛡️ **Approved By Admin ID**: `{callback.from_user.id}`\n"
-        f"🟢 **Join Request Auto-Approved**: Yes"
+        f"<b>💎 HeroFlix Premium {action_type}</b>\n\n"
+        f"👤 <b>User</b>: <a href=\"tg://user?id={target_user_id}\">{username}</a> (<code>{target_user_id}</code>)\n"
+        f"📦 <b>Plan</b>: {plan} (₹{price})\n"
+        f"📅 <b>Start</b>: {ist_start_str} IST\n"
+        f"⌛ <b>New Expiry</b>: {ist_expiry_str} IST\n"
+        f"🛡️ <b>Approved By Admin ID</b>: <code>{callback.from_user.id}</code>\n"
+        f"🟢 <b>Join Request Auto-Approved</b>: Yes"
     )
     await log_premium_action(client, log_event_text)
     
@@ -1504,8 +1509,8 @@ async def welcome_premium_user_handler(client, member_update: ChatMemberUpdated)
                 await client.delete_messages(chat_id=user_id, message_ids=dm_msg_id)
                 await client.send_message(
                     user_id,
-                    f"✅ **You have successfully joined the Premium Group!**\n\n"
-                    f"Enjoy your membership!"
+                    "<b>✅ You have successfully joined the Premium Group!</b>\n\nEnjoy your membership!",
+                    parse_mode=enums.ParseMode.HTML
                 )
             except Exception as e:
                 logger.error(f"Failed to delete DM join link message for {user_id}: {e}")
@@ -1523,6 +1528,6 @@ async def minimal_admin_reject_cb(client, callback: CallbackQuery):
     
     await callback.answer("Rejected.")
     try:
-        await callback.message.edit_caption("❌ **Status:** REJECTED", reply_markup=None)
+        await callback.message.edit_caption("<b>❌ Status:</b> REJECTED", reply_markup=None, parse_mode=enums.ParseMode.HTML)
     except Exception:
-        await callback.message.edit_text("❌ **Status:** REJECTED", reply_markup=None)
+        await callback.message.edit_text("<b>❌ Status:</b> REJECTED", reply_markup=None, parse_mode=enums.ParseMode.HTML)
