@@ -23,6 +23,16 @@ BATCH_FILES = {}
 MINIMAL_PENDING_FLOW = {}
 
 # ==========================================
+# HELPER: FORMAT IST TIME (12-Hour, No Seconds)
+# ==========================================
+def format_ist_time(dt: datetime) -> str:
+    if not isinstance(dt, datetime):
+        return "N/A"
+    ist_offset = timedelta(hours=5, minutes=30)
+    ist_dt = dt + ist_offset
+    return ist_dt.strftime('%d %b, %Y | %I:%M %p')
+
+# ==========================================
 # UNIFIED DATABASE COLLECTION HELPER
 # ==========================================
 def get_premium_collection():
@@ -86,12 +96,19 @@ async def safe_kick_user(client: Client, chat_id, user_id):
         await client.ban_chat_member(chat_id=chat_id_int, user_id=user_id)
         await asyncio.sleep(0.5)
         await client.unban_chat_member(chat_id=chat_id_int, user_id=user_id)
-        logger.info(f"Successfully ejected user {user_id} from premium group {chat_id_int}")
+        
+        # Safe profile name and ID logging with UTF-8 support
+        try:
+            user_obj = await client.get_users(user_id)
+            p_name = user_obj.first_name or "User"
+        except Exception:
+            p_name = "User"
+        logger.info(f"Successfully ejected user {p_name} (ID: {user_id}) from premium group {chat_id_int}")
     except Exception as e:
         if "USER_NOT_PARTICIPANT" in str(e) or "PEER_ID_INVALID" in str(e):
-            logger.info(f"User {user_id} was not in the premium group.")
+            logger.info(f"User ID {user_id} was not in the premium group.")
         else:
-            logger.error(f"Failed to kick user {user_id} from premium group: {e}")
+            logger.error(f"Failed to kick user ID {user_id} from premium group: {e}")
             await log_premium_action(
                 client, 
                 f"⚠️ **Warning: Failed to Kick User**\n\n"
@@ -123,16 +140,22 @@ async def premium_expiry_reminder_loop(client: Client):
                     
                     if now >= expires_at:
                         await col.delete_one({"user_id": user_id})
-                        logger.info(f"🔄 Expired and removed premium record for user {user_id}")
+                        
+                        try:
+                            u_obj = await client.get_users(user_id)
+                            u_name = u_obj.first_name or "User"
+                        except Exception:
+                            u_name = "User"
+                            
+                        logger.info(f"🔄 Expired and removed premium record for {u_name} (ID: {user_id})")
 
                         if PREMIUM_GROUP_ID:
                             await safe_kick_user(client, PREMIUM_GROUP_ID, user_id)
                                 
-                        ist_offset = timedelta(hours=5, minutes=30)
-                        ist_expiry = (expires_at + ist_offset).strftime('%d %b %Y, %H:%M:%S') if isinstance(expires_at, datetime) else "N/A"
+                        ist_expiry = format_ist_time(expires_at)
                         log_text = (
                             f"❌ **HeroFlix Premium Expired & Ejected**\n\n"
-                            f"👤 **User ID**: `{user_id}`\n"
+                            f"👤 **User**: <a href=\"tg://user?id={user_id}\">{u_name}</a> (`{user_id}`)\n"
                             f"⌛ **Expired At**: {ist_expiry} IST\n"
                             f"🚪 **Action**: Removed from database and kicked from group."
                         )
@@ -909,7 +932,7 @@ async def check_my_plan(client, message):
             days_left = remaining.days
             hours_left = remaining.seconds // 3600
             minutes_left = (remaining.seconds % 3600) // 60
-            expiry_str = expires_at.strftime('%d %b %Y, %H:%M UTC')
+            expiry_str = format_ist_time(expires_at)
             time_left_str = f"{days_left}d, {hours_left}h, {minutes_left}m"
         else:
             expiry_str = "Expired"
@@ -922,7 +945,7 @@ async def check_my_plan(client, message):
         f"✨ **Your Premium Status** ✨\n\n"
         f"📦 **Plan**: {plan}\n"
         f"🟢 **Status**: Active\n"
-        f"⏳ **Expires On**: {expiry_str}\n"
+        f"⏳ **Expires On**: {expiry_str} IST\n"
         f"⏱️ **Remaining Time**: {time_left_str}\n\n"
         f"Enjoy your ad-free experience!"
     )
@@ -930,12 +953,12 @@ async def check_my_plan(client, message):
     await message.reply_text(plan_text, parse_mode=enums.ParseMode.MARKDOWN)
 
 # ==========================================
-# ADMIN REMOVE PREMIUM COMMAND (Unified Lookup)
+# ADMIN REVOKE PREMIUM COMMAND (Replaces /removepremium)
 # ==========================================
-@Client.on_message(filters.command("removepremium") & filters.user(ADMINS))
-async def remove_premium_command(client, message):
+@Client.on_message(filters.command("revoke") & filters.user(ADMINS))
+async def revoke_premium_command(client, message):
     if len(message.command) != 2:
-        return await message.reply_text("<b>Usage:</b> /removepremium <code>user_id</code>")
+        return await message.reply_text("<b>Usage:</b> /revoke <code>user_id</code>")
     
     try:
         target_user_id = int(message.command[1])
@@ -948,14 +971,26 @@ async def remove_premium_command(client, message):
         
     result = await col.delete_one({"user_id": target_user_id})
     
+    try:
+        t_user = await client.get_users(target_user_id)
+        t_name = t_user.first_name or "User"
+    except Exception:
+        t_name = "User"
+
+    try:
+        a_user = message.from_user
+        a_name = a_user.first_name or "Admin"
+    except Exception:
+        a_name = "Admin"
+    
     if result.deleted_count > 0:
         if PREMIUM_GROUP_ID:
             await safe_kick_user(client, PREMIUM_GROUP_ID, target_user_id)
                 
         log_revocation_text = (
             f"⚠️ **HeroFlix Premium Manually Revoked**\n\n"
-            f"👤 **Target User ID**: `{target_user_id}`\n"
-            f"🛡️ **Revoked By Admin ID**: `{message.from_user.id}`\n"
+            f"👤 **Target User**: <a href=\"tg://user?id={target_user_id}\">{t_name}</a> (`{target_user_id}`)\n"
+            f"🛡️ **Revoked By Admin**: <a href=\"tg://user?id={message.from_user.id}\">{a_name}</a> (`{message.from_user.id}`)\n"
             f"🚪 **Action**: Record deleted and user ejected from group."
         )
         await log_premium_action(client, log_revocation_text)
@@ -972,9 +1007,50 @@ async def remove_premium_command(client, message):
         except Exception:
             pass
             
-        await message.reply_text(f"<b>Successfully removed premium status for user <code>{target_user_id}</code>, ejected them from the group, and sent renewal DM.</b>")
+        await message.reply_text(f"<b>Successfully removed premium status for <a href=\"tg://user?id={target_user_id}\">{t_name}</a> (<code>{target_user_id}</code>), ejected them from the group, and sent renewal DM.</b>", parse_mode=enums.ParseMode.HTML)
     else:
-        await message.reply_text(f"<b>No active premium record found for user <code>{target_user_id}</code>.</b>")
+        await message.reply_text(f"<b>No active premium record found for <a href=\"tg://user?id={target_user_id}\">{t_name}</a> (<code>{target_user_id}</code>).</b>", parse_mode=enums.ParseMode.HTML)
+
+# ==========================================
+# ADMIN LIST ACTIVE PREMIUM USERS COMMAND (/premiums)
+# ==========================================
+@Client.on_message(filters.command("premiums") & filters.user(ADMINS))
+async def list_premiums_command(client, message):
+    col = get_premium_collection()
+    if col is None:
+        return await message.reply_text("<b>Database collection not found.</b>")
+    
+    now = datetime.utcnow()
+    active_users = []
+    async for doc in col.find({"active": True}):
+        expires_at = doc.get("expires_at") or doc.get("expiry_date")
+        if expires_at and isinstance(expires_at, datetime) and expires_at > now:
+            active_users.append(doc)
+            
+    if not active_users:
+        return await message.reply_text("<b>No active premium users found at the moment.</b>")
+        
+    text = f"💎 **Active Premium Users List** ({len(active_users)})\n\n"
+    for idx, doc in enumerate(active_users, 1):
+        uid = doc.get("user_id")
+        plan = doc.get("plan", "Standard")
+        expires = doc.get("expires_at") or doc.get("expiry_date")
+        exp_str = format_ist_time(expires) if expires else "N/A"
+        
+        try:
+            u_obj = await client.get_users(uid)
+            u_name = u_obj.first_name or "User"
+        except Exception:
+            u_name = doc.get("username", "User")
+            
+        text += f"{idx}. <a href=\"tg://user?id={uid}\">{u_name}</a> (`{uid}`) | 📦 {plan} | ⏳ {exp_str}\n"
+        
+        if len(text) > 3800:
+            await message.reply_text(text, parse_mode=enums.ParseMode.HTML)
+            text = ""
+            
+    if text:
+        await message.reply_text(text, parse_mode=enums.ParseMode.HTML)
 
 # ==========================================
 # ADMIN INVITE LINK GENERATOR COMMAND
@@ -1109,13 +1185,13 @@ async def minimal_screenshot_handler(client, message):
     
     admin_text = (
         f"🔔 **New Payment Verification**\n\n"
-        f"👤 Name: [{user_name}](tg://user?id={user_id})\n"
+        f"👤 User: <a href=\"tg://user?id={user_id}\">{user_name}</a>\n"
         f"🆔 User ID: `{user_id}`"
     )
     
     for admin_id in ADMINS:
         try:
-            await client.send_photo(admin_id, message.photo.file_id, caption=admin_text, reply_markup=admin_kb)
+            await client.send_photo(admin_id, message.photo.file_id, caption=admin_text, reply_markup=admin_kb, parse_mode=enums.ParseMode.HTML)
         except Exception as e:
             logger.error(f"Failed to send minimal payment proof to admin {admin_id}: {e}")
 
@@ -1173,9 +1249,9 @@ async def select_plan_cb(client, callback: CallbackQuery):
     
     try:
         target_user = await client.get_users(target_user_id)
-        username = f"@{target_user.username}" if target_user.username else str(target_user_id)
+        username = target_user.first_name or "User"
     except Exception:
-        username = str(target_user_id)
+        username = "User"
     
     pending_state = {
         "user_id": target_user_id,
@@ -1207,19 +1283,19 @@ async def select_plan_cb(client, callback: CallbackQuery):
     
     preview_text = (
         f"💎 **Premium Activation Preview**\n\n"
-        f"👤 **User**: {username}\n"
+        f"👤 **User**: <a href=\"tg://user?id={target_user_id}\">{username}</a>\n"
         f"🆔 **User ID**: `{target_user_id}`\n"
         f"📦 **New Plan**: {plan_label}\n"
         f"💰 **Amount**: ₹{price}\n"
-        f"⌛ **Result Expiry**: {expiry_date.strftime('%d %b %Y, %H:%M:%S')}\n\n"
+        f"⌛ **Result Expiry**: {format_ist_time(expiry_date)} IST\n\n"
         f"Proceed with activation?"
     )
     
     await callback.answer()
     try:
-        await callback.message.edit_caption(preview_text, reply_markup=kb, parse_mode=enums.ParseMode.MARKDOWN)
+        await callback.message.edit_caption(preview_text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
     except Exception:
-        await callback.message.edit_text(preview_text, reply_markup=kb, parse_mode=enums.ParseMode.MARKDOWN)
+        await callback.message.edit_text(preview_text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
 
 @Client.on_callback_query(filters.regex("^confact_"))
 async def confirm_activation_cb(client, callback: CallbackQuery):
@@ -1241,7 +1317,12 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
     plan = flow.get("plan", "1 Month")
     price = flow.get("price", "40")
     days = flow.get("days", 30)
-    username = flow.get("username", str(target_user_id))
+    
+    try:
+        t_usr = await client.get_users(target_user_id)
+        username = t_usr.first_name or "User"
+    except Exception:
+        username = flow.get("username", "User")
     
     await callback.answer("Processing activation/renewal...")
     now = datetime.utcnow()
@@ -1324,17 +1405,16 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
         if hasattr(db, 'premium_pending'):
             await db.premium_pending.delete_one({"user_id": target_user_id})
         
-    ist_offset = timedelta(hours=5, minutes=30)
-    ist_start = start_date + ist_offset
-    ist_expiry = expiry_date + ist_offset
+    ist_start_str = format_ist_time(start_date)
+    ist_expiry_str = format_ist_time(expiry_date)
 
     perm_link = PREMIUM_PERMANENT_LINK if 'PREMIUM_PERMANENT_LINK' in globals() and PREMIUM_PERMANENT_LINK else "https://t.me/your_group_link"
 
     user_msg_text = (
         f"🎉 **HeroFlix Premium Activated**\n\n"
         f"📦 **Plan**: {plan}\n"
-        f"📅 **Start**: {ist_start.strftime('%d %b %Y, %H:%M:%S')} IST\n"
-        f"⌛ **Expires**: {ist_expiry.strftime('%d %b %Y, %H:%M:%S')} IST\n\n"
+        f"📅 **Start**: {ist_start_str} IST\n"
+        f"⌛ **Expires**: {ist_expiry_str} IST\n\n"
         f"👇 **Tap below to join the Premium Group**:\n{perm_link}\n\n"
         f"<i>(Send a join request through the link above, and your account will be accepted automatically!)</i>"
     )
@@ -1349,29 +1429,29 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
         
     success_admin_text = (
         f"✅ **Premium Updated Successfully**\n\n"
-        f"• **User**: {username} (`{target_user_id}`)\n"
+        f"• **User**: <a href=\"tg://user?id={target_user_id}\">{username}</a> (`{target_user_id}`)\n"
         f"• **Plan**: {plan} (₹{price})\n"
-        f"• **New Start**: {ist_start.strftime('%d %b %Y, %H:%M:%S')} IST\n"
-        f"• **New Expiry**: {ist_expiry.strftime('%d %b %Y, %H:%M:%S')} IST\n"
+        f"• **New Start**: {ist_start_str} IST\n"
+        f"• **New Expiry**: {ist_expiry_str} IST\n"
         f"• **Auto-Approved Join Request**: Yes"
     )
 
     action_type = "Renewal" if existing_user_doc else "New Activation"
     log_event_text = (
         f"💎 **HeroFlix Premium {action_type}**\n\n"
-        f"👤 **User**: {username} (`{target_user_id}`)\n"
+        f"👤 **User**: <a href=\"tg://user?id={target_user_id}\">{username}</a> (`{target_user_id}`)\n"
         f"📦 **Plan**: {plan} (₹{price})\n"
-        f"📅 **Start**: {ist_start.strftime('%d %b %Y, %H:%M:%S')} IST\n"
-        f"⌛ **New Expiry**: {ist_expiry.strftime('%d %b %Y, %H:%M:%S')} IST\n"
+        f"📅 **Start**: {ist_start_str} IST\n"
+        f"⌛ **New Expiry**: {ist_expiry_str} IST\n"
         f"🛡️ **Approved By Admin ID**: `{callback.from_user.id}`\n"
         f"🟢 **Join Request Auto-Approved**: Yes"
     )
     await log_premium_action(client, log_event_text)
     
     try:
-        await callback.message.edit_caption(success_admin_text, reply_markup=None, parse_mode=enums.ParseMode.MARKDOWN)
+        await callback.message.edit_caption(success_admin_text, reply_markup=None, parse_mode=enums.ParseMode.HTML)
     except Exception:
-        await callback.message.edit_text(success_admin_text, reply_markup=None, parse_mode=enums.ParseMode.MARKDOWN)
+        await callback.message.edit_text(success_admin_text, reply_markup=None, parse_mode=enums.ParseMode.HTML)
 
 # ==========================================
 # AUTO JOIN REQUEST HANDLER & WELCOME LISTENER
@@ -1382,7 +1462,8 @@ async def auto_accept_join_request(client, join_request: ChatJoinRequest):
         if await get_premium_collection().find_one({"user_id": join_request.from_user.id, "active": True}):
             try:
                 await client.approve_chat_join_request(chat_id=join_request.chat.id, user_id=join_request.from_user.id)
-                logger.info(f"Auto-approved join request for active premium user {join_request.from_user.id}")
+                u_name = join_request.from_user.first_name or "User"
+                logger.info(f"Auto-approved join request for active premium user {u_name} (ID: {join_request.from_user.id})")
             except Exception as e:
                 logger.error(f"Failed to auto-approve join request for {join_request.from_user.id}: {e}")
 
