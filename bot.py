@@ -6,6 +6,7 @@ logging.getLogger().setLevel(logging.INFO)
 logging.getLogger("pyrogram").setLevel(logging.ERROR)
 
 from plugins.commands import premium_expiry_reminder_loop
+from plugins.index import check_pending_index_on_startup
 from pyrogram import Client, __version__
 from pyrogram.raw.all import layer
 from database.ia_filterdb import Media
@@ -68,8 +69,9 @@ class Bot(Client):
         await app.setup()
         await web.TCPSite(app, "0.0.0.0", PORT).start()
 
-        # Start premium background loop
+        # Start background tasks
         asyncio.create_task(premium_expiry_reminder_loop(self))
+        await check_pending_index_on_startup(self)
 
     async def stop(self, *args):
         await super().stop()
