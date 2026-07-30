@@ -25,28 +25,13 @@ async def caption_edit_handler(client, message):
     if not media:
         return
 
-    # caption removed -> fallback filename
-    source_text = (
-        message.caption
-        if message.caption
-        else media.file_name
-    )
-
+    source_text = message.caption or media.file_name
     source_text = source_text[:1000]
 
-    # searchable normalized text
     tmp = normalize_basic_episode(source_text)
-
     normalized_name = " ".join(normalize(tmp))
 
-    # display normalized text
-    display_name = " ".join(
-        word.capitalize()
-        for word in normalize(tmp)
-    )
-
     try:
-
         file_id, _ = unpack_new_file_id(media.file_id)
 
         await Media.collection.update_one(
@@ -54,8 +39,10 @@ async def caption_edit_handler(client, message):
             {
                 "$set": {
                     "file_name": normalized_name,
-                    "display_name": display_name,
-                    "caption": message.caption if message.caption else None
+                    "caption": message.caption or None
+                },
+                "$unset": {
+                    "display_name": ""
                 }
             }
         )
@@ -63,4 +50,4 @@ async def caption_edit_handler(client, message):
         logger.info(f"Caption updated for {file_id}")
 
     except Exception:
-        logger.exception("Failed updating caption edit") 
+        logger.exception("Failed updating caption edit")
