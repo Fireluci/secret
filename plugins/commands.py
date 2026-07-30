@@ -906,6 +906,30 @@ async def stop_button(bot, message):
     os.execl(sys.executable, sys.executable, *sys.argv)
 
 # ==========================================
+# ADMIN TEXT COMMAND (/text userid message)
+# ==========================================
+@Client.on_message(filters.command("text") & filters.user(ADMINS))
+async def admin_send_text_command(client, message):
+    if len(message.command) < 3:
+        return await message.reply_text(
+            "<b>Usage:</b> /text <code>user_id</code> <code>message</code>",
+            parse_mode=enums.ParseMode.HTML
+        )
+    
+    try:
+        target_user_id = int(message.command[1])
+    except ValueError:
+        return await message.reply_text("<b>Invalid User ID format.</b>", parse_mode=enums.ParseMode.HTML)
+    
+    text_to_send = message.text.split(None, 2)[2]
+    
+    try:
+        await client.send_message(target_user_id, text_to_send, parse_mode=enums.ParseMode.HTML)
+        await message.reply_text(f"<b>✅ Message successfully sent to user <code>{target_user_id}</code>.</b>", parse_mode=enums.ParseMode.HTML)
+    except Exception as e:
+        await message.reply_text(f"<b>❌ Failed to send message to user <code>{target_user_id}</code>:</b>\n<code>{e}</code>", parse_mode=enums.ParseMode.HTML)
+
+# ==========================================
 # USER /MYPLAN COMMAND (Unified Lookup)
 # ==========================================
 @Client.on_message(filters.command("myplan") & filters.private)
@@ -950,13 +974,17 @@ async def check_my_plan(client, message):
     plan_text = (
         f"<b>✨ Your Premium Status ✨</b>\n\n"
         f"📦 <b>Plan</b>: {plan}\n"
-        f"🟢 <b>Status</b>: Active\n"
+        f"🟢 <b>Status</b>: [██████████] Active\n"
         f"⏳ <b>Expires On</b>: {expiry_str} IST\n"
         f"⏱️ <b>Remaining Time</b>: {time_left_str}\n\n"
         f"Enjoy your ad-free experience!"
     )
     
-    await message.reply_text(plan_text, parse_mode=enums.ParseMode.HTML)
+    renew_kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔄 Extend / Renew", callback_data="buy_premium_start")]
+    ])
+    
+    await message.reply_text(plan_text, reply_markup=renew_kb, parse_mode=enums.ParseMode.HTML)
 
 # ==========================================
 # ADMIN REVOKE PREMIUM COMMAND (Replaces /removepremium)
@@ -1165,7 +1193,11 @@ async def minimal_premium_command(client, update):
     )
     
     if isinstance(update, CallbackQuery):
-        await message.edit_text(text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
+        try:
+            await message.delete()
+        except Exception:
+            pass
+        await client.send_message(message.chat.id, text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
     else:
         await message.reply_text(text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
 
@@ -1174,7 +1206,12 @@ async def minimal_send_proof_cb(client, callback: CallbackQuery):
     user_id = callback.from_user.id
     MINIMAL_PENDING_FLOW[user_id] = {"status": "waiting_screenshot"}
     await callback.answer()
-    await callback.message.edit_text(
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    await client.send_message(
+        callback.message.chat.id,
         "<b>📸 Please send your payment screenshot now in this chat.</b>\n\n"
         "Your request will be forwarded to the admin immediately.",
         parse_mode=enums.ParseMode.HTML
@@ -1219,7 +1256,7 @@ async def minimal_admin_action_cb(client, callback: CallbackQuery):
     
     kb = InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("1 Month (Test 1 Min) - ₹40", callback_data=f"selplan_{target_user_id}_30_40"),
+            InlineKeyboardButton("1 Month (Test 2 Min) - ₹40", callback_data=f"selplan_{target_user_id}_30_40"),
             InlineKeyboardButton("2 Months - ₹80", callback_data=f"selplan_{target_user_id}_60_80")
         ],
         [
@@ -1259,7 +1296,7 @@ async def select_plan_cb(client, callback: CallbackQuery):
     plan_label = "1 Month (1 Min Test)" if is_test_minute else f"{days} Days"
 
     now = datetime.utcnow()
-    expiry_date = now + timedelta(minutes=1) if is_test_minute else now + timedelta(days=days)
+    expiry_date = now + timedelta(minutes=2) if is_test_minute else now + timedelta(days=days)
     
     try:
         target_user = await client.get_users(target_user_id)
@@ -1356,19 +1393,19 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
         if old_expiry and isinstance(old_expiry, datetime) and old_expiry > now:
             start_date = old_expiry
             if is_test_minute:
-                expiry_date = start_date + timedelta(minutes=1)
+                expiry_date = start_date + timedelta(minutes=2)
             else:
                 expiry_date = start_date + timedelta(days=days)
         else:
             start_date = now
             if is_test_minute:
-                expiry_date = start_date + timedelta(minutes=1)
+                expiry_date = start_date + timedelta(minutes=2)
             else:
                 expiry_date = start_date + timedelta(days=days)
     else:
         start_date = now
         if is_test_minute:
-            expiry_date = start_date + timedelta(minutes=1)
+            expiry_date = start_date + timedelta(minutes=2)
         else:
             expiry_date = start_date + timedelta(days=days)
 
@@ -1519,13 +1556,24 @@ async def welcome_premium_user_handler(client, member_update: ChatMemberUpdated)
         if dm_msg_id:
             try:
                 await client.delete_messages(chat_id=user_id, message_ids=dm_msg_id)
-                await client.send_message(
-                    user_id,
-                    "<b>✅ You have successfully joined the Premium Group!</b>\n\nEnjoy your membership!",
-                    parse_mode=enums.ParseMode.HTML
-                )
             except Exception as e:
-                logger.error(f"Failed to delete DM join link message for {user_id}: {e}")
+                logger.error(f"Failed to delete old DM join message for {user_id}: {e}")
+
+        perm_link = PREMIUM_PERMANENT_LINK if 'PREMIUM_PERMANENT_LINK' in globals() and PREMIUM_PERMANENT_LINK else "https://t.me/your_group_link"
+        welcome_kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔗 Open Premium Group", url=perm_link)]
+        ])
+        try:
+            await client.send_message(
+                user_id,
+                "<b>✅ You have successfully joined the Premium Group!</b>\n\n"
+                "Tap below to open your group 👇",
+                reply_markup=welcome_kb,
+                disable_web_page_preview=True,
+                parse_mode=enums.ParseMode.HTML
+            )
+        except Exception as e:
+            logger.error(f"Failed to send join confirmation DM to {user_id}: {e}")
 
 @Client.on_callback_query(filters.regex("^min_rej_"))
 async def minimal_admin_reject_cb(client, callback: CallbackQuery):
