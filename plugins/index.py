@@ -156,7 +156,7 @@ async def set_skip_number(bot, message):
     else:
         await message.reply("Give me a skip number.")
 
-async def index_files_to_db(lst_msg_id, chat, msg, bot, resume_current=0, resume_saved=0, resume_dup=0, resume_del=0):
+async def index_files_to_db(lst_msg_id, chat, msg, bot, resume_current=None, resume_saved=0, resume_dup=0, resume_del=0):
     total_files = resume_saved
     duplicate = resume_dup
     deleted = resume_del
@@ -164,7 +164,12 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, resume_current=0, resume
     temp.SAVED = total_files
     temp.DUP = duplicate
     temp.DEL = deleted
-    temp.CURRENT = resume_current
+    
+    # Ensure it respects what was set via /setskip if no explicit resume value is passed
+    if resume_current is not None:
+        temp.CURRENT = resume_current
+    elif not hasattr(temp, 'CURRENT'):
+        temp.CURRENT = 0
 
     async with lock:
         try:
