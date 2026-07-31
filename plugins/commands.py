@@ -22,9 +22,7 @@ logger = logging.getLogger(__name__)
 BATCH_FILES = {}
 MINIMAL_PENDING_FLOW = {}
 
-# ==========================================
-# HELPER: FORMAT IST TIME (12-Hour, No Seconds)
-# ==========================================
+# format ist time helper
 def format_ist_time(dt: datetime) -> str:
     if not isinstance(dt, datetime):
         return "N/A"
@@ -32,11 +30,14 @@ def format_ist_time(dt: datetime) -> str:
     ist_dt = dt + ist_offset
     return ist_dt.strftime('%d %b, %Y | %I:%M %p')
 
-# ==========================================
-# UNIFIED DATABASE COLLECTION HELPER
-# ==========================================
+# helper channel button
+def get_channel_button():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔆彡⟨ HEROFLiX ⟩彡🔆", url=f"https://telegram.me/{CHNL_LNK}")]
+    ])
+
+# get premium collection helper
 def get_premium_collection():
-    """Safely retrieves the premium users collection regardless of DB structure initialization."""
     try:
         if hasattr(db, 'premium_users') and db.premium_users is not None:
             return db.premium_users
@@ -51,11 +52,8 @@ def get_premium_collection():
         return users_col.database.premium_users
     return None
 
-# ==========================================
-# PREMIUM LOGGING HELPER (With Admin DM Fallback)
-# ==========================================
+# log premium action helper
 async def log_premium_action(client: Client, text: str):
-    """Helper to send important premium events to the dedicated premium log channel with admin fallback."""
     if not PREMIUM_LOG_CHANNEL:
         return
     try:
@@ -75,9 +73,7 @@ async def log_premium_action(client: Client, text: str):
         else:
             logger.error(f"Failed to send log to PREMIUM_LOG_CHANNEL: {e}")
 
-# ==========================================
-# ROBUST EJECTION HELPER (Handles Ex-Admins & Non-Participants)
-# ==========================================
+# safe kick user helper
 async def safe_kick_user(client: Client, chat_id, user_id):
     if not chat_id:
         return
@@ -128,21 +124,23 @@ async def safe_kick_user(client: Client, chat_id, user_id):
                 f"• <b>Error</b>: <code>{e}</code>"
             )
 
-# ==========================================
-# BACKGROUND LIFECYCLE & EXPIRY CHECKER LOOP
-# ==========================================
+# background expiry reminder loop
 async def premium_expiry_reminder_loop(client: Client):
-    """Background loop checking expirations, running checks on boot and every interval."""
     await asyncio.sleep(5)
+    col = get_premium_collection()
+    if col is not None:
+        try:
+            await col.create_index([("active", 1), ("expires_at", 1)])
+        except Exception as e:
+            logger.error(f"Failed to create compound index on premium collection: {e}")
+
     while True:
         try:
             now = datetime.utcnow()
-            col = get_premium_collection()
-                
             if col is not None:
                 async for user_doc in col.find({"active": True}):
                     user_id = user_doc.get("user_id")
-                    expires_at = user_doc.get("expires_at") or user_doc.get("expiry_date")
+                    expires_at = user_doc.get("expires_at")
                     
                     if not expires_at or not isinstance(expires_at, datetime):
                         continue
@@ -161,7 +159,10 @@ async def premium_expiry_reminder_loop(client: Client):
                         logger.info(f"🔄 Expired and removed premium record for {u_name} (ID: {user_id})")
 
                         if PREMIUM_GROUP_ID:
-                            await safe_kick_user(client, PREMIUM_GROUP_ID, user_id)
+                            try:
+                                await safe_kick_user(client, PREMIUM_GROUP_ID, user_id)
+                            except Exception as kick_err:
+                                logger.error(f"Failed safe kick for user {user_id}: {kick_err}")
                                 
                         ist_expiry = format_ist_time(expires_at)
                         log_text = (
@@ -170,7 +171,10 @@ async def premium_expiry_reminder_loop(client: Client):
                             f"⌛ <b>Expired At</b>: {ist_expiry} IST\n"
                             f"🚪 <b>Action</b>: Removed from database and kicked from group."
                         )
-                        await log_premium_action(client, log_text)
+                        try:
+                            await log_premium_action(client, log_text)
+                        except Exception as log_err:
+                            logger.error(f"Failed to log expiration for user {user_id}: {log_err}")
 
                         expiry_kb = InlineKeyboardMarkup([
                             [InlineKeyboardButton("🔄 Renew Premium", callback_data="buy_premium_start")]
@@ -210,6 +214,32 @@ async def premium_expiry_reminder_loop(client: Client):
 
 @Client.on_message(filters.command("start") & filters.incoming)
 async def start(client, message):
+    user = message.from_user.id if message.from_user else None
+    if user and user not in ADMINS and user not in PREMIUM_USER:
+        col = get_premium_collection()
+        p_doc = None
+        if col is not None:
+            p_doc = await col.find_one({"user_id": user, "active": True})
+        
+        now = datetime.utcnow()
+        is_active_premium = False
+        if p_doc:
+            exp = p_doc.get("expires_at")
+            if exp and isinstance(exp, datetime) and exp > now:
+                is_active_premium = True
+                
+        if not is_active_premium and len(message.command) > 1:
+            data_check = message.command[1]
+            if not data_check.startswith("subscribe") and data_check not in ["error", "okay", "help"]:
+                renew_kb = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔄 Renew Premium", callback_data="buy_premium_start")]
+                ])
+                return await message.reply_text(
+                    "<b>❌ Premium Expired</b>\n\nYour membership has ended. Please renew to continue accessing files!",
+                    reply_markup=renew_kb,
+                    parse_mode=enums.ParseMode.HTML
+                )
+
     if message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
         buttons = [
             [
@@ -250,8 +280,7 @@ async def start(client, message):
 
         await client.send_message(
             message.from_user.id,
-            "<b>🔆 First Join Our Main Channel & Then Click Try Again ♻\n\n"
-            "🔆 पहले हमारे मैन चैनल से जुड़ें और फिर Try Again दबाएँ ♻</b>",
+            "<b>⚠️ Please join our main channel first to proceed, then click Try Again.</b>",
             reply_markup=InlineKeyboardMarkup(btn),
             parse_mode=enums.ParseMode.HTML
         )
@@ -307,13 +336,7 @@ async def start(client, message):
                     file_id=msg.get("file_id"),
                     caption=f_caption,
                     protect_content=msg.get('protect', False),
-                    reply_markup=InlineKeyboardMarkup(
-                        [
-                         [
-                          InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}'),
-                         ]
-                        ]
-                    )
+                    reply_markup=get_channel_button()
                 )
             except FloodWait as e:
                 await asyncio.sleep(e.x)
@@ -323,13 +346,7 @@ async def start(client, message):
                     file_id=msg.get("file_id"),
                     caption=f_caption,
                     protect_content=msg.get('protect', False),
-                    reply_markup=InlineKeyboardMarkup(
-                        [
-                         [
-                          InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}'),
-                         ]
-                        ]
-                    )
+                    reply_markup=get_channel_button()
                 )
             except Exception as e:
                 logger.warning(e, exc_info=True)
@@ -457,13 +474,7 @@ async def start(client, message):
                 file_id=file_id,
                 caption=f_caption,
                 protect_content=True if pre == 'filep' else False,
-                reply_markup=InlineKeyboardMarkup(
-                    [
-                     [
-                      InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}'),
-                     ]
-                    ]
-                )
+                reply_markup=get_channel_button()
             )
             filesarr.append(msg)
         await k.edit_text("<b>File Deleted!</b>")
@@ -510,13 +521,7 @@ async def start(client, message):
                 chat_id=message.from_user.id,
                 file_id=file_id,
                 protect_content=True if pre == 'filep' else False,
-                reply_markup=InlineKeyboardMarkup(
-                    [
-                     [
-                      InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}'),
-                     ]
-                    ]
-                )
+                reply_markup=get_channel_button()
             )
             filetype = msg.media
             file = getattr(msg, filetype.value)
@@ -555,20 +560,12 @@ async def start(client, message):
         file_id=file_id,
         caption=f_caption,
         protect_content=True if pre == 'filep' else False,
-        reply_markup=InlineKeyboardMarkup(
-            [
-             [
-              InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}'),
-             ]
-            ]
-        )
+        reply_markup=get_channel_button()
     )
     return   
 
 @Client.on_message(filters.command('channel') & filters.user(ADMINS))
 async def channel_info(bot, message):
-           
-    """Send basic information of channel"""
     if isinstance(CHANNELS, (int, str)):
         channels = [CHANNELS]
     elif isinstance(CHANNELS, list):
@@ -597,7 +594,6 @@ async def channel_info(bot, message):
 
 @Client.on_message(filters.command('logs') & filters.user(ADMINS))
 async def log_file(bot, message):
-    """Send log file"""
     try:
         await message.reply_document('TelegramBot.log')
     except Exception as e:
@@ -605,7 +601,6 @@ async def log_file(bot, message):
 
 @Client.on_message(filters.command('delete') & filters.user(ADMINS))
 async def delete(bot, message):
-    """Delete file from database"""
     reply = message.reply_to_message
     if reply and reply.media:
         msg = await message.reply("Processing...⏳", quote=True)
@@ -905,9 +900,7 @@ async def stop_button(bot, message):
     await msg.edit("<b>✅️ 𝙱𝙾𝚃 𝙸𝚂 𝚁𝙴𝚂𝚃𝙰𝚁𝚃𝙴𝙳</b>", parse_mode=enums.ParseMode.HTML)
     os.execl(sys.executable, sys.executable, *sys.argv)
 
-# ==========================================
-# ADMIN TEXT COMMAND (/text userid message)
-# ==========================================
+# admin send text command
 @Client.on_message(filters.command("text") & filters.user(ADMINS))
 async def admin_send_text_command(client, message):
     if len(message.command) < 3:
@@ -929,9 +922,7 @@ async def admin_send_text_command(client, message):
     except Exception as e:
         await message.reply_text(f"<b>❌ Failed to send message to user <code>{target_user_id}</code>:</b>\n<code>{e}</code>", parse_mode=enums.ParseMode.HTML)
 
-# ==========================================
-# USER /MYPLAN COMMAND (Unified Lookup)
-# ==========================================
+# check my plan command
 @Client.on_message(filters.command("myplan") & filters.private)
 async def check_my_plan(client, message):
     user_id = message.from_user.id
@@ -954,7 +945,7 @@ async def check_my_plan(client, message):
         return
 
     plan = user_doc.get("plan", "N/A")
-    expires_at = user_doc.get("expires_at") or user_doc.get("expiry_date")
+    expires_at = user_doc.get("expires_at")
     
     if expires_at and isinstance(expires_at, datetime):
         if expires_at > now:
@@ -986,9 +977,7 @@ async def check_my_plan(client, message):
     
     await message.reply_text(plan_text, reply_markup=renew_kb, parse_mode=enums.ParseMode.HTML)
 
-# ==========================================
-# ADMIN REVOKE PREMIUM COMMAND (Replaces /removepremium)
-# ==========================================
+# admin revoke command
 @Client.on_message(filters.command("revoke") & filters.user(ADMINS))
 async def revoke_premium_command(client, message):
     if len(message.command) != 2:
@@ -1046,9 +1035,7 @@ async def revoke_premium_command(client, message):
     else:
         await message.reply_text(f"<b>No active premium record found for <a href=\"tg://user?id={target_user_id}\">{t_name}</a> (<code>{target_user_id}</code>).</b>", parse_mode=enums.ParseMode.HTML)
 
-# ==========================================
-# ADMIN LIST ACTIVE PREMIUM USERS COMMAND (/premiums)
-# ==========================================
+# admin list active premiums command
 @Client.on_message(filters.command("premiums") & filters.user(ADMINS))
 async def list_premiums_command(client, message):
     col = get_premium_collection()
@@ -1058,7 +1045,7 @@ async def list_premiums_command(client, message):
     now = datetime.utcnow()
     active_users = []
     async for doc in col.find({"active": True}):
-        expires_at = doc.get("expires_at") or doc.get("expiry_date")
+        expires_at = doc.get("expires_at")
         if expires_at and isinstance(expires_at, datetime) and expires_at > now:
             active_users.append(doc)
             
@@ -1069,7 +1056,7 @@ async def list_premiums_command(client, message):
     for idx, doc in enumerate(active_users, 1):
         uid = doc.get("user_id")
         plan = doc.get("plan", "Standard")
-        expires = doc.get("expires_at") or doc.get("expiry_date")
+        expires = doc.get("expires_at")
         exp_str = format_ist_time(expires) if expires else "N/A"
         
         try:
@@ -1087,9 +1074,7 @@ async def list_premiums_command(client, message):
     if text:
         await message.reply_text(text, parse_mode=enums.ParseMode.HTML)
 
-# ==========================================
-# ADMIN INVITE LINK GENERATOR COMMAND
-# ==========================================
+# admin invite link command
 @Client.on_message(filters.command("invite") & filters.user(ADMINS))
 async def generate_invite_command(client, message):
     if len(message.command) < 2:
@@ -1163,9 +1148,52 @@ async def generate_invite_command(client, message):
             pass
         await status_msg.edit_text(f"❌ <b>Failed to generate invite link:</b>\n<code>{e}</code>", parse_mode=enums.ParseMode.HTML)
 
-# ==========================================
-# MULTI-PLAN /PREMIUM COMMAND & WORKFLOW
-# ==========================================
+# helper plan selection keyboard
+def get_plan_keyboard(target_user_id: int):
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("1 Month (Test 2 Min) - ₹40", callback_data=f"selplan_{target_user_id}_30_40"),
+            InlineKeyboardButton("2 Months - ₹80", callback_data=f"selplan_{target_user_id}_60_80")
+        ],
+        [
+            InlineKeyboardButton("6 Months - ₹240", callback_data=f"selplan_{target_user_id}_180_240"),
+            InlineKeyboardButton("1 Year - ₹480", callback_data=f"selplan_{target_user_id}_365_480")
+        ],
+        [
+            InlineKeyboardButton("❌ Cancel", callback_data=f"min_rej_{target_user_id}")
+        ]
+    ])
+
+# admin manual approve command
+@Client.on_message(filters.command("approve") & filters.user(ADMINS))
+async def manual_approve_command(client, message):
+    if len(message.command) != 2:
+        return await message.reply_text(
+            "<b>Usage:</b> /approve <code>user_id</code>",
+            parse_mode=enums.ParseMode.HTML
+        )
+    
+    try:
+        target_user_id = int(message.command[1])
+    except ValueError:
+        return await message.reply_text("<b>Invalid User ID format.</b>", parse_mode=enums.ParseMode.HTML)
+    
+    try:
+        target_user = await client.get_users(target_user_id)
+        username = target_user.first_name or "User"
+    except Exception:
+        username = "User"
+        
+    await message.reply_text(
+        f"<b>💎 Manual Premium Approval</b>\n\n"
+        f"👤 <b>User</b>: <a href=\"tg://user?id={target_user_id}\">{username}</a>\n"
+        f"🆔 <b>User ID</b>: <code>{target_user_id}</code>\n\n"
+        f"Select the subscription plan to activate:",
+        reply_markup=get_plan_keyboard(target_user_id),
+        parse_mode=enums.ParseMode.HTML
+    )
+
+# multi-plan premium command and workflow
 @Client.on_message(filters.command("premium") & filters.private)
 @Client.on_callback_query(filters.regex("^buy_premium_start$"))
 async def minimal_premium_command(client, update):
@@ -1204,7 +1232,10 @@ async def minimal_premium_command(client, update):
 @Client.on_callback_query(filters.regex("^minimal_send_proof$"))
 async def minimal_send_proof_cb(client, callback: CallbackQuery):
     user_id = callback.from_user.id
-    MINIMAL_PENDING_FLOW[user_id] = {"status": "waiting_screenshot"}
+    pending_data = {"user_id": user_id, "status": "waiting_screenshot", "updated_at": datetime.utcnow()}
+    if hasattr(db, 'premium_pending'):
+        await db.premium_pending.update_one({"user_id": user_id}, {"$set": pending_data}, upsert=True)
+        
     await callback.answer()
     try:
         await callback.message.delete()
@@ -1220,10 +1251,17 @@ async def minimal_send_proof_cb(client, callback: CallbackQuery):
 @Client.on_message(filters.private & filters.photo & ~filters.command(["start", "premium"]))
 async def minimal_screenshot_handler(client, message):
     user_id = message.from_user.id
-    if user_id not in MINIMAL_PENDING_FLOW:
+    
+    is_pending = False
+    if hasattr(db, 'premium_pending'):
+        doc = await db.premium_pending.find_one({"user_id": user_id})
+        if doc:
+            is_pending = True
+            await db.premium_pending.delete_one({"user_id": user_id})
+        
+    if not is_pending:
         return
     
-    MINIMAL_PENDING_FLOW.pop(user_id, None)
     await message.reply_text("✅ Payment proof submitted! Please wait for admin verification.")
     
     user_name = message.from_user.first_name or "Unknown"
@@ -1254,31 +1292,17 @@ async def minimal_admin_action_cb(client, callback: CallbackQuery):
     parts = callback.data.split("_")
     target_user_id = int(parts[2] if len(parts) > 2 else parts[-1])
     
-    kb = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("1 Month (Test 2 Min) - ₹40", callback_data=f"selplan_{target_user_id}_30_40"),
-            InlineKeyboardButton("2 Months - ₹80", callback_data=f"selplan_{target_user_id}_60_80")
-        ],
-        [
-            InlineKeyboardButton("6 Months - ₹240", callback_data=f"selplan_{target_user_id}_180_240"),
-            InlineKeyboardButton("1 Year - ₹480", callback_data=f"selplan_{target_user_id}_365_480")
-        ],
-        [
-            InlineKeyboardButton("❌ Cancel", callback_data=f"min_rej_{target_user_id}")
-        ]
-    ])
-    
     await callback.answer()
     try:
         await callback.message.edit_caption(
             "<b>💎 Select Premium Plan</b>\n\nChoose the subscription to activate.",
-            reply_markup=kb,
+            reply_markup=get_plan_keyboard(target_user_id),
             parse_mode=enums.ParseMode.HTML
         )
     except Exception:
         await callback.message.edit_text(
             "<b>💎 Select Premium Plan</b>\n\nChoose the subscription to activate.",
-            reply_markup=kb,
+            reply_markup=get_plan_keyboard(target_user_id),
             parse_mode=enums.ParseMode.HTML
         )
 
@@ -1311,16 +1335,12 @@ async def select_plan_cb(client, callback: CallbackQuery):
         "price": price,
         "days": days,
         "start_date": now,
-        "expiry_date": expiry_date,
+        "expires_at": expiry_date,
         "updated_at": now
     }
     
-    if 'db' in globals() and hasattr(db, 'premium_pending'):
+    if hasattr(db, 'premium_pending'):
         await db.premium_pending.update_one({"user_id": target_user_id}, {"$set": pending_state}, upsert=True)
-    else:
-        if not hasattr(client, 'fallback_pending'):
-            client.fallback_pending = {}
-        client.fallback_pending[target_user_id] = pending_state
 
     kb = InlineKeyboardMarkup([
         [
@@ -1357,10 +1377,8 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
     target_user_id = int(target_user_str)
     
     flow = None
-    if 'db' in globals() and hasattr(db, 'premium_pending'):
+    if hasattr(db, 'premium_pending'):
         flow = await db.premium_pending.find_one({"user_id": target_user_id})
-    elif hasattr(client, 'fallback_pending') and target_user_id in client.fallback_pending:
-        flow = client.fallback_pending.get(target_user_id)
         
     if not flow:
         return await callback.answer("Activation session expired or already processed.", show_alert=True)
@@ -1378,9 +1396,6 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
     await callback.answer("Processing activation/renewal...")
     now = datetime.utcnow()
     
-    # ==========================================
-    # CUMULATIVE EXPIRY & START DATE CONTINUITY
-    # ==========================================
     col = get_premium_collection()
     existing_user_doc = None
     if col is not None:
@@ -1389,7 +1404,7 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
     is_test_minute = (days == 30 and "Test" in plan)
     
     if existing_user_doc:
-        old_expiry = existing_user_doc.get("expires_at") or existing_user_doc.get("expiry_date")
+        old_expiry = existing_user_doc.get("expires_at")
         if old_expiry and isinstance(old_expiry, datetime) and old_expiry > now:
             start_date = old_expiry
             if is_test_minute:
@@ -1409,9 +1424,6 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
         else:
             expiry_date = start_date + timedelta(days=days)
 
-    # ==========================================
-    # CHECK IF ALREADY IN GROUP & AUTO-APPROVE
-    # ==========================================
     already_joined = False
     if PREMIUM_GROUP_ID:
         try:
@@ -1430,9 +1442,6 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
         except Exception:
             pass
 
-    if hasattr(client, 'fallback_pending') and target_user_id in client.fallback_pending:
-        client.fallback_pending.pop(target_user_id, None)
-
     activation_data = {
         "user_id": target_user_id,
         "username": username,
@@ -1442,7 +1451,6 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
         "purchased_at": now,
         "start_date": start_date,
         "expires_at": expiry_date,
-        "expiry_date": expiry_date,
         "active": True,
         "status": "active",
         "approved_by": callback.from_user.id,
@@ -1507,9 +1515,7 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
     except Exception:
         await callback.message.edit_text(success_admin_text, reply_markup=None, parse_mode=enums.ParseMode.HTML)
 
-# ==========================================
-# AUTO JOIN REQUEST HANDLER & WELCOME LISTENER
-# ==========================================
+# auto join request handler
 @Client.on_chat_join_request()
 async def auto_accept_join_request(client, join_request: ChatJoinRequest):
     if PREMIUM_GROUP_ID and join_request.chat.id == int(PREMIUM_GROUP_ID):
@@ -1521,6 +1527,7 @@ async def auto_accept_join_request(client, join_request: ChatJoinRequest):
             except Exception as e:
                 logger.error(f"Failed to auto-approve join request for {join_request.from_user.id}: {e}")
 
+# welcome premium user handler
 @Client.on_chat_member_updated()
 async def welcome_premium_user_handler(client, member_update: ChatMemberUpdated):
     if not PREMIUM_GROUP_ID:
@@ -1583,7 +1590,7 @@ async def minimal_admin_reject_cb(client, callback: CallbackQuery):
     parts = callback.data.split("_")
     target_user_id = int(parts[2] if len(parts) > 2 else parts[-1])
     
-    if 'db' in globals() and hasattr(db, 'premium_pending'):
+    if hasattr(db, 'premium_pending'):
         await db.premium_pending.delete_one({"user_id": target_user_id})
     
     await callback.answer("Rejected.")
