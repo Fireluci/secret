@@ -85,7 +85,7 @@ class Bot(Client):
     ) -> Optional[AsyncGenerator["types.Message", None]]:
         current = offset
         while True:
-            new_diff = min(200, limit - current)
+            new_diff = min(500, limit - current)
             if new_diff <= 0:
                 return
 
