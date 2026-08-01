@@ -154,9 +154,9 @@ async def next_page(bot, query):
         except KeyError:
             pass
 
-        tut_link = await get_tutorial(query.message.chat.id)
-        if tut_link:
-            btn.append([InlineKeyboardButton("✨ How To Download ✨", url=tut_link)])
+        if TUTORIAL:
+            tut_url = TUTORIAL if TUTORIAL.startswith("http") else f"https://telegram.me/{TUTORIAL}"
+            btn.append([InlineKeyboardButton("🌟 How To Download ❓", url=tut_url)])
 
         cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n<i>🗨 Choose Link - Press Start ↷</i>\n\n</b>"
         if not settings.get('button'):
@@ -454,7 +454,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
                 await query.message.edit_text(text=f"<b>Cʜᴀɴɢᴇ Yᴏᴜʀ Sᴇᴛᴛɪɴɢs Fᴏʀ {title} As Yᴏᴜʀ Wɪsʜ ⚙</b>", disable_web_page_preview=True, parse_mode=enums.ParseMode.HTML)
                 await query.message.edit_reply_markup(reply_markup)
             else:
-                await query.message.edit_text(f"<b>Yᴏᴜʀ sᴇᴛᴛɪɴɢs ᴍᴇɴᴜ ғᴏʀ {title} ʜᴀs ʙᴇᴇɴ sᴇɴᴛ ᴛᴏ ʏᴏᴜʀ PM</b>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Cʜᴇᴄᴋ PM", url=f"telegram.me/{temp.U_NAME}")]]))
+                await query.message.edit_text(text=f"<b>Yᴏᴜʀ sᴇᴛᴛɪɴɢs ᴍᴇɴᴜ ғᴏʀ {title} ʜᴀs ʙᴇᴇɴ sᴇɴᴛ ᴛᴏ ʏᴏᴜʀ PM</b>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Cʜᴇᴄᴋ PM", url=f"telegram.me/{temp.U_NAME}")]]))
                 await client.send_message(chat_id=userid, text=f"<b>Cʜᴀɴɢᴇ Yᴏᴜʀ Sᴇᴛᴛɪɴɢs Fᴏʀ {title} As Yᴏᴜʀ Wɪsʜ ⚙</b>", reply_markup=reply_markup, disable_web_page_preview=True, parse_mode=enums.ParseMode.HTML, reply_to_message_id=query.message.id)
         return await query.answer("Settings menu opened!", show_alert=True)
     elif query.data.startswith("setgs"):
@@ -520,9 +520,9 @@ async def auto_filter(client, msg, spoll=False):
     else:
         btn.append([InlineKeyboardButton(text="✦ ────「 The End 」──── ✦", callback_data="pages")])
 
-    tut_link = await get_tutorial(message.chat.id)
-    if tut_link:
-        btn.append([InlineKeyboardButton("✨ How To Download ✨", url=tut_link)])
+    if TUTORIAL:
+        tut_url = TUTORIAL if TUTORIAL.startswith("http") else f"https://telegram.me/{TUTORIAL}"
+        btn.append([InlineKeyboardButton("🌟 How To Download ❓", url=tut_url)])
 
     cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n🎬 Select Your Pick ↡\n\n</b>"
     if not settings.get('button'):
