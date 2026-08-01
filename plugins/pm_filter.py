@@ -452,7 +452,10 @@ async def cb_handler(client: Client, query: CallbackQuery):
         settings = await get_settings(grpid)
         if settings is not None:
             await query.message.edit_reply_markup(get_settings_keyboard(settings, grp_id))
-    await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+    try:
+        await query.answer()
+    except:
+        pass
 
 async def auto_filter(client, msg, spoll=False):
     if not spoll:
