@@ -28,13 +28,14 @@ GLOBAL_SEM = asyncio.Semaphore(12)
 USER_COOLDOWN = {}
 
 REMOVES = [
-    "in", "series", "thriller", "4k", "kdrama", "ott", 
+    "in", "series", "4k", "kdrama", "ott", 
     "movies", "webseries", "language", "hd", "hollywood", 
     "and", "&", "bollywood", "dub", "anime",
     "dubbed", "file", "download", "movie", "film",
     "netflix", "link", "subtitles",
 
     "full movie",
+    "korean drama",
     "web series",
     "tv series",
     "television series",
