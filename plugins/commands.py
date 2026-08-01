@@ -1278,6 +1278,7 @@ async def minimal_screenshot_handler(client, message):
         f"🆔 User ID: <code>{user_id}</code>"
     )
     
+    sent_successfully = False
     for admin_id in ADMINS:
         try:
             await client.send_photo(
@@ -1287,8 +1288,26 @@ async def minimal_screenshot_handler(client, message):
                 reply_markup=admin_kb, 
                 parse_mode=enums.ParseMode.HTML
             )
+            sent_successfully = True
         except Exception as e:
             logger.error(f"Failed to send minimal payment proof to admin {admin_id}: {e}")
+            
+    if not sent_successfully and LOG_CHANNEL:
+        try:
+            fallback_text = (
+                f"<b>⚠️ Payment Proof Delivery Failed to Admins!</b>\n\n"
+                f"👤 User: <a href=\"tg://user?id={user_id}\">{user_name}</a> (<code>{user_id}</code>)\n"
+                f"<i>Please check your ADMINS configuration or ensure admins have started the bot.</i>"
+            )
+            await client.send_photo(
+                int(LOG_CHANNEL), 
+                message.photo.file_id, 
+                caption=fallback_text, 
+                reply_markup=admin_kb, 
+                parse_mode=enums.ParseMode.HTML
+            )
+        except Exception as log_err:
+            logger.error(f"Failsafe fallback to LOG_CHANNEL also failed: {log_err}")
 
 @Client.on_callback_query(filters.regex("^min_app_"))
 async def minimal_admin_action_cb(client, callback: CallbackQuery):
