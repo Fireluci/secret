@@ -20,7 +20,6 @@ import base64
 logger = logging.getLogger(__name__)
 
 BATCH_FILES = {}
-MINIMAL_PENDING_FLOW = {}
 
 # format ist time helper
 def format_ist_time(dt: datetime) -> str:
@@ -36,7 +35,7 @@ def get_channel_button():
         [InlineKeyboardButton("🔆彡⟨ HEROFLiX ⟩彡🔆", url=f"https://telegram.me/{CHNL_LNK}")]
     ])
 
-# get premium collection helper (Updated Collection Name)
+# get premium collection helper (Using custom active members collection)
 def get_premium_collection():
     try:
         if hasattr(db, 'custom_active_members') and db.custom_active_members is not None:
@@ -166,7 +165,7 @@ async def premium_expiry_reminder_loop(client: Client):
                                 
                         ist_expiry = format_ist_time(expires_at)
                         log_text = (
-                            f"<b>❌ HeroFlix Premium Expired & Ejected</b>\n\n"
+                            f"<b>❌ Premium Expired & Ejected</b>\n\n"
                             f"👤 <b>User</b>: <a href=\"tg://user?id={user_id}\">{u_name}</a> (<code>{user_id}</code>)\n"
                             f"⌛ <b>Expired At</b>: {ist_expiry} IST\n"
                             f"🚪 <b>Action</b>: Removed from database and kicked from group."
@@ -180,7 +179,7 @@ async def premium_expiry_reminder_loop(client: Client):
                             [InlineKeyboardButton("🔄 Renew Premium", callback_data="buy_premium_start")]
                         ])
                         expiry_msg = (
-                            "<b>❌ HeroFlix Premium Expired</b>\n\n"
+                            "<b>❌ Premium Expired</b>\n\n"
                             "Your Premium Membership has expired.\n\n"
                             "Tap below to renew."
                         )
@@ -194,7 +193,7 @@ async def premium_expiry_reminder_loop(client: Client):
                             [InlineKeyboardButton("🔄 Renew Premium", callback_data="buy_premium_start")]
                         ])
                         reminder_text = (
-                            "<b>⚠ HeroFlix Premium</b>\n\n"
+                            "<b>⚠ Premium Renewal</b>\n\n"
                             "Your Premium expires tomorrow.\n\n"
                             "Renew now to continue enjoying Premium without interruption."
                         )
@@ -1011,7 +1010,7 @@ async def revoke_premium_command(client, message):
             await safe_kick_user(client, PREMIUM_GROUP_ID, target_user_id)
                 
         log_revocation_text = (
-            f"<b>⚠️ HeroFlix Premium Manually Revoked</b>\n\n"
+            f"<b>⚠️ Premium Manually Revoked</b>\n\n"
             f"👤 <b>Target User</b>: <a href=\"tg://user?id={target_user_id}\">{t_name}</a> (<code>{target_user_id}</code>)\n"
             f"🛡️ <b>Revoked By Admin</b>: <a href=\"tg://user?id={message.from_user.id}\">{a_name}</a> (<code>{message.from_user.id}</code>)\n"
             f"🚪 <b>Action</b>: Record deleted and user ejected from group."
@@ -1024,7 +1023,7 @@ async def revoke_premium_command(client, message):
             ])
             await client.send_message(
                 target_user_id,
-                "<b>❌ HeroFlix Premium Revoked</b>\n\nYour Premium Membership has been manually removed by an administrator.\n\nTap below to renew.",
+                "<b>❌ Premium Revoked</b>\n\nYour Premium Membership has been manually removed by an administrator.\n\nTap below to renew.",
                 reply_markup=revocation_kb,
                 parse_mode=enums.ParseMode.HTML
             )
@@ -1211,7 +1210,7 @@ async def minimal_premium_command(client, update):
     ])
     
     text = (
-        "<b>💎 HeroFlix Premium Plans</b>\n\n"
+        "<b>💎 Premium Plans</b>\n\n"
         "• <b>1 Month</b>: ₹40\n"
         "• <b>2 Months</b>: ₹80\n"
         "• <b>6 Months</b>: ₹240\n"
@@ -1231,11 +1230,6 @@ async def minimal_premium_command(client, update):
 
 @Client.on_callback_query(filters.regex("^minimal_send_proof$"))
 async def minimal_send_proof_cb(client, callback: CallbackQuery):
-    user_id = callback.from_user.id
-    pending_data = {"user_id": user_id, "status": "waiting_screenshot", "updated_at": datetime.utcnow()}
-    if hasattr(db, 'custom_pending_proofs'): # Updated Collection Name
-        await db.custom_pending_proofs.update_one({"user_id": user_id}, {"$set": pending_data}, upsert=True)
-        
     await callback.answer()
     try:
         await callback.message.delete()
@@ -1248,20 +1242,14 @@ async def minimal_send_proof_cb(client, callback: CallbackQuery):
         parse_mode=enums.ParseMode.HTML
     )
 
+# Direct photo handler (No MongoDB state checking required)
 @Client.on_message(filters.private & filters.photo & ~filters.command(["start", "premium"]))
 async def minimal_screenshot_handler(client, message):
     user_id = message.from_user.id
     
-    is_pending = False
-    if hasattr(db, 'custom_pending_proofs'): # Updated Collection Name
-        doc = await db.custom_pending_proofs.find_one({"user_id": user_id})
-        if doc:
-            is_pending = True
-            await db.custom_pending_proofs.delete_one({"user_id": user_id})
-        
-    if not is_pending:
+    if str(user_id) in map(str, ADMINS):
         return
-    
+
     await message.reply_text("✅ Payment proof submitted! Please wait for admin verification.")
     
     user_name = message.from_user.first_name or "Unknown"
@@ -1352,24 +1340,10 @@ async def select_plan_cb(client, callback: CallbackQuery):
         username = target_user.first_name or "User"
     except Exception:
         username = "User"
-    
-    pending_state = {
-        "user_id": target_user_id,
-        "username": username,
-        "plan": plan_label,
-        "price": price,
-        "days": days,
-        "start_date": now,
-        "expires_at": expiry_date,
-        "updated_at": now
-    }
-    
-    if hasattr(db, 'custom_pending_proofs'): # Updated Collection Name
-        await db.custom_pending_proofs.update_one({"user_id": target_user_id}, {"$set": pending_state}, upsert=True)
 
     kb = InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("✅ Confirm & Activate", callback_data=f"confact_{target_user_id}"),
+            InlineKeyboardButton("✅ Confirm & Activate", callback_data=f"confact_{target_user_id}_{days}_{price}"),
             InlineKeyboardButton("◀ Back", callback_data=f"min_app_{target_user_id}")
         ],
         [
@@ -1398,25 +1372,19 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
     if str(callback.from_user.id) not in map(str, ADMINS):
         return await callback.answer("Unauthorized.", show_alert=True)
     
-    _, target_user_str = callback.data.split("_")
-    target_user_id = int(target_user_str)
+    parts = callback.data.split("_")
+    target_user_id = int(parts[1])
+    days = int(parts[2]) if len(parts) > 2 else 30
+    price = parts[3] if len(parts) > 3 else "40"
     
-    flow = None
-    if hasattr(db, 'custom_pending_proofs'): # Updated Collection Name
-        flow = await db.custom_pending_proofs.find_one({"user_id": target_user_id})
-        
-    if not flow:
-        return await callback.answer("Activation session expired or already processed.", show_alert=True)
-        
-    plan = flow.get("plan", "1 Month")
-    price = flow.get("price", "40")
-    days = flow.get("days", 30)
+    is_test_minute = (days == 30 and len(parts) <= 3)
+    plan_label = "1 Month (1 Min Test)" if is_test_minute else f"{days} Days"
     
     try:
         t_usr = await client.get_users(target_user_id)
         username = t_usr.first_name or "User"
     except Exception:
-        username = flow.get("username", "User")
+        username = "User"
     
     await callback.answer("Processing activation/renewal...")
     now = datetime.utcnow()
@@ -1426,28 +1394,17 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
     if col is not None:
         existing_user_doc = await col.find_one({"user_id": target_user_id, "active": True})
         
-    is_test_minute = (days == 30 and "Test" in plan)
-    
     if existing_user_doc:
         old_expiry = existing_user_doc.get("expires_at")
         if old_expiry and isinstance(old_expiry, datetime) and old_expiry > now:
             start_date = old_expiry
-            if is_test_minute:
-                expiry_date = start_date + timedelta(minutes=2)
-            else:
-                expiry_date = start_date + timedelta(days=days)
+            expiry_date = start_date + (timedelta(minutes=2) if is_test_minute else timedelta(days=days))
         else:
             start_date = now
-            if is_test_minute:
-                expiry_date = start_date + timedelta(minutes=2)
-            else:
-                expiry_date = start_date + timedelta(days=days)
+            expiry_date = start_date + (timedelta(minutes=2) if is_test_minute else timedelta(days=days))
     else:
         start_date = now
-        if is_test_minute:
-            expiry_date = start_date + timedelta(minutes=2)
-        else:
-            expiry_date = start_date + timedelta(days=days)
+        expiry_date = start_date + (timedelta(minutes=2) if is_test_minute else timedelta(days=days))
 
     already_joined = False
     if PREMIUM_GROUP_ID:
@@ -1470,7 +1427,7 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
     activation_data = {
         "user_id": target_user_id,
         "username": username,
-        "plan": plan,
+        "plan": plan_label,
         "plan_days": days,
         "price": price,
         "purchased_at": now,
@@ -1486,8 +1443,6 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
     
     if col is not None:
         await col.update_one({"user_id": target_user_id}, {"$set": activation_data}, upsert=True)
-        if hasattr(db, 'custom_pending_proofs'): # Updated Collection Name
-            await db.custom_pending_proofs.delete_one({"user_id": target_user_id})
         
     ist_start_str = format_ist_time(start_date)
     ist_expiry_str = format_ist_time(expiry_date)
@@ -1499,8 +1454,8 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
     ])
 
     user_msg_text = (
-        f"<b>🎉 HeroFlix Premium Activated</b>\n\n"
-        f"📦 <b>Plan</b>: {plan}\n"
+        f"<b>🎉 Premium Activated</b>\n\n"
+        f"📦 <b>Plan</b>: {plan_label}\n"
         f"📅 <b>Start</b>: {ist_start_str} IST\n"
         f"⌛ <b>Expires</b>: {ist_expiry_str} IST\n\n"
         f"👇 <b>Tap below to join the Premium Group</b>:"
@@ -1517,7 +1472,7 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
     success_admin_text = (
         f"<b>✅ Premium Updated Successfully</b>\n\n"
         f"• <b>User</b>: <a href=\"tg://user?id={target_user_id}\">{username}</a> (<code>{target_user_id}</code>)\n"
-        f"• <b>Plan</b>: {plan} (₹{price})\n"
+        f"• <b>Plan</b>: {plan_label} (₹{price})\n"
         f"• <b>New Start</b>: {ist_start_str} IST\n"
         f"• <b>New Expiry</b>: {ist_expiry_str} IST\n"
         f"• <b>Auto-Approved Join Request</b>: Yes"
@@ -1525,9 +1480,9 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
 
     action_type = "Renewal" if existing_user_doc else "New Activation"
     log_event_text = (
-        f"<b>💎 HeroFlix Premium {action_type}</b>\n\n"
+        f"<b>💎 Premium {action_type}</b>\n\n"
         f"👤 <b>User</b>: <a href=\"tg://user?id={target_user_id}\">{username}</a> (<code>{target_user_id}</code>)\n"
-        f"📦 <b>Plan</b>: {plan} (₹{price})\n"
+        f"📦 <b>Plan</b>: {plan_label} (₹{price})\n"
         f"📅 <b>Start</b>: {ist_start_str} IST\n"
         f"⌛ <b>New Expiry</b>: {ist_expiry_str} IST\n"
         f"🛡️ <b>Approved By Admin ID</b>: <code>{callback.from_user.id}</code>\n"
@@ -1593,7 +1548,7 @@ async def welcome_premium_user_handler(client, member_update: ChatMemberUpdated)
 
         perm_link = PREMIUM_PERMANENT_LINK if 'PREMIUM_PERMANENT_LINK' in globals() and PREMIUM_PERMANENT_LINK else "https://t.me/your_group_link"
         welcome_kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔗 Open Premium Group", url=perm_link)]
+            [InlineKeyboardButton("🔗 Open Group", url=perm_link)]
         ])
         try:
             await client.send_message(
@@ -1611,12 +1566,6 @@ async def welcome_premium_user_handler(client, member_update: ChatMemberUpdated)
 async def minimal_admin_reject_cb(client, callback: CallbackQuery):
     if str(callback.from_user.id) not in map(str, ADMINS):
         return await callback.answer("Unauthorized.", show_alert=True)
-    
-    parts = callback.data.split("_")
-    target_user_id = int(parts[2] if len(parts) > 2 else parts[-1])
-    
-    if hasattr(db, 'custom_pending_proofs'): # Updated Collection Name
-        await db.custom_pending_proofs.delete_one({"user_id": target_user_id})
     
     await callback.answer("Rejected.")
     try:
