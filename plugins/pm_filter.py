@@ -94,11 +94,6 @@ async def pm_text(bot, message):
 
 @Client.on_callback_query(filters.regex(r"^next"))
 async def next_page(bot, query):
-    try:
-        await query.answer()
-    except:
-        pass
-
     if is_spam(query.from_user.id):
         return
 
@@ -108,7 +103,7 @@ async def next_page(bot, query):
             req = int(req)
             offset = int(offset)
         except:
-            return
+            return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
 
         if req not in [query.from_user.id, 0]:
             return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
@@ -129,7 +124,7 @@ async def next_page(bot, query):
             n_offset = 0
 
         if not files:
-            return
+            return await query.answer(script.OLD_ALRT_TXT.format(query.from_user.first_name), show_alert=True)
 
         temp.GETALL[key] = files
         temp.SHORT[query.from_user.id] = query.message.chat.id
@@ -159,6 +154,10 @@ async def next_page(bot, query):
         except KeyError:
             pass
 
+        tut_link = await get_tutorial(query.message.chat.id)
+        if tut_link:
+            btn.append([InlineKeyboardButton("✨ How To Download ✨", url=tut_link)])
+
         cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n<i>🗨 Choose Link - Press Start ↷</i>\n\n</b>"
         if not settings.get('button'):
             for file in files:
@@ -166,42 +165,44 @@ async def next_page(bot, query):
 
         try:
             await query.message.edit_text(text=cap, reply_markup=InlineKeyboardMarkup(btn), disable_web_page_preview=True)
+            await query.answer()
         except MessageNotModified:
-            pass
+            await query.answer()
         except Exception:
-            pass
+            await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
 
 @Client.on_callback_query(filters.regex(r"^spolling"))
 async def advantage_spoll_choker(bot, query):
-    try:
-        await query.answer()
-    except:
-        pass
-
     if is_spam(query.from_user.id) or not query.from_user or not query.message:
-        return
+        return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
 
     async with GLOBAL_SEM:
         try:
             _, user, movie_ = query.data.split('#')
             user = int(user)
         except:
-            return
+            return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
 
         if user != 0 and query.from_user.id != user:
             return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
 
         if movie_ == "close_spellcheck":
-            return await query.message.delete()
+            await query.message.delete()
+            return await query.answer("Closed !")
 
-        movies = SPELL_CHECK.get(query.message.reply_to_message.id)
+        movies = SPELL_CHECK.get(query.message.reply_to_message.id if query.message.reply_to_message else 0)
         if not movies:
-            return await query.message.edit("❗Link Expired, Request Again ♻", disable_web_page_preview=True)
+            await query.answer(script.OLD_ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+            try:
+                await query.message.edit_text(text="❗Link Expired, Request Again ♻", disable_web_page_preview=True)
+            except:
+                pass
+            return
 
         try:
             movie = movies[int(movie_)]
         except:
-            return await query.message.edit("❗Invalid Option")
+            return await query.answer("❗Invalid Option", show_alert=True)
 
         try:
             await query.answer("Checking, Please Wait ♻️\n\n[ Don't Spam – Just Wait! ]", show_alert=True)
@@ -213,9 +214,12 @@ async def advantage_spoll_choker(bot, query):
             if files:
                 await auto_filter(bot, query, (movie, files, offset, total_results))
             else:
-                msg = await query.message.edit(script.NO_RESULTS, disable_web_page_preview=True)
-                await asyncio.sleep(60)
-                await msg.delete()
+                try:
+                    msg = await query.message.edit_text(text=script.NO_RESULTS, disable_web_page_preview=True)
+                    await asyncio.sleep(60)
+                    await msg.delete()
+                except:
+                    pass
 
 @Client.on_callback_query()
 async def cb_handler(client: Client, query: CallbackQuery):
@@ -226,14 +230,18 @@ async def cb_handler(client: Client, query: CallbackQuery):
     chat_type = query.message.chat.type
 
     if query.data == "close_data":
-        return await query.message.delete()
+        await query.message.delete()
+        return await query.answer("Closed !")
     elif query.data == "gfiltersdeleteallconfirm":
         await del_allg(query.message, 'gfilters')
-        return await query.answer("Done !")
+        return await query.answer("Done !", show_alert=True)
     elif query.data == "gfiltersdeleteallcancel":
-        await query.message.reply_to_message.delete()
+        try:
+            await query.message.reply_to_message.delete()
+        except:
+            pass
         await query.message.delete()
-        return await query.answer("Process Cancelled !")
+        return await query.answer("Process Cancelled !", show_alert=True)
     elif query.data == "delallconfirm":
         if chat_type == enums.ChatType.PRIVATE:
             grpid = await active_connection(str(user_id))
@@ -255,35 +263,39 @@ async def cb_handler(client: Client, query: CallbackQuery):
         st = await client.get_chat_member(grp_id, user_id)
         if (st.status == enums.ChatMemberStatus.OWNER) or (str(user_id) in ADMINS):
             await del_all(query.message, grp_id, title)
+            return await query.answer("Successfully deleted all filters!", show_alert=True)
         else:
             return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
     elif query.data == "delallcancel":
         if chat_type == enums.ChatType.PRIVATE:
-            await query.message.reply_to_message.delete()
+            try:
+                await query.message.reply_to_message.delete()
+            except:
+                pass
             await query.message.delete()
+            return await query.answer("Cancelled !", show_alert=True)
         elif chat_type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
             st = await client.get_chat_member(query.message.chat.id, user_id)
             if (st.status == enums.ChatMemberStatus.OWNER) or (str(user_id) in ADMINS):
                 await query.message.delete()
                 try: await query.message.reply_to_message.delete()
                 except: pass
+                return await query.answer("Cancelled !", show_alert=True)
             else:
                 return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
     elif "groupcb" in query.data:
-        await query.answer()
         try:
             _, group_id, act = query.data.split(":")
         except:
-            return
+            return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
         hr = await client.get_chat(int(group_id))
         stat, cb = ("DISCONNECT", "disconnect") if act else ("CONNECT", "connectcb")
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(stat, callback_data=f"{cb}:{group_id}"), InlineKeyboardButton("DELETE", callback_data=f"deletecb:{group_id}")], [InlineKeyboardButton("BACK", callback_data="backcb")]])
         await query.message.edit_text(f"Gʀᴏᴜᴘ Nᴀᴍᴇ : **{hr.title}**\nGʀᴏᴜᴘ ID : `{group_id}`", reply_markup=keyboard, parse_mode=enums.ParseMode.MARKDOWN)
         return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
     elif "connectcb" in query.data or "disconnect" in query.data:
-        await query.answer()
         try: _, group_id = query.data.split(":")
-        except: return
+        except: return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
         hr = await client.get_chat(int(group_id))
         if "connectcb" in query.data:
             mkact = await make_active(str(user_id), str(group_id))
@@ -292,17 +304,15 @@ async def cb_handler(client: Client, query: CallbackQuery):
             mkinact = await make_inactive(str(user_id))
             msg = f"Dɪsᴄᴏɴɴᴇᴄᴛᴇᴅ ғʀᴏᴍ **{hr.title}**" if mkinact else 'Sᴏᴍᴇ ᴇʀʀᴏʀ ᴏᴄᴄᴜʀʀᴇᴅ!!'
         await query.message.edit_text(msg, parse_mode=enums.ParseMode.MARKDOWN)
-        return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+        return await query.answer(msg, show_alert=True)
     elif "deletecb" in query.data:
-        await query.answer()
         try: _, group_id = query.data.split(":")
-        except: return
+        except: return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
         delcon = await delete_connection(str(user_id), str(group_id))
         msg = "Sᴜᴄᴄᴇssғᴜʟʟʏ ᴅᴇʟᴇᴛᴇᴅ ᴄᴏɴɴᴇᴄᴛɪᴏɴ !" if delcon else 'Sᴏᴍᴇ ᴇʀʀᴏʀ ᴏᴄᴄᴜʀʀᴇᴅ!!'
         await query.message.edit_text(msg, parse_mode=enums.ParseMode.MARKDOWN)
-        return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+        return await query.answer(msg, show_alert=True)
     elif query.data == "backcb":
-        await query.answer()
         groupids = await all_connections(str(user_id))
         if not groupids:
             await query.message.edit_text("Tʜᴇʀᴇ ᴀʀᴇ ɴᴏ ᴀᴄᴛɪᴠᴇ ᴄᴏɴɴᴇᴄᴛɪᴏns!! Cᴏɴɴᴇᴄᴛ ᴛᴏ sᴏᴍᴇ ɢʀᴏᴜᴘs ғɪʀsᴛ.")
@@ -317,28 +327,31 @@ async def cb_handler(client: Client, query: CallbackQuery):
                 pass
         if buttons:
             await query.message.edit_text("Yᴏᴜʀ ᴄᴏɴɴᴇᴄᴛᴇᴅ ɢʀᴏᴜᴘ ᴅᴇᴛᴀɪʟs ;\n\n", reply_markup=InlineKeyboardMarkup(buttons))
+            return await query.answer()
     elif "gfilteralert" in query.data or "alertmessage" in query.data:
         try: _, i, keyword = query.data.split(":")
-        except: return
+        except: return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
         reply_text, btn, alerts, fileid = await find_gfilter('gfilters', keyword) if "gfilteralert" in query.data else await find_filter(query.message.chat.id, keyword)
         if alerts is not None:
             alert = ast.literal_eval(alerts)[int(i)].replace("\\n", "\n").replace("\\t", "\t")
-            await query.answer(alert, show_alert=True)
+            return await query.answer(alert, show_alert=True)
+        return await query.answer("Alert displayed!", show_alert=True)
     elif query.data.startswith("file"):
         clicked = query.from_user.id
         try: typed = query.message.reply_to_message.from_user.id
         except: typed = clicked
         try: ident, file_id = query.data.split("#")
-        except: return
+        except: return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+        
+        if clicked != typed:
+            return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+
         files_ = await get_file_details(file_id)
         if not files_:
-            return await query.answer('Nᴏ sᴜᴄʜ ғɪʟᴇ ᴇxɪsᴛ.')
+            return await query.answer('Nᴏ sᴜᴄʜ ғɪʟᴇ ᴇxɪsᴛ.', show_alert=True)
         files = files_[0]
         f_caption = CUSTOM_FILE_CAPTION.format(file_name=files.file_name or '', file_size=get_size(files.file_size) or '', file_caption=files.caption or '') if CUSTOM_FILE_CAPTION else (files.caption or files.file_name)
         settings = await get_settings(query.message.chat.id)
-
-        if clicked != typed:
-            return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
 
         try:
             if AUTH_CHANNEL and not await is_subscribed(client, query):
@@ -350,17 +363,17 @@ async def cb_handler(client: Client, query: CallbackQuery):
                 return await query.answer(url=f"https://telegram.me/{temp.U_NAME}?start={ident}_{file_id}")
             else:
                 await client.send_cached_media(chat_id=query.from_user.id, file_id=file_id, caption=f_caption, protect_content=(ident == "filep"), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🔆彡[ HEROFLiX ]彡🔆', url=f'https://telegram.me/{CHNL_LNK}')]]))
-                await query.answer('Cʜᴇᴄᴋ PM, I ʜᴀᴠᴇ sᴇɴᴛ ғɪʟᴇs ɪɴ PM', show_alert=True)
+                return await query.answer('Cʜᴇᴄᴋ PM, I ʜᴀᴠᴇ sᴇɴᴛ ғɪʟᴇs ɪɴ PM', show_alert=True)
         except UserIsBlocked:
-            await query.answer('Uɴʙʟᴏᴄᴋ ᴛʜᴇ ʙᴏᴛ ᴍᴀʜɴ !', show_alert=True)
+            return await query.answer('Uɴʙʟᴏᴄᴋ ᴛʜᴇ ʙᴏᴛ ᴍᴀʜɴ !', show_alert=True)
         except PeerIdInvalid:
-            await query.answer(url=f"https://telegram.me/{temp.U_NAME}?start={ident}_{file_id}")
+            return await query.answer(url=f"https://telegram.me/{temp.U_NAME}?start={ident}_{file_id}")
         except Exception:
-            await query.answer(url=f"https://telegram.me/{temp.U_NAME}?start={ident}_{file_id}")
+            return await query.answer(url=f"https://telegram.me/{temp.U_NAME}?start={ident}_{file_id}")
     elif query.data.startswith("sendfiles"):
         clicked = query.from_user.id
         try: _, key = query.data.split("#")
-        except: return
+        except: return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
         settings = await get_settings(query.message.chat.id)
         try:
             if settings.get('botpm') and settings.get('is_shortlink') and clicked not in PREMIUM_USER:
@@ -370,42 +383,45 @@ async def cb_handler(client: Client, query: CallbackQuery):
             else:
                 return await query.answer(url=f"https://telegram.me/{temp.U_NAME}?start=allfiles_{key}")
         except UserIsBlocked:
-            await query.answer('Uɴʙʟᴏᴄᴋ ᴛʜᴇ ʙᴏᴛ ᴍᴀʜɴ !', show_alert=True)
+            return await query.answer('Uɴʙʟᴏᴄᴋ ᴛʜᴇ ʙᴏᴛ ᴍᴀʜɴ !', show_alert=True)
         except PeerIdInvalid:
-            await query.answer(url=f"https://telegram.me/{temp.U_NAME}?start=sendfiles3_{key}")
+            return await query.answer(url=f"https://telegram.me/{temp.U_NAME}?start=sendfiles3_{key}")
         except Exception as e:
             logger.exception(e)
-            await query.answer(url=f"https://telegram.me/{temp.U_NAME}?start=sendfiles4_{key}")
+            return await query.answer(url=f"https://telegram.me/{temp.U_NAME}?start=sendfiles4_{key}")
     elif query.data.startswith("del"):
         try: _, file_id = query.data.split("#")
-        except: return
+        except: return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
         return await query.answer(url=f"https://telegram.me/{temp.U_NAME}?start=file_{file_id}")
     elif query.data.startswith("checksub"):
         if AUTH_CHANNEL and not await is_subscribed(client, query):
             return await query.answer("😒 You Didn’t Join Channel", show_alert=True)
         try: ident, file_id = query.data.split("#")
-        except: return
+        except: return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
         files_ = await get_file_details(file_id)
         if not files_:
-            return await query.answer('Nᴏ sᴜᴄʜ ғɪʟᴇ ᴇxɪsᴛ.')
+            return await query.answer('Nᴏ sᴜᴄʜ ғɪʟᴇ ᴇxɪsᴛ.', show_alert=True)
         files = files_[0]
         f_caption = CUSTOM_FILE_CAPTION.format(file_name=files.file_name or '', file_size=get_size(files.file_size) or '', file_caption=files.caption or '') if CUSTOM_FILE_CAPTION else (files.caption or files.file_name)
-        await query.answer()
         await client.send_cached_media(chat_id=query.from_user.id, file_id=file_id, caption=f_caption, protect_content=(ident == 'checksubp'), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🔆彡[ HEROFLiX ]彡🔆', url=f'https://telegram.me/{CHNL_LNK}')]]))
+        return await query.answer("File sent to PM successfully!", show_alert=True)
     elif query.data == "pages":
-        await query.answer()
+        return await query.answer("You are on the page navigation.", show_alert=True)
     elif query.data.startswith("send_fsall") or query.data.startswith("send_fall"):
         try: _, ident, key, offset = query.data.split("#")
-        except: return
+        except: return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
         search = BUTTON.get(key) or FRESH.get(key)
         if not search:
             return await query.answer(script.OLD_ALRT_TXT.format(query.from_user.first_name), show_alert=True)
         files, _, _ = await get_search_results(query.message.chat.id, search, offset=int(offset), filter=True)
         await send_all(client, query.from_user.id, files, ident, query.message.chat.id, query.from_user.first_name, query)
-        await query.answer(f"Hey {query.from_user.first_name}, All files on this page has been sent successfully to your PM !", show_alert=True)
+        return await query.answer(f"Hey {query.from_user.first_name}, All files on this page has been sent successfully to your PM !", show_alert=True)
     elif query.data.startswith("killfilesdq"):
+        st = await client.get_chat_member(query.message.chat.id, user_id)
+        if st.status not in [enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER] and str(user_id) not in ADMINS:
+            return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
         try: _, keyword = query.data.split("#")
-        except: return
+        except: return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
         files, total = await get_bad_files(keyword)
         await query.message.edit_text("<b>File deletion process will start in 5 seconds !</b>")
         await asyncio.sleep(5)
@@ -422,9 +438,10 @@ async def cb_handler(client: Client, query: CallbackQuery):
                 await query.message.edit_text(f'Error: {e}')
             else:
                 await query.message.edit_text(f"<b>Process Completed for file deletion !\n\nSuccessfully deleted {deleted} files from database for your query {keyword}.</b>")
+        return await query.answer("Deletion process completed!", show_alert=True)
     elif query.data.startswith("opnsetgrp") or query.data.startswith("opnsetpm"):
         try: _, grp_id = query.data.split("#")
-        except: return
+        except: return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
         userid = query.from_user.id if query.from_user else None
         st = await client.get_chat_member(grp_id, userid)
         if st.status not in [enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER] and str(userid) not in ADMINS:
@@ -439,12 +456,13 @@ async def cb_handler(client: Client, query: CallbackQuery):
             else:
                 await query.message.edit_text(f"<b>Yᴏᴜʀ sᴇᴛᴛɪɴɢs ᴍᴇɴᴜ ғᴏʀ {title} ʜᴀs ʙᴇᴇɴ sᴇɴᴛ ᴛᴏ ʏᴏᴜʀ PM</b>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Cʜᴇᴄᴋ PM", url=f"telegram.me/{temp.U_NAME}")]]))
                 await client.send_message(chat_id=userid, text=f"<b>Cʜᴀɴɢᴇ Yᴏᴜʀ Sᴇᴛᴛɪɴɢs Fᴏʀ {title} As Yᴏᴜʀ Wɪsʜ ⚙</b>", reply_markup=reply_markup, disable_web_page_preview=True, parse_mode=enums.ParseMode.HTML, reply_to_message_id=query.message.id)
+        return await query.answer("Settings menu opened!", show_alert=True)
     elif query.data.startswith("setgs"):
         try: _, set_type, status, grp_id = query.data.split("#")
-        except: return
+        except: return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
         grpid = await active_connection(str(query.from_user.id))
         if str(grp_id) != str(grpid):
-            await query.message.edit("Yᴏᴜʀ Aᴄᴛɪᴠᴇ Cᴏɴɴᴇᴄᴛɪᴏɴ Hᴀs Bᴇᴇɴ Cʜᴀɴɢᴇᴅ. Gᴏ Tᴏ /connections ᴀɴᴅ ᴄʜᴀɴɢᴇ ʏᴏᴜʀ ᴀᴄᴛɪᴠᴇ ᴄᴏɴɴᴇᴄᴛɪᴏɴ.")
+            await query.message.edit_text("Yᴏᴜʀ Aᴄᴛɪᴠᴇ Cᴏɴɴᴇᴄᴛɪᴏɴ Hᴀs Bᴇᴇɴ Cʜᴀɴɢᴇᴅ. Gᴏ Tᴏ /connections ᴀɴᴅ ᴄʜᴀɴɢᴇ ʏᴏᴜʀ ᴀᴄᴛɪᴠᴇ ᴄᴏɴɴᴇᴄᴛɪᴏɴ.")
             return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
         if set_type == 'is_shortlink' and query.from_user.id not in ADMINS:
             return await query.answer(text=f"Hey {query.from_user.first_name}, You can't change shortlink settings for your group !\n\nIt's an admin only setting !", show_alert=True)
@@ -452,10 +470,9 @@ async def cb_handler(client: Client, query: CallbackQuery):
         settings = await get_settings(grpid)
         if settings is not None:
             await query.message.edit_reply_markup(get_settings_keyboard(settings, grp_id))
-    try:
-        await query.answer()
-    except:
-        pass
+        return await query.answer("Settings updated successfully!", show_alert=True)
+    
+    return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
 
 async def auto_filter(client, msg, spoll=False):
     if not spoll:
@@ -502,6 +519,10 @@ async def auto_filter(client, msg, spoll=False):
             btn.append([InlineKeyboardButton("🔅 Page", callback_data="pages"), InlineKeyboardButton(text=f"1/{math.ceil(int(total_results)/10)}", callback_data="pages"), InlineKeyboardButton(text=" NEXT ⏩", callback_data=f"next_{req}_{key}_{offset}")])
     else:
         btn.append([InlineKeyboardButton(text="✦ ────「 The End 」──── ✦", callback_data="pages")])
+
+    tut_link = await get_tutorial(message.chat.id)
+    if tut_link:
+        btn.append([InlineKeyboardButton("✨ How To Download ✨", url=tut_link)])
 
     cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n🎬 Select Your Pick ↡\n\n</b>"
     if not settings.get('button'):
@@ -550,8 +571,7 @@ async def advantage_spell_chok(client, msg):
     btn = [[InlineKeyboardButton(text=movie, callback_data=f"spolling#{reqstr1}#{idx}")] for idx, movie in enumerate(movielist)]
     btn.append([InlineKeyboardButton("×××× ⟨ Close ⟩ ××××", callback_data="close_data")])
     k = await msg.reply("<b>🎬 Select Your Pick ↡</b>", reply_markup=InlineKeyboardMarkup(btn))
-    await asyncio.sleep(60)
-    await k.delete()
+    asyncio.create_task(handle_auto_delete(k, await get_settings(msg.chat.id)))
 
 async def manual_filters(client, message, text=False):
     settings = await get_settings(message.chat.id)
