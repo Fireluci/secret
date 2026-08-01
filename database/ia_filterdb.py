@@ -18,10 +18,6 @@ client = AsyncIOMotorClient(DATABASE_URI)
 db = client[DATABASE_NAME]
 instance = Instance.from_db(db)
 
-# =========================================================
-# NORMALIZE (ORDER DOES NOT MATTER)
-# =========================================================
-
 def normalize(text: str) -> list:
     text = text.lower()
     text = re.sub(r'@[^\s\.-]+', ' ', text)
@@ -30,11 +26,6 @@ def normalize(text: str) -> list:
     text = re.sub(r"\s+", " ", text).strip()
     return text.split()
 
-# =========================================================
-# EPISODE NORMALIZER (LIMITED)
-# s01 e01 / s01 ep01 / s01 ep 01 → s01e01
-# =========================================================
-
 def normalize_basic_episode(text: str) -> str:
     text = text.lower()
     text = re.sub(r'\bs(\d{2})\s*e(\d{2})\b', r's\1e\2', text)
@@ -42,17 +33,11 @@ def normalize_basic_episode(text: str) -> str:
     text = re.sub(r'\bs(\d{2})\s*ep\s*(\d{2})\b', r's\1e\2', text)
     return text
 
-# =========================================================
-# DATABASE MODEL
-# =========================================================
-
 @instance.register
 class Media(Document):
     file_id = fields.StrField(attribute="_id")
     file_ref = fields.StrField(allow_none=True)
-
-    file_name = fields.StrField(required=True)      # normalized for search
-
+    file_name = fields.StrField(required=True)
     file_size = fields.IntField(required=True)
     file_type = fields.StrField(allow_none=True)
     mime_type = fields.StrField(allow_none=True)
@@ -62,117 +47,50 @@ class Media(Document):
         collection_name = COLLECTION_NAME
         indexes = ["$file_name"]
 
-# =========================================================
-# SAVE FILE (INDEX TIME)
-# =========================================================
-
 async def save_file(media):
-
     file_id, file_ref = unpack_new_file_id(media.file_id)
-
     original_name = str(media.file_name)
-
-    # =====================================================
-    # DEFAULT = filename
-    # =====================================================
-
     source_text = original_name
-    
-
-    # =====================================================
-    # SPECIAL CHANNEL = caption
-    # =====================================================
-
     try:
-
-        if (
-            hasattr(media, "chat_id")
-            and media.chat_id == CAPTION_INDEX_CHANNEL
-            and media.caption
-        ):
-
+        if hasattr(media, "chat_id") and media.chat_id == CAPTION_INDEX_CHANNEL and media.caption:
             source_text = media.caption
-
     except Exception:
         pass
-
-    # avoid huge captions
     source_text = source_text[:1000]
-    
-    # searchable normalized text
     tmp = normalize_basic_episode(source_text)
     normalized_name = " ".join(normalize(tmp))
-
     try:
-
         file = Media(
             file_id=file_id,
             file_ref=file_ref,
-
-            # searchable text
             file_name=normalized_name,
-
-
             file_size=media.file_size,
             file_type=media.file_type,
             mime_type=media.mime_type,
-
             caption=media.caption if media.caption else None,
         )
-
     except ValidationError:
         logger.exception("Validation error while saving file")
         return False, 2
-
     try:
-
         await file.commit()
-
     except DuplicateKeyError:
-
         try:
-
-            if (
-                hasattr(media, "chat_id")
-                and media.chat_id == CAPTION_INDEX_CHANNEL
-                and media.caption
-            ):
-
+            if hasattr(media, "chat_id") and media.chat_id == CAPTION_INDEX_CHANNEL and media.caption:
                 await Media.collection.update_one(
                     {"_id": file_id},
-                    {
-                        "$set": {
-                            "file_name": normalized_name,
-                                                        "caption": media.caption
-                        }
-                    }
+                    {"$set": {"file_name": normalized_name, "caption": media.caption}}
                 )
-
                 logger.info(f"{original_name} updated using caption indexing")
                 return True, 1
-
         except Exception:
             logger.exception("Failed updating duplicate file")
-
         logger.warning(f"{original_name} already exists")
         return False, 0
-
     logger.info(f"{original_name} indexed")
     return True, 1
 
-# =========================================================
-# SEARCH RESULTS (ORDER-INDEPENDENT)
-# =========================================================
-
-async def get_search_results(
-    chat_id,
-    query,
-    file_type=None,
-    max_results=10,
-    offset=0,
-    filter=False,
-    **kwargs
-):
+async def get_search_results(chat_id, query, file_type=None, max_results=10, offset=0, filter=False, **kwargs):
     if chat_id is not None:
         settings = await get_settings(int(chat_id))
         try:
@@ -181,93 +99,71 @@ async def get_search_results(
             await save_group_settings(int(chat_id), "max_btn", False)
             max_results = int(MAX_B_TN)
 
-    # ✅ normalize user query using extract_v2
     query = await extract_v2(query)
     query = query.strip()
-
-    # split into words AFTER extract
     words = normalize(query)
 
-    if words:
-        mongo_filter = {
-            "$and": [
-                {"file_name": {"$regex": re.escape(w), "$options": "i"}}
-                for w in words
-            ]
-        }
-    else:
+    if not words:
         mongo_filter = {}
+    else:
+        # stage 1: strict search (whole word matching using word boundaries)
+        strict_conditions = [{"file_name": {"$regex": rf"\b{re.escape(w)}\b", "$options": "i"}} for w in words]
+        if USE_CAPTION_FILTER:
+            strict_filter = {
+                "$or": [
+                    {"$and": strict_conditions},
+                    {"$and": [{"caption": {"$regex": rf"\b{re.escape(w)}\b", "$options": "i"}} for w in words]}
+                ]
+            }
+        else:
+            strict_filter = {"$and": strict_conditions}
+
+        if file_type:
+            strict_filter["file_type"] = file_type
+
+        total_strict = await Media.count_documents(strict_filter)
+
+        if total_strict > 0:
+            next_offset = offset + max_results
+            if next_offset >= total_strict:
+                next_offset = ""
+            cursor = Media.find(strict_filter).sort("$natural", -1).skip(offset).limit(max_results)
+            files = await cursor.to_list(length=max_results)
+            return files, next_offset, total_strict
+
+        # stage 2: fallback search (loose substring matching)
+        mongo_filter = {"$and": [{"file_name": {"$regex": re.escape(w), "$options": "i"}} for w in words]}
 
     if USE_CAPTION_FILTER:
-        mongo_filter = {
-            "$or": [
-                mongo_filter,
-                {"caption": mongo_filter.get("$and", [])}
-            ]
-        }
+        mongo_filter = {"$or": [mongo_filter, {"caption": mongo_filter.get("$and", [])}]}
 
     if file_type:
         mongo_filter["file_type"] = file_type
 
     total_results = await Media.count_documents(mongo_filter)
-
     next_offset = offset + max_results
     if next_offset >= total_results:
         next_offset = ""
 
-    cursor = (
-        Media.find(mongo_filter)
-        .sort("$natural", -1)
-        .skip(offset)
-        .limit(max_results)
-    )
-
+    cursor = Media.find(mongo_filter).sort("$natural", -1).skip(offset).limit(max_results)
     files = await cursor.to_list(length=max_results)
     return files, next_offset, total_results
 
-
-
-# =========================================================
-# LEGACY FUNCTION (DO NOT REMOVE)
-# =========================================================
-
 async def get_bad_files(query, file_type=None, filter=False, **kwargs):
-    """
-    Legacy compatibility function.
-    Do NOT remove – used by other modules.
-    """
     words = normalize(query)
-
     if words:
-        mongo_filter = {
-            "$and": [
-                {"file_name": {"$regex": re.escape(w), "$options": "i"}}
-                for w in words
-            ]
-        }
+        mongo_filter = {"$and": [{"file_name": {"$regex": re.escape(w), "$options": "i"}} for w in words]}
     else:
         mongo_filter = {}
-
     if file_type:
         mongo_filter["file_type"] = file_type
-
-    cursor = Media.find(mongo_filter)
-    cursor.sort("$natural", -1)
-
+    cursor = Media.find(mongo_filter).sort("$natural", -1)
     files = await cursor.to_list(length=100)
     return files, len(files)
-
-# =========================================================
-# FILE DETAILS
-# =========================================================
 
 async def get_file_details(file_id):
     cursor = Media.find({"_id": file_id})
     return await cursor.to_list(length=1)
-
-# =========================================================
-# FILE ID UTILS (UNCHANGED)
-# =========================================================
 
 def encode_file_id(s: bytes) -> str:
     r = b""
@@ -287,16 +183,6 @@ def encode_file_ref(file_ref: bytes) -> str:
 
 def unpack_new_file_id(new_file_id):
     decoded = FileId.decode(new_file_id)
-    file_id = encode_file_id(
-        pack(
-            "<iiqq",
-            int(decoded.file_type),
-            decoded.dc_id,
-            decoded.media_id,
-            decoded.access_hash
-        )
-    )
+    file_id = encode_file_id(pack("<iiqq", int(decoded.file_type), decoded.dc_id, decoded.media_id, decoded.access_hash))
     file_ref = encode_file_ref(decoded.file_reference)
     return file_id, file_ref
-
- 
