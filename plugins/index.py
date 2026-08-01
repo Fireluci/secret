@@ -18,7 +18,7 @@ index_state_col = db["index_state"]
 async def get_index_state():
     return await index_state_col.find_one({"_id": "active_index"})
 
-async def save_index_state(chat_id, lst_msg_id, current, total_files, duplicate, deleted):
+async def save_index_state(chat_id, lst_msg_id, current, total_files, duplicate, deleted, msg_id=None, admin_id=None):
     await index_state_col.update_one(
         {"_id": "active_index"},
         {
@@ -28,7 +28,9 @@ async def save_index_state(chat_id, lst_msg_id, current, total_files, duplicate,
                 "current": current,
                 "total_files": total_files,
                 "duplicate": duplicate,
-                "deleted": deleted
+                "deleted": deleted,
+                "msg_id": msg_id,
+                "admin_id": admin_id
             }
         },
         upsert=True
@@ -40,19 +42,50 @@ async def clear_index_state():
 
 @Client.on_callback_query(filters.regex(r'^index'))
 async def index_files(bot, query):
-    if query.data.startswith('index_cancel'):
+    if query.data == 'index_cancel':
+        return await query.message.edit(
+            "<b>⚠️ Are you sure you want to cancel indexing?</b>",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton('✅ Yes, Cancel It', callback_data='index_confirm_cancel')],
+                [InlineKeyboardButton('❌ No, Go Back', callback_data='index_back')]
+            ])
+        )
+    
+    if query.data == 'index_confirm_cancel':
         temp.CANCEL = True
         await clear_index_state()
-        return await query.answer("Cancelling Indexing")
+        try:
+            await query.message.edit("<b>❌ Indexing Cancelled Successfully!</b>")
+        except:
+            pass
+        return await query.answer("Indexing Cancelled.", show_alert=True)
+
+    if query.data == 'index_back':
+        current_progress = getattr(temp, 'CURRENT', 0)
+        total_saved = getattr(temp, 'SAVED', 0)
+        total_dup = getattr(temp, 'DUP', 0)
+        total_del = getattr(temp, 'DEL', 0)
+        lst_msg_id = getattr(temp, 'LST_MSG_ID', '???')
+        return await query.message.edit(
+            text=f"● Total Messages Fetched: {current_progress} / {lst_msg_id}\n"
+                 f"● Saved: {total_saved}\n"
+                 f"● Duplicates: {total_dup}\n"
+                 f"● Deleted: {total_del}",
+            reply_markup=InlineKeyboardMarkup(
+                [[InlineKeyboardButton('📊 Check Live Status', callback_data='index_status')],
+                 [InlineKeyboardButton('❌ Cancel ❌', callback_data='index_cancel')]]
+            )
+        )
     
     if query.data == 'index_status':
         current_progress = getattr(temp, 'CURRENT', 0)
         total_saved = getattr(temp, 'SAVED', 0)
         total_dup = getattr(temp, 'DUP', 0)
         total_del = getattr(temp, 'DEL', 0)
+        lst_msg_id = getattr(temp, 'LST_MSG_ID', '???')
         return await query.answer(
             f"📊 Live Index Status:\n"
-            f"● Processed: {current_progress}\n"
+            f"● Processed: {current_progress} / {lst_msg_id}\n"
             f"● Saved: {total_saved}\n"
             f"● Duplicates: {total_dup}\n"
             f"● Deleted: {total_del}",
@@ -65,8 +98,11 @@ async def index_files(bot, query):
         return
     if lock.locked():
         return await query.answer('Wait Until Previous Index is Finished', show_alert=True)
+        
     msg = query.message
     await query.answer('Processing...⏳', show_alert=True)
+    temp.LST_MSG_ID = lst_msg_id
+    
     await msg.edit(
         "Starting Indexing",
         reply_markup=InlineKeyboardMarkup(
@@ -164,8 +200,8 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, resume_current=None, res
     temp.SAVED = total_files
     temp.DUP = duplicate
     temp.DEL = deleted
+    temp.LST_MSG_ID = lst_msg_id
     
-    # Ensure it respects what was set via /setskip if no explicit resume value is passed
     if resume_current is not None:
         temp.CURRENT = resume_current
     elif not hasattr(temp, 'CURRENT'):
@@ -195,20 +231,20 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, resume_current=None, res
                 temp.CURRENT = current
 
                 if current % 50 == 0:
-                    await save_index_state(chat, lst_msg_id, current, total_files, duplicate, deleted)
+                    await save_index_state(chat, lst_msg_id, current, total_files, duplicate, deleted, msg.id, msg.chat.id)
 
                 if (current >= 10 and last_edit == temp.CURRENT) or (current - last_edit >= 2000):
                     last_edit = current
-                    await save_index_state(chat, lst_msg_id, current, total_files, duplicate, deleted)
+                    await save_index_state(chat, lst_msg_id, current, total_files, duplicate, deleted, msg.id, msg.chat.id)
                     try:
                         await msg.edit_text(
-                            text=f"● Total Messages Fetched: {current}\n"
+                            text=f"● Total Messages Fetched: {current} / {lst_msg_id}\n"
                                  f"● Saved: {total_files}\n"
                                  f"● Duplicates: {duplicate}\n"
                                  f"● Deleted: {deleted}",
                             reply_markup=InlineKeyboardMarkup(
                                 [[InlineKeyboardButton('📊 Check Live Status', callback_data='index_status')],
-                                 [InlineKeyboardButton('Cancel', callback_data='index_cancel')]]
+                                 [InlineKeyboardButton('❌ Cancel ❌', callback_data='index_cancel')]]
                             )
                         )
                     except FloodWait as e:
@@ -259,7 +295,7 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, resume_current=None, res
                 )
             except FloodWait as e:
                 logger.warning(f"FloodWait while sending final result: {e.value} seconds.")
-# Helper function to auto-resume when your bot starts up
+
 async def check_pending_index_on_startup(client):
     state = await get_index_state()
     if state:
@@ -269,6 +305,14 @@ async def check_pending_index_on_startup(client):
         saved = state.get("total_files", 0)
         dup = state.get("duplicate", 0)
         deleted = state.get("deleted", 0)
+        old_msg_id = state.get("msg_id")
+        old_admin_id = state.get("admin_id")
+        
+        if old_msg_id and old_admin_id:
+            try:
+                await client.delete_messages(chat_id=old_admin_id, message_ids=old_msg_id)
+            except Exception:
+                pass
         
         logger.info(f"Found pending indexing task! Resuming from message count: {current}")
         
@@ -276,12 +320,13 @@ async def check_pending_index_on_startup(client):
             try:
                 msg = await client.send_message(
                     admin_id, 
-                    f"🔄 **Resuming Interrupted Indexing Task**\n● Processed: {current}\n● Saved: {saved}",
+                    f"🔄 **Resuming Interrupted Indexing Task**\n● Processed: {current} / {lst_msg_id}\n● Saved: {saved}",
                     reply_markup=InlineKeyboardMarkup(
                         [[InlineKeyboardButton('📊 Check Live Status', callback_data='index_status')],
-                         [InlineKeyboardButton('Cancel', callback_data='index_cancel')]]
+                         [InlineKeyboardButton('❌ Cancel ❌', callback_data='index_cancel')]]
                     )
                 )
+                await save_index_state(chat_id, lst_msg_id, current, saved, dup, deleted, msg.id, admin_id)
                 asyncio.create_task(index_files_to_db(lst_msg_id, chat_id, msg, client, current, saved, dup, deleted))
                 break
             except Exception:
