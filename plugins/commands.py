@@ -36,20 +36,20 @@ def get_channel_button():
         [InlineKeyboardButton("🔆彡⟨ HEROFLiX ⟩彡🔆", url=f"https://telegram.me/{CHNL_LNK}")]
     ])
 
-# get premium collection helper
+# get premium collection helper (Updated Collection Name)
 def get_premium_collection():
     try:
-        if hasattr(db, 'premium_users') and db.premium_users is not None:
-            return db.premium_users
-        if hasattr(db, 'db') and hasattr(db.db, 'premium_users'):
-            return db.db.premium_users
+        if hasattr(db, 'custom_active_members') and db.custom_active_members is not None:
+            return db.custom_active_members
+        if hasattr(db, 'db') and hasattr(db.db, 'custom_active_members'):
+            return db.db.custom_active_members
         if hasattr(db, 'get_collection'):
-            return db.get_collection('premium_users')
+            return db.get_collection('custom_active_members')
     except Exception as e:
         logger.error(f"Error fetching premium collection: {e}")
     
     if 'users_col' in globals() and hasattr(users_col, 'database'):
-        return users_col.database.premium_users
+        return users_col.database.custom_active_members
     return None
 
 # log premium action helper
@@ -1233,8 +1233,8 @@ async def minimal_premium_command(client, update):
 async def minimal_send_proof_cb(client, callback: CallbackQuery):
     user_id = callback.from_user.id
     pending_data = {"user_id": user_id, "status": "waiting_screenshot", "updated_at": datetime.utcnow()}
-    if hasattr(db, 'premium_pending'):
-        await db.premium_pending.update_one({"user_id": user_id}, {"$set": pending_data}, upsert=True)
+    if hasattr(db, 'custom_pending_proofs'): # Updated Collection Name
+        await db.custom_pending_proofs.update_one({"user_id": user_id}, {"$set": pending_data}, upsert=True)
         
     await callback.answer()
     try:
@@ -1252,13 +1252,15 @@ async def minimal_send_proof_cb(client, callback: CallbackQuery):
 async def minimal_screenshot_handler(client, message):
     user_id = message.from_user.id
     
-    is_pending = True  # <--- Force-bypass pending check during troubleshooting to verify it works
-    
-    if hasattr(db, 'premium_pending'):
-        try:
-            await db.premium_pending.delete_one({"user_id": user_id})
-        except Exception:
-            pass
+    is_pending = False
+    if hasattr(db, 'custom_pending_proofs'): # Updated Collection Name
+        doc = await db.custom_pending_proofs.find_one({"user_id": user_id})
+        if doc:
+            is_pending = True
+            await db.custom_pending_proofs.delete_one({"user_id": user_id})
+        
+    if not is_pending:
+        return
     
     await message.reply_text("✅ Payment proof submitted! Please wait for admin verification.")
     
@@ -1362,8 +1364,8 @@ async def select_plan_cb(client, callback: CallbackQuery):
         "updated_at": now
     }
     
-    if hasattr(db, 'premium_pending'):
-        await db.premium_pending.update_one({"user_id": target_user_id}, {"$set": pending_state}, upsert=True)
+    if hasattr(db, 'custom_pending_proofs'): # Updated Collection Name
+        await db.custom_pending_proofs.update_one({"user_id": target_user_id}, {"$set": pending_state}, upsert=True)
 
     kb = InlineKeyboardMarkup([
         [
@@ -1400,8 +1402,8 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
     target_user_id = int(target_user_str)
     
     flow = None
-    if hasattr(db, 'premium_pending'):
-        flow = await db.premium_pending.find_one({"user_id": target_user_id})
+    if hasattr(db, 'custom_pending_proofs'): # Updated Collection Name
+        flow = await db.custom_pending_proofs.find_one({"user_id": target_user_id})
         
     if not flow:
         return await callback.answer("Activation session expired or already processed.", show_alert=True)
@@ -1484,8 +1486,8 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
     
     if col is not None:
         await col.update_one({"user_id": target_user_id}, {"$set": activation_data}, upsert=True)
-        if hasattr(db, 'premium_pending'):
-            await db.premium_pending.delete_one({"user_id": target_user_id})
+        if hasattr(db, 'custom_pending_proofs'): # Updated Collection Name
+            await db.custom_pending_proofs.delete_one({"user_id": target_user_id})
         
     ist_start_str = format_ist_time(start_date)
     ist_expiry_str = format_ist_time(expiry_date)
@@ -1613,8 +1615,8 @@ async def minimal_admin_reject_cb(client, callback: CallbackQuery):
     parts = callback.data.split("_")
     target_user_id = int(parts[2] if len(parts) > 2 else parts[-1])
     
-    if hasattr(db, 'premium_pending'):
-        await db.premium_pending.delete_one({"user_id": target_user_id})
+    if hasattr(db, 'custom_pending_proofs'): # Updated Collection Name
+        await db.custom_pending_proofs.delete_one({"user_id": target_user_id})
     
     await callback.answer("Rejected.")
     try:
