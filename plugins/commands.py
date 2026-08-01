@@ -1280,7 +1280,13 @@ async def minimal_screenshot_handler(client, message):
     
     for admin_id in ADMINS:
         try:
-            await client.send_photo(admin_id, message.photo.file_id, caption=admin_text, reply_markup=admin_kb, parse_mode=enums.ParseMode.HTML)
+            await client.send_photo(
+                int(admin_id), 
+                message.photo.file_id, 
+                caption=admin_text, 
+                reply_markup=admin_kb, 
+                parse_mode=enums.ParseMode.HTML
+            )
         except Exception as e:
             logger.error(f"Failed to send minimal payment proof to admin {admin_id}: {e}")
 
