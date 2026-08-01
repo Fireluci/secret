@@ -16,7 +16,7 @@ Aᴅᴅᴇᴅ Bʏ - {}"""
 ID - <code>{}</code>
 Nᴀᴍᴇ - {}"""
 
-    ALRT_TXT = """🔆 Honey, It's Not For You❗ """
+    ALRT_TXT = """🔒 This option belongs to another user. """
 
     OLD_ALRT_TXT = """♻ Link Expired, Please Request in Group Again!"""
 
