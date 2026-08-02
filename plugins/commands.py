@@ -8,7 +8,7 @@ from pyrogram.errors import ChatAdminRequired, FloodWait
 from pyrogram.types import *
 from database.ia_filterdb import Media, get_file_details, unpack_new_file_id, get_bad_files
 from database.users_chats_db import db
-from info import CHANNELS, ADMINS, AUTH_CHANNEL, LOG_CHANNEL, PICS, BATCH_FILE_CAPTION, CUSTOM_FILE_CAPTION, PROTECT_CONTENT, CHNL_LNK, FORCE, MAX_B_TN, TUTORIAL, PREMIUM_USER, PREMIUM_GROUP_ID, PREMIUM_LOG_CHANNEL, PREMIUM_PERMANENT_LINK
+from info import CHANNELS, ADMINS, AUTH_CHANNEL, LOG_CHANNEL, PICS, BATCH_FILE_CAPTION, CUSTOM_FILE_CAPTION, PROTECT_CONTENT, CHNL_LNK, FORCE, MAX_B_TN, TUTORIAL, PREMIUM_USER, PREMIUM_GROUP_ID, PREMIUM_PERMANENT_LINK
 from utils import get_settings, get_size, is_subscribed, save_group_settings, temp, get_shortlink
 from database.connections_mdb import active_connection
 from pymongo.errors import PyMongoError
@@ -36,23 +36,28 @@ def get_premium_collection():
     return users_col.database.premium_users if 'users_col' in globals() and hasattr(users_col, 'database') else None
 
 async def log_premium_action(client: Client, text: str):
-    if not PREMIUM_LOG_CHANNEL:
-        return
-    try:
-        await client.send_message(int(PREMIUM_LOG_CHANNEL), text, disable_web_page_preview=True, parse_mode=enums.ParseMode.HTML)
-    except Exception as e:
-        if any(err in str(e) for err in ["PEER_ID_INVALID", "CHANNEL_INVALID", "CHAT_ADMIN_REQUIRED"]):
-            for admin_id in ADMINS:
-                try:
-                    await client.send_message(int(admin_id), f"<b>⚠️ Log Channel Error</b>\n\nFailed to send log. Error: <code>{e}</code>\n\n{text}", disable_web_page_preview=True, parse_mode=enums.ParseMode.HTML)
-                except Exception:
-                    pass
+    """Sends premium logs directly to all configured ADMINS instead of a log channel."""
+    for admin_id in ADMINS:
+        try:
+            await client.send_message(int(admin_id), text, disable_web_page_preview=True, parse_mode=enums.ParseMode.HTML)
+        except Exception as e:
+            logger.error(f"Failed to send premium action log to admin {admin_id}: {e}")
 
 async def safe_kick_user(client: Client, chat_id, user_id):
     if not chat_id:
         return
     try:
         chat_id_int = int(chat_id)
+        try:
+            await client.get_chat(chat_id_int)
+        except Exception:
+            pass
+            
+        try:
+            await client.resolve_peer(chat_id_int)
+        except Exception:
+            pass
+
         try:
             await client.promote_chat_member(chat_id=chat_id_int, user_id=user_id, is_anonymous=False, can_manage_chat=False, can_delete_messages=False, can_manage_video_chats=False, can_restrict_members=False, can_promote_members=False, can_change_info=False, can_invite_users=False, can_pin_messages=False)
         except Exception:
@@ -62,7 +67,12 @@ async def safe_kick_user(client: Client, chat_id, user_id):
         await client.unban_chat_member(chat_id=chat_id_int, user_id=user_id)
     except Exception as e:
         if "USER_NOT_PARTICIPANT" not in str(e) and "PEER_ID_INVALID" not in str(e):
-            logger.error(f"Failed to kick user ID {user_id}: {e}")
+            err_msg = f"<b>⚠️ Warning: Failed to Kick User</b>\n\n• <b>User ID</b>: <code>{user_id}</code>\n• <b>Group ID</b>: <code>{chat_id}</code>\n• <b>Error</b>: <code>{e}</code>"
+            for admin_id in ADMINS:
+                try:
+                    await client.send_message(int(admin_id), err_msg, parse_mode=enums.ParseMode.HTML)
+                except Exception:
+                    pass
 
 async def premium_expiry_reminder_loop(client: Client):
     await asyncio.sleep(5)
@@ -122,7 +132,7 @@ async def start(client, message):
         return await message.reply_photo(photo=PICS, caption=script.START_TXT.format(message.from_user.mention, temp.U_NAME, temp.B_NAME), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Buy Premium", callback_data="buy_premium_start")]]), parse_mode=enums.ParseMode.HTML)
     if AUTH_CHANNEL and not await is_subscribed(client, message):
         payload = message.text.split(" ", 1)[1] if " " in message.text else "subscribe"
-        return await client.send_message(message.from_user.id, "<b>🔆 First Join Our Main Channel & Then Click Try Again ♻</b>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏮 Main Channel", url=FORCE)], [InlineKeyboardButton("🔄 Try Again", url=f"https://telegram.me/{temp.U_NAME}?start={payload}")]]), parse_mode=enums.ParseMode.HTML)
+        return await client.send_message(message.from_user.id, "<b>🔆 First Join Our Main Channel & Then Click Try Again ♻</b>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏮 Main Channel", url=FORCE)], [InlineKeyboardButton("🔄 Try Again", url=f"https://telegram.me/{temp.U_NAME}?start={payload}")]], parse_mode=enums.ParseMode.HTML)
     if len(message.command) == 2 and message.command[1] == "i_paid":
         try:
             if 'db' in globals() and hasattr(db, 'premium_pending'):
@@ -193,7 +203,7 @@ async def start(client, message):
         except:
             f_msg_id, l_msg_id, f_chat_id = decoded.split("_", 2)
             protect = "/pbatch" if PROTECT_CONTENT else "batch"
-        async for msg in client.iter_messages(int(f_chat_id), int(l_msg_id), int(f_msg_id)):
+        async for msg in client.iter_messages(int(f_chat_id), int(l_msg_id), int(f_chat_id)):
             if msg.media:
                 media = getattr(msg, msg.media.value)
                 f_caption = BATCH_FILE_CAPTION.format(file_name=getattr(media, 'file_name', ''), file_size=getattr(media, 'file_size', ''), file_caption=getattr(msg, 'caption', '')) if BATCH_FILE_CAPTION else getattr(msg, 'caption', getattr(media, 'file_name', ''))
@@ -736,11 +746,11 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
     except Exception as e:
         logger.error(f"Failed to notify user: {e}")
         
-    await log_premium_action(client, f"<b>💎 Premium {'Renewal' if existing else 'Activation'}</b>\n\n👤 <a href='tg://user?id={target_user_id}'>{username}</a> (<code>{target_user_id}</code>)\n📦 {plan} | ₹{price}\n⌛ Expires: {format_date_only(expiry_date)}")
+    await log_premium_action(client, f"<b>💎 Premium {'Renewal' if existing else 'Activation'}</b>\n\n👤 User: <a href='tg://user?id={target_user_id}'>{username}</a> (<code>{target_user_id}</code>)\n📦 Plan: {plan} | ₹{price}\n⌛ Expiry: {format_date_only(expiry_date)}")
     try:
-        await callback.message.edit_caption(f"<b>✅ Activated Successfully</b>\n\n👤 User: <a href='tg://user?id={target_user_id}'>{username}</a> (<code>{target_user_id}</code>)\n💰 Plan: {plan} | ₹{price}\n⌛ Expiry: {format_date_only(expiry_date)}", reply_markup=None, parse_mode=enums.ParseMode.HTML)
+        await callback.message.edit_caption(f"<b>✅ Premium Activated Successfully</b>\n\n👤 User: <a href='tg://user?id={target_user_id}'>{username}</a> (<code>{target_user_id}</code>)\n💰 Plan: {plan} | ₹{price}\n⌛ Expiry: {format_date_only(expiry_date)}", reply_markup=None, parse_mode=enums.ParseMode.HTML)
     except Exception:
-        await callback.message.edit_text(f"<b>✅ Activated Successfully</b>\n\n👤 User: <a href='tg://user?id={target_user_id}'>{username}</a> (<code>{target_user_id}</code>)\n💰 Plan: {plan} | ₹{price}\n⌛ Expiry: {format_date_only(expiry_date)}", reply_markup=None, parse_mode=enums.ParseMode.HTML)
+        await callback.message.edit_text(f"<b>✅ Premium Activated Successfully</b>\n\n👤 User: <a href='tg://user?id={target_user_id}'>{username}</a> (<code>{target_user_id}</code>)\n💰 Plan: {plan} | ₹{price}\n⌛ Expiry: {format_date_only(expiry_date)}", reply_markup=None, parse_mode=enums.ParseMode.HTML)
 
 @Client.on_chat_join_request()
 async def auto_accept_join_request(client, join_request: ChatJoinRequest):
