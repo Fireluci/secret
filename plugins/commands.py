@@ -262,6 +262,17 @@ async def start(client, message):
         )
         return
 
+    # === WEB-PAGE "I PAID" REDIRECT HANDLER ===
+    if len(message.command) == 2 and message.command[1] == "i_paid":
+        user_id = message.from_user.id
+        MINIMAL_PENDING_FLOW[user_id] = {"status": "waiting_screenshot"}
+        
+        return await message.reply_text(
+            "<b>📸 Please send your payment screenshot now in this chat.</b>\n\n"
+            "Your request will be forwarded to the admin immediately.",
+            parse_mode=enums.ParseMode.HTML
+        )
+
     if len(message.command) == 2 and message.command[1] in ["subscribe", "error", "okay", "help"]:
         buttons = [
             [InlineKeyboardButton("💎 Buy Premium", callback_data="buy_premium_start")]
