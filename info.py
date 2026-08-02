@@ -25,7 +25,7 @@ CAPTION_INDEX_CHANNEL = int(environ.get('CAPTION_INDEX_CHANNEL', '-1002299214709
 CACHE_TIME = int(environ.get('CACHE_TIME', 300))
 USE_CAPTION_FILTER = bool(environ.get('USE_CAPTION_FILTER', False))
 PREMIUM_LOG_CHANNEL = int(environ.get('PREMIUM_LOG_CHANNEL', '-1003911194697'))
-PICS = environ.get("PICS", "https://lh3.googleusercontent.com/d/1tnHxh6DTs-4f1aNIjanCCzs0KD0scSB9=s0")
+PICS = environ.get("PICS", "https://ibb.co/xqHBH0XD")
 FORCE = "https://telegram.me/+W6BkAHSGGME3OGY1"
 ADMINS = [int(admin) if id_pattern.search(admin) else admin for admin in environ.get('ADMINS', '1058015838').split()]
 CHANNELS = [int(ch) if id_pattern.search(ch) else ch for ch in environ.get('CHANNELS', '-1001638006524 -1002299214709').split()]
