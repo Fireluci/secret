@@ -1652,27 +1652,49 @@ async def welcome_premium_user_handler(client, member_update: ChatMemberUpdated)
                 return
                 
             dm_msg_id = user_doc.get("dm_msg_id")
+            plan = user_doc.get("plan", "Standard")
+            expires_at = user_doc.get("expires_at") or user_doc.get("expiry_date")
+            exp_str = format_ist_time(expires_at) if expires_at else "N/A"
+            
+            perm_link = PREMIUM_PERMANENT_LINK if 'PREMIUM_PERMANENT_LINK' in globals() and PREMIUM_PERMANENT_LINK else "https://t.me/your_group_link"
+            
+            joined_kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🚀 Open Premium Group", url=perm_link)]
+            ])
+            
+            joined_text = (
+                f"<b>🎉 Welcome to HeroFlix Premium!</b>\n\n"
+                f"✅ You have successfully joined the Premium Group.\n\n"
+                f"✨ <b>Your Active Plan Details</b>:\n"
+                f"• <b>Plan</b>: {plan}\n"
+                f"• <b>Expires On</b>: {exp_str} IST\n"
+                f"• <b>Status</b>: Active"
+            )
+            
             if dm_msg_id:
                 try:
-                    await client.delete_messages(chat_id=user_id, message_ids=dm_msg_id)
-                except Exception as e:
-                    logger.error(f"Failed to delete old DM join message for {user_id}: {e}")
-
-        perm_link = PREMIUM_PERMANENT_LINK if 'PREMIUM_PERMANENT_LINK' in globals() and PREMIUM_PERMANENT_LINK else "https://t.me/your_group_link"
-        welcome_kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔗 Open Premium Group", url=perm_link)]
-        ])
-        try:
-            await client.send_message(
-                user_id,
-                "<b>✅ You have successfully joined the Premium Group!</b>\n\n"
-                "Tap below to open your group 👇",
-                reply_markup=welcome_kb,
-                disable_web_page_preview=True,
-                parse_mode=enums.ParseMode.HTML
-            )
-        except Exception as e:
-            logger.error(f"Failed to send join confirmation DM to {user_id}: {e}")
+                    await client.edit_message_text(
+                        chat_id=user_id,
+                        message_id=dm_msg_id,
+                        text=joined_text,
+                        reply_markup=joined_kb,
+                        parse_mode=enums.ParseMode.HTML,
+                        disable_web_page_preview=True
+                    )
+                    return
+                except Exception:
+                    pass
+            
+            try:
+                await client.send_message(
+                    user_id,
+                    joined_text,
+                    reply_markup=joined_kb,
+                    disable_web_page_preview=True,
+                    parse_mode=enums.ParseMode.HTML
+                )
+            except Exception as e:
+                logger.error(f"Failed to send join confirmation DM to {user_id}: {e}")
 
 @Client.on_callback_query(filters.regex("^min_rej_"))
 async def minimal_admin_reject_cb(client, callback: CallbackQuery):
