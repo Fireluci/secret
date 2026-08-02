@@ -202,7 +202,7 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, resume_current=None, res
                     await save_index_state(chat, lst_msg_id, current, total_files, duplicate, deleted)
                     try:
                         await msg.edit_text(
-                            text=f"● Total Messages Fetched: {current}\n"
+                            text=f"● Messages Fetched: <code>{current}</code>\n"
                                  f"● Saved: {total_files}\n"
                                  f"● Duplicates: {duplicate}\n"
                                  f"● Deleted: {deleted}",
