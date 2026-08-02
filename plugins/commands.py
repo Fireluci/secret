@@ -13,6 +13,7 @@ from database.users_chats_db import db
 from info import CHANNELS, ADMINS, AUTH_CHANNEL, LOG_CHANNEL, PICS, BATCH_FILE_CAPTION, CUSTOM_FILE_CAPTION, PROTECT_CONTENT, CHNL_LNK, FORCE, GRP_LNK, REQST_CHANNEL, SUPPORT_CHAT_ID, SUPPORT_CHAT, MAX_B_TN, SHORTLINK_API, SHORTLINK_URL, TUTORIAL, IS_TUTORIAL, PREMIUM_USER, UPI_ID, PREMIUM_GROUP_ID, PREMIUM_LOG_CHANNEL, PREMIUM_PERMANENT_LINK
 from utils import get_settings, get_size, is_subscribed, save_group_settings, temp, get_shortlink, get_tutorial
 from database.connections_mdb import active_connection
+from pymongo.errors import PyMongoError
 import re, sys
 import json
 import base64
@@ -140,69 +141,73 @@ async def premium_expiry_reminder_loop(client: Client):
             col = get_premium_collection()
                 
             if col is not None:
-                async for user_doc in col.find({"active": True}):
-                    user_id = user_doc.get("user_id")
-                    expires_at = user_doc.get("expires_at") or user_doc.get("expiry_date")
-                    
-                    if not expires_at or not isinstance(expires_at, datetime):
-                        continue
+                try:
+                    cursor = col.find({"active": True})
+                    async for user_doc in cursor:
+                        user_id = user_doc.get("user_id")
+                        expires_at = user_doc.get("expires_at") or user_doc.get("expiry_date")
                         
-                    reminders = user_doc.get("reminders", {})
-                    
-                    if now >= expires_at:
-                        await col.delete_one({"user_id": user_id})
-                        
-                        try:
-                            u_obj = await client.get_users(user_id)
-                            u_name = u_obj.first_name or "User"
-                        except Exception:
-                            u_name = "User"
+                        if not expires_at or not isinstance(expires_at, datetime):
+                            continue
                             
-                        logger.info(f"🔄 Expired and removed premium record for {u_name} (ID: {user_id})")
-
-                        if PREMIUM_GROUP_ID:
-                            await safe_kick_user(client, PREMIUM_GROUP_ID, user_id)
+                        reminders = user_doc.get("reminders", {})
+                        
+                        if now >= expires_at:
+                            await col.delete_one({"user_id": user_id})
+                            
+                            try:
+                                u_obj = await client.get_users(user_id)
+                                u_name = u_obj.first_name or "User"
+                            except Exception:
+                                u_name = "User"
                                 
-                        ist_expiry = format_ist_time(expires_at)
-                        log_text = (
-                            f"<b>❌ HeroFlix Premium Expired & Ejected</b>\n\n"
-                            f"👤 <b>User</b>: <a href=\"tg://user?id={user_id}\">{u_name}</a> (<code>{user_id}</code>)\n"
-                            f"⌛ <b>Expired At</b>: {ist_expiry} IST\n"
-                            f"🚪 <b>Action</b>: Removed from database and kicked from group."
-                        )
-                        await log_premium_action(client, log_text)
+                            logger.info(f"🔄 Expired and removed premium record for {u_name} (ID: {user_id})")
 
-                        expiry_kb = InlineKeyboardMarkup([
-                            [InlineKeyboardButton("🔄 Renew Premium", callback_data="buy_premium_start")]
-                        ])
-                        expiry_msg = (
-                            "<b>❌ HeroFlix Premium Expired</b>\n\n"
-                            "Your Premium Membership has expired.\n\n"
-                            "Tap below to renew."
-                        )
-                        try:
-                            await client.send_message(user_id, expiry_msg, reply_markup=expiry_kb, parse_mode=enums.ParseMode.HTML)
-                        except Exception as e:
-                            logger.error(f"Failed to send expiry DM to user {user_id}: {e}")
-                            
-                    elif expires_at - now <= timedelta(days=1) and not reminders.get("1_day", False):
-                        reminder_kb = InlineKeyboardMarkup([
-                            [InlineKeyboardButton("🔄 Renew Premium", callback_data="buy_premium_start")]
-                        ])
-                        reminder_text = (
-                            "<b>⚠ HeroFlix Premium</b>\n\n"
-                            "Your Premium expires tomorrow.\n\n"
-                            "Renew now to continue enjoying Premium without interruption."
-                        )
-                        try:
-                            await client.send_message(user_id, reminder_text, reply_markup=reminder_kb, parse_mode=enums.ParseMode.HTML)
-                            await col.update_one(
-                                {"user_id": user_id},
-                                {"$set": {"reminders.1_day": True}}
+                            if PREMIUM_GROUP_ID:
+                                await safe_kick_user(client, PREMIUM_GROUP_ID, user_id)
+                                
+                            ist_expiry = format_ist_time(expires_at)
+                            log_text = (
+                                f"<b>❌ HeroFlix Premium Expired & Ejected</b>\n\n"
+                                f"👤 <b>User</b>: <a href=\"tg://user?id={user_id}\">{u_name}</a> (<code>{user_id}</code>)\n"
+                                f"⌛ <b>Expired At</b>: {ist_expiry} IST\n"
+                                f"🚪 <b>Action</b>: Removed from database and kicked from group."
                             )
-                        except Exception as e:
-                            logger.error(f"Failed to send 1-day reminder to user {user_id}: {e}")
-                            
+                            await log_premium_action(client, log_text)
+
+                            expiry_kb = InlineKeyboardMarkup([
+                                [InlineKeyboardButton("🔄 Renew Premium", callback_data="buy_premium_start")]
+                            ])
+                            expiry_msg = (
+                                "<b>❌ HeroFlix Premium Expired</b>\n\n"
+                                "Your Premium Membership has expired.\n\n"
+                                "Tap below to renew."
+                            )
+                            try:
+                                await client.send_message(user_id, expiry_msg, reply_markup=expiry_kb, parse_mode=enums.ParseMode.HTML)
+                            except Exception as e:
+                                logger.error(f"Failed to send expiry DM to user {user_id}: {e}")
+                                
+                        elif expires_at - now <= timedelta(days=1) and not reminders.get("1_day", False):
+                            reminder_kb = InlineKeyboardMarkup([
+                                [InlineKeyboardButton("🔄 Renew Premium", callback_data="buy_premium_start")]
+                            ])
+                            reminder_text = (
+                                "<b>⚠ HeroFlix Premium</b>\n\n"
+                                "Your Premium expires tomorrow.\n\n"
+                                "Renew now to continue enjoying Premium without interruption."
+                            )
+                            try:
+                                await client.send_message(user_id, reminder_text, reply_markup=reminder_kb, parse_mode=enums.ParseMode.HTML)
+                                await col.update_one(
+                                    {"user_id": user_id},
+                                    {"$set": {"reminders.1_day": True}}
+                                )
+                            except Exception as e:
+                                logger.error(f"Failed to send 1-day reminder to user {user_id}: {e}")
+                except PyMongoError as db_err:
+                    logger.error(f"Database error in expiry loop: {db_err}")
+                    
         except Exception as e:
             logger.error(f"Error in premium expiry background task: {e}")
             
@@ -269,6 +274,38 @@ async def start(client, message):
             parse_mode=enums.ParseMode.HTML
         )
         return
+        
+    # === PREMIUM ENFORCEMENT CHECK FOR FILES ===
+    if len(message.command) == 2 and any(message.command[1].startswith(prefix) for prefix in ["file_", "allfiles_", "BATCH", "DSTORE"]):
+        user_id = message.from_user.id
+        if user_id not in ADMINS and user_id not in PREMIUM_USER:
+            col = get_premium_collection()
+            p_doc = None
+            if col is not None:
+                try:
+                    p_doc = await col.find_one({"user_id": user_id, "active": True})
+                except PyMongoError:
+                    p_doc = None
+            
+            now = datetime.utcnow()
+            is_active_premium = False
+            if p_doc:
+                exp = p_doc.get("expires_at") or p_doc.get("expiry_date")
+                if exp and isinstance(exp, datetime) and exp > now:
+                    is_active_premium = True
+            
+            if not is_active_premium:
+                locked_kb = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("💎 Buy Premium to Access Files", callback_data="buy_premium_start")]
+                ])
+                return await message.reply_text(
+                    "<b>🔒 Premium Required</b>\n\n"
+                    "File downloading is restricted to <b>Premium Members</b> only.\n\n"
+                    "Tap below to check plans and upgrade your account!",
+                    reply_markup=locked_kb,
+                    parse_mode=enums.ParseMode.HTML
+                )
+
     data = message.command[1]
     try:
         pre, file_id = data.split('_', 1)
@@ -341,7 +378,13 @@ async def start(client, message):
     elif data.split("-", 1)[0] == "DSTORE":
         sts = await message.reply("<b>Please wait...</b>")
         b_string = data.split("-", 1)[1]
-        decoded = (base64.urlsafe_b64decode(b_string + "=" * (-len(b_string) % 4))).decode("ascii")
+        try:
+            decoded_bytes = base64.urlsafe_b64decode(b_string + "=" * (-len(b_string) % 4))
+            decoded = decoded_bytes.decode("utf-8")
+        except (base64.binascii.Error, UnicodeDecodeError, ValueError):
+            await sts.edit("<b>❌ Invalid or corrupted store link!</b>")
+            return
+            
         try:
             f_msg_id, l_msg_id, f_chat_id, protect = decoded.split("_", 3)
         except:
@@ -483,14 +526,14 @@ async def start(client, message):
             g = await get_shortlink(chat_id, f"https://telegram.me/{temp.U_NAME}?start=file_{file_id}")
             cleaned_file_name = f"{' '.join(filter(lambda x: not x.startswith('www.') and not x.startswith('@'), files.file_name.split()))}"
             k = await client.send_message(chat_id=message.from_user.id,text=f'<b>[ {get_size(files.file_size)} ] <a href="https://telegram.me/HEROFLiX">{cleaned_file_name}</a> \n\n📗 Download Link ➠ {g} {g}</b>', reply_markup=InlineKeyboardMarkup(
-                [
-                        [
-                            InlineKeyboardButton('♻️ Download Link ♻️', url=g)
-                        ], [
-                            InlineKeyboardButton('❓ How To Download ❓', url=f"https://telegram.me/{TUTORIAL}")
-                        ], [
-                            InlineKeyboardButton('💎 Buy Premium', callback_data="buy_premium_start")
-                        ]
+                    [
+                            [
+                                InlineKeyboardButton('♻️ Download Link ♻️', url=g)
+                            ], [
+                                InlineKeyboardButton('❓ How To Download ❓', url=f"https://telegram.me/{TUTORIAL}")
+                            ], [
+                                InlineKeyboardButton('💎 Buy Premium', callback_data="buy_premium_start")
+                            ]
                     ]
                 )
             )
@@ -500,12 +543,18 @@ async def start(client, message):
             except Exception:
                 pass
             return
+            
     user = message.from_user.id
-    files_ = await get_file_details(file_id)           
+    files_ = await get_file_details(file_id)            
     if not files_:
-        pre, file_id = ((base64.urlsafe_b64decode(data + "=" * (-len(data) % 4))).decode("ascii")).split("_", 1)
         try:
-
+            decoded_bytes = base64.urlsafe_b64decode(data + "=" * (-len(data) % 4))
+            decoded_string = decoded_bytes.decode("utf-8")
+            pre, file_id = decoded_string.split("_", 1)
+        except (base64.binascii.Error, UnicodeDecodeError, ValueError):
+            return await message.reply('<b>❌ Invalid or corrupted file link!</b>')
+            
+        try:
             msg = await client.send_cached_media(
                 chat_id=message.from_user.id,
                 file_id=file_id,
@@ -532,11 +581,12 @@ async def start(client, message):
             btn = [[
                 InlineKeyboardButton("Get File Again", callback_data=f'delfile#{file_id}')
             ]]
-            await k.edit_text("<b>Your File/Video is deleted!!!\n\nClick below button to get your deleted file 👇</b>",reply_markup=InlineKeyboardMarkup(btn))
+            await message.reply_text("<b>Your File/Video is deleted!!!\n\nClick below button to get your deleted file 👇</b>",reply_markup=InlineKeyboardMarkup(btn))
             return
         except:
             pass
         return await message.reply('No such file exist.')
+        
     files = files_[0]
     title = '' + ' '.join(filter(lambda x: not x.startswith('www.') and not x.startswith('@'), files.file_name.split()))
     size=get_size(files.file_size)
@@ -563,11 +613,11 @@ async def start(client, message):
             ]
         )
     )
-    return   
+    return    
 
 @Client.on_message(filters.command('channel') & filters.user(ADMINS))
 async def channel_info(bot, message):
-           
+         
     """Send basic information of channel"""
     if isinstance(CHANNELS, (int, str)):
         channels = [CHANNELS]
@@ -623,30 +673,33 @@ async def delete(bot, message):
     
     file_id, file_ref = unpack_new_file_id(media.file_id)
 
-    result = await Media.collection.delete_one({
-        '_id': file_id,
-    })
-    if result.deleted_count:
-        await msg.edit('🛃 Deleted File!')
-    else:
-        file_name = re.sub(r"(_|\-|\.|\+)", " ", str(media.file_name))
-        result = await Media.collection.delete_many({
-            'file_name': file_name,
-            'file_size': media.file_size,
-            'mime_type': media.mime_type
-            })
+    try:
+        result = await Media.collection.delete_one({
+            '_id': file_id,
+        })
         if result.deleted_count:
             await msg.edit('🛃 Deleted File!')
         else:
+            file_name = re.sub(r"(_|\-|\.|\+)", " ", str(media.file_name))
             result = await Media.collection.delete_many({
-                'file_name': media.file_name,
+                'file_name': file_name,
                 'file_size': media.file_size,
                 'mime_type': media.mime_type
-            })
+                })
             if result.deleted_count:
                 await msg.edit('🛃 Deleted File!')
             else:
-                await msg.edit('File not found in database')
+                result = await Media.collection.delete_many({
+                    'file_name': media.file_name,
+                    'file_size': media.file_size,
+                    'mime_type': media.mime_type
+                })
+                if result.deleted_count:
+                    await msg.edit('🛃 Deleted File!')
+                else:
+                    await msg.edit('File not found in database')
+    except PyMongoError as e:
+        await msg.edit(f'Database error during deletion: {e}')
 
 @Client.on_message(filters.command('deleteall') & filters.user(ADMINS))
 async def delete_all_index(bot, message):
@@ -671,9 +724,12 @@ async def delete_all_index(bot, message):
 
 @Client.on_callback_query(filters.regex(r'^autofilter_delete'))
 async def delete_all_index_confirm(bot, message):
-    await Media.collection.drop()
-    await message.answer('Piracy Is Crime')
-    await message.message.edit('Succesfully Deleted All The Indexed Files.')
+    try:
+        await Media.collection.drop()
+        await message.answer('Piracy Is Crime')
+        await message.message.edit('Succesfully Deleted All The Indexed Files.')
+    except PyMongoError as e:
+        await message.answer(f'Database error: {e}')
 
 @Client.on_message(filters.command('settings'))
 async def settings(client, message):
@@ -900,7 +956,7 @@ async def shortlink(bot, message):
     
 @Client.on_message(filters.command("restart") & filters.user(ADMINS))
 async def stop_button(bot, message):
-    msg = await bot.send_message(text="<b>🔄 𝙱𝙾𝚃 𝙸𝚂 𝚁𝙴𝚂𝚃𝙰𝚁𝚃𝙸𝙽𝙶</b>", chat_id=message.chat.id, parse_mode=enums.ParseMode.HTML)       
+    msg = await bot.send_message(text="<b>🔄 𝙱𝙾𝚃 𝙸𝚂 𝚁𝙴𝚂𝚃𝙰𝚁𝚃𝙸𝙽𝙶</b>", chat_id=message.chat.id, parse_mode=enums.ParseMode.HTML)        
     await asyncio.sleep(3)
     await msg.edit("<b>✅️ 𝙱𝙾𝚃 𝙸𝚂 𝚁𝙴𝚂𝚃𝙰𝚁𝚃𝙴𝙳</b>", parse_mode=enums.ParseMode.HTML)
     os.execl(sys.executable, sys.executable, *sys.argv)
@@ -940,7 +996,10 @@ async def check_my_plan(client, message):
     col = get_premium_collection()
     user_doc = None
     if col is not None:
-        user_doc = await col.find_one({"user_id": user_id, "active": True})
+        try:
+            user_doc = await col.find_one({"user_id": user_id, "active": True})
+        except PyMongoError:
+            user_doc = None
         
     if not user_doc:
         await message.reply_text(
@@ -1003,7 +1062,10 @@ async def revoke_premium_command(client, message):
     if col is None:
         return await message.reply_text("<b>Database collection not found.</b>", parse_mode=enums.ParseMode.HTML)
         
-    result = await col.delete_one({"user_id": target_user_id})
+    try:
+        result = await col.delete_one({"user_id": target_user_id})
+    except PyMongoError as e:
+        return await message.reply_text(f"<b>Database error:</b> <code>{e}</code>", parse_mode=enums.ParseMode.HTML)
     
     try:
         t_user = await client.get_users(target_user_id)
@@ -1057,11 +1119,14 @@ async def list_premiums_command(client, message):
     
     now = datetime.utcnow()
     active_users = []
-    async for doc in col.find({"active": True}):
-        expires_at = doc.get("expires_at") or doc.get("expiry_date")
-        if expires_at and isinstance(expires_at, datetime) and expires_at > now:
-            active_users.append(doc)
-            
+    try:
+        async for doc in col.find({"active": True}):
+            expires_at = doc.get("expires_at") or doc.get("expiry_date")
+            if expires_at and isinstance(expires_at, datetime) and expires_at > now:
+                active_users.append(doc)
+    except PyMongoError as e:
+        return await message.reply_text(f"<b>Database error:</b> <code>{e}</code>", parse_mode=enums.ParseMode.HTML)
+        
     if not active_users:
         return await message.reply_text("<b>No active premium users found at the moment.</b>", parse_mode=enums.ParseMode.HTML)
         
@@ -1315,9 +1380,14 @@ async def select_plan_cb(client, callback: CallbackQuery):
         "updated_at": now
     }
     
-    if 'db' in globals() and hasattr(db, 'premium_pending'):
-        await db.premium_pending.update_one({"user_id": target_user_id}, {"$set": pending_state}, upsert=True)
-    else:
+    try:
+        if 'db' in globals() and hasattr(db, 'premium_pending'):
+            await db.premium_pending.update_one({"user_id": target_user_id}, {"$set": pending_state}, upsert=True)
+        else:
+            if not hasattr(client, 'fallback_pending'):
+                client.fallback_pending = {}
+            client.fallback_pending[target_user_id] = pending_state
+    except PyMongoError:
         if not hasattr(client, 'fallback_pending'):
             client.fallback_pending = {}
         client.fallback_pending[target_user_id] = pending_state
@@ -1357,9 +1427,13 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
     target_user_id = int(target_user_str)
     
     flow = None
-    if 'db' in globals() and hasattr(db, 'premium_pending'):
-        flow = await db.premium_pending.find_one({"user_id": target_user_id})
-    elif hasattr(client, 'fallback_pending') and target_user_id in client.fallback_pending:
+    try:
+        if 'db' in globals() and hasattr(db, 'premium_pending'):
+            flow = await db.premium_pending.find_one({"user_id": target_user_id})
+    except PyMongoError:
+        flow = None
+        
+    if not flow and hasattr(client, 'fallback_pending') and target_user_id in client.fallback_pending:
         flow = client.fallback_pending.get(target_user_id)
         
     if not flow:
@@ -1384,7 +1458,10 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
     col = get_premium_collection()
     existing_user_doc = None
     if col is not None:
-        existing_user_doc = await col.find_one({"user_id": target_user_id, "active": True})
+        try:
+            existing_user_doc = await col.find_one({"user_id": target_user_id, "active": True})
+        except PyMongoError:
+            existing_user_doc = None
         
     is_test_minute = (days == 30 and "Test" in plan)
     
@@ -1452,9 +1529,12 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
     }
     
     if col is not None:
-        await col.update_one({"user_id": target_user_id}, {"$set": activation_data}, upsert=True)
-        if hasattr(db, 'premium_pending'):
-            await db.premium_pending.delete_one({"user_id": target_user_id})
+        try:
+            await col.update_one({"user_id": target_user_id}, {"$set": activation_data}, upsert=True)
+            if hasattr(db, 'premium_pending'):
+                await db.premium_pending.delete_one({"user_id": target_user_id})
+        except PyMongoError as db_err:
+            logger.error(f"Failed to update premium collection for user {target_user_id}: {db_err}")
         
     ist_start_str = format_ist_time(start_date)
     ist_expiry_str = format_ist_time(expiry_date)
@@ -1477,7 +1557,10 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
     try:
         user_msg_sent = await client.send_message(target_user_id, user_msg_text, reply_markup=user_msg_kb, disable_web_page_preview=True, parse_mode=enums.ParseMode.HTML)
         if not already_joined and col is not None and user_msg_sent:
-            await col.update_one({"user_id": target_user_id}, {"$set": {"dm_msg_id": user_msg_sent.id}})
+            try:
+                await col.update_one({"user_id": target_user_id}, {"$set": {"dm_msg_id": user_msg_sent.id}})
+            except PyMongoError:
+                pass
     except Exception as e:
         logger.error(f"Failed to notify user {target_user_id}: {e}")
         
@@ -1513,13 +1596,17 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
 @Client.on_chat_join_request()
 async def auto_accept_join_request(client, join_request: ChatJoinRequest):
     if PREMIUM_GROUP_ID and join_request.chat.id == int(PREMIUM_GROUP_ID):
-        if await get_premium_collection().find_one({"user_id": join_request.from_user.id, "active": True}):
-            try:
+        try:
+            col = get_premium_collection()
+            is_active = False
+            if col is not None:
+                is_active = await col.find_one({"user_id": join_request.from_user.id, "active": True})
+            if is_active:
                 await client.approve_chat_join_request(chat_id=join_request.chat.id, user_id=join_request.from_user.id)
                 u_name = join_request.from_user.first_name or "User"
                 logger.info(f"Auto-approved join request for active premium user {u_name} (ID: {join_request.from_user.id})")
-            except Exception as e:
-                logger.error(f"Failed to auto-approve join request for {join_request.from_user.id}: {e}")
+        except Exception as e:
+            logger.error(f"Failed to auto-approve join request for {join_request.from_user.id}: {e}")
 
 @Client.on_chat_member_updated()
 async def welcome_premium_user_handler(client, member_update: ChatMemberUpdated):
@@ -1545,19 +1632,20 @@ async def welcome_premium_user_handler(client, member_update: ChatMemberUpdated)
             
         user_id = user.id
         col = get_premium_collection()
-        if col is None:
-            return
-            
-        user_doc = await col.find_one({"user_id": user_id, "active": True})
-        if not user_doc:
-            return
-            
-        dm_msg_id = user_doc.get("dm_msg_id")
-        if dm_msg_id:
+        if col is not None:
             try:
-                await client.delete_messages(chat_id=user_id, message_ids=dm_msg_id)
-            except Exception as e:
-                logger.error(f"Failed to delete old DM join message for {user_id}: {e}")
+                user_doc = await col.find_one({"user_id": user_id, "active": True})
+            except PyMongoError:
+                user_doc = None
+            if not user_doc:
+                return
+                
+            dm_msg_id = user_doc.get("dm_msg_id")
+            if dm_msg_id:
+                try:
+                    await client.delete_messages(chat_id=user_id, message_ids=dm_msg_id)
+                except Exception as e:
+                    logger.error(f"Failed to delete old DM join message for {user_id}: {e}")
 
         perm_link = PREMIUM_PERMANENT_LINK if 'PREMIUM_PERMANENT_LINK' in globals() and PREMIUM_PERMANENT_LINK else "https://t.me/your_group_link"
         welcome_kb = InlineKeyboardMarkup([
@@ -1583,8 +1671,11 @@ async def minimal_admin_reject_cb(client, callback: CallbackQuery):
     parts = callback.data.split("_")
     target_user_id = int(parts[2] if len(parts) > 2 else parts[-1])
     
-    if 'db' in globals() and hasattr(db, 'premium_pending'):
-        await db.premium_pending.delete_one({"user_id": target_user_id})
+    try:
+        if 'db' in globals() and hasattr(db, 'premium_pending'):
+            await db.premium_pending.delete_one({"user_id": target_user_id})
+    except PyMongoError:
+        pass
     
     await callback.answer("Rejected.")
     try:
