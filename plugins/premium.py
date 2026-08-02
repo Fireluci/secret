@@ -350,3 +350,17 @@ async def minimal_admin_reject_cb(client, callback: CallbackQuery):
         await callback.message.edit_caption("<b>❌ Status:</b> REJECTED", reply_markup=None, parse_mode=enums.ParseMode.HTML)
     except Exception:
         await callback.message.edit_text("<b>❌ Status:</b> REJECTED", reply_markup=None, parse_mode=enums.ParseMode.HTML)
+
+@Client.on_message(filters.command("text") & filters.user(ADMINS))
+async def admin_send_text_command(client, message):
+    if len(message.command) < 3:
+        return await message.reply_text("<b>Usage:</b> /text <code>user_id</code> <code>message</code>", parse_mode=enums.ParseMode.HTML)
+    try:
+        target_user_id = int(message.command[1])
+    except ValueError:
+        return await message.reply_text("<b>Invalid User ID format.</b>", parse_mode=enums.ParseMode.HTML)
+    try:
+        await client.send_message(target_user_id, message.text.split(None, 2)[2], parse_mode=enums.ParseMode.HTML)
+        await message.reply_text(f"<b>✅ Message successfully sent to user <code>{target_user_id}</code>.</b>", parse_mode=enums.ParseMode.HTML)
+    except Exception as e:
+        await message.reply_text(f"<b>❌ Failed to send message:</b>\n<code>{e}</code>", parse_mode=enums.ParseMode.HTML)
