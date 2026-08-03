@@ -6,7 +6,7 @@ from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, ChatJoinRequest, ChatMemberUpdated
 from pyrogram.errors import ChatAdminRequired, FloodWait
 from database.users_chats_db import db
-from info import ADMINS, PREMIUM_GROUP_ID, PREMIUM_PERMANENT_LINK, TUTORIAL
+from info import ADMINS, PREMIUM_GROUP_ID, PREMIUM_LOG_CHANNEL, PREMIUM_PERMANENT_LINK, TUTORIAL
 from pymongo.errors import PyMongoError
 from utils import temp
 
@@ -30,12 +30,45 @@ def get_premium_collection():
     return None
 
 async def log_premium_action(client: Client, text: str):
-    """Helper to send important premium events to all configured ADMINS safely."""
-    for admin_id in ADMINS:
-        try:
-            await client.send_message(int(admin_id), text, disable_web_page_preview=True, parse_mode=enums.ParseMode.HTML)
-        except Exception as e:
-            logger.error(f"Failed to send premium action log to admin {admin_id}: {e}")
+    """Foolproof logger for PREMIUM_LOG_CHANNEL with internal cache resolution and admin fallback."""
+    if not PREMIUM_LOG_CHANNEL:
+        return
+    
+    chat_id_int = int(PREMIUM_LOG_CHANNEL)
+    
+    # 1. Force Pyrogram/Pyrofork to fetch and resolve peer cache to prevent PEER_ID_INVALID
+    try:
+        await client.get_chat(chat_id_int)
+    except Exception:
+        pass
+        
+    try:
+        await client.resolve_peer(chat_id_int)
+    except Exception:
+        pass
+
+    # 2. Attempt delivery to the channel
+    try:
+        await client.send_message(
+            chat_id=chat_id_int, 
+            text=text, 
+            disable_web_page_preview=True, 
+            parse_mode=enums.ParseMode.HTML
+        )
+    except Exception as e:
+        logger.error(f"Failed to send log to PREMIUM_LOG_CHANNEL: {e}")
+        
+        # Fallback: Send to all ADMINS if channel broadcast completely fails
+        for admin_id in ADMINS:
+            try:
+                await client.send_message(
+                    int(admin_id), 
+                    f"<b>⚠️ Log Channel Error ({e})</b>\n\n{text}", 
+                    disable_web_page_preview=True, 
+                    parse_mode=enums.ParseMode.HTML
+                )
+            except Exception:
+                pass
 
 async def safe_kick_user(client: Client, chat_id, user_id):
     if not chat_id:
@@ -62,9 +95,10 @@ async def safe_kick_user(client: Client, chat_id, user_id):
     except Exception as e:
         if "USER_NOT_PARTICIPANT" not in str(e) and "PEER_ID_INVALID" not in str(e):
             logger.error(f"Failed to kick user ID {user_id}: {e}")
+            await log_premium_action(client, f"<b>⚠️ Warning: Failed to Kick User</b>\n\n• <b>User ID</b>: <code>{user_id}</code>\n• <b>Group ID</b>: <code>{chat_id}</code>\n• <b>Error</b>: <code>{e}</code>")
 
 # ==========================================
-# BACKGROUND EXPIRY LOOP (Runs every 30 seconds)
+# BACKGROUND EXPIRY LOOP
 # ==========================================
 async def premium_expiry_reminder_loop(client: Client):
     await asyncio.sleep(5)
@@ -97,12 +131,10 @@ async def premium_expiry_reminder_loop(client: Client):
                             pass
         except Exception as e:
             logger.error(f"Error in expiry loop: {e}")
-        
-        # Loop interval set to 30 seconds
         await asyncio.sleep(30)
 
 # ==========================================
-# PREMIUM COMMANDS & STEP-BY-STEP WORKFLOW
+# PREMIUM COMMANDS & WORKFLOW
 # ==========================================
 @Client.on_message(filters.command("myplan") & filters.private)
 async def check_my_plan(client, message):
@@ -193,15 +225,12 @@ async def select_plan_cb(client, callback: CallbackQuery):
     if str(callback.from_user.id) not in map(str, ADMINS):
         return await callback.answer("Unauthorized.", show_alert=True)
     
-    # Format: selplan_USERID_DAYS_PRICE
     _, target_user_str, days_str, price = callback.data.split("_")
     target_user_id, days = int(target_user_str), int(days_str)
     
     is_test = (days == 30)
     plan_label = "1 Month (2 Mins Test)" if is_test else (f"2 Months" if days == 60 else (f"6 Months" if days == 180 else "1 Year"))
     now = datetime.utcnow()
-    
-    # Set testing plan duration to 2 minutes
     expiry_date = (now + timedelta(minutes=2)) if is_test else (now + timedelta(days=days))
     
     try:
@@ -246,8 +275,6 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
             
     old_expiry = existing.get("expires_at") or existing.get("expiry_date") if existing else None
     start_date = old_expiry if old_expiry and isinstance(old_expiry, datetime) and old_expiry > now else now
-    
-    # Testing plan expires in 2 minutes
     expiry_date = (start_date + timedelta(minutes=2)) if is_test else (start_date + timedelta(days=days))
 
     already_joined = False
