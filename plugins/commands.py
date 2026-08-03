@@ -694,6 +694,39 @@ async def settings(client, message):
     else:
         await message.reply_text(text=f"<b>Sᴇᴛᴛɪɴɢs Fᴏʀ {title}</b>", reply_markup=InlineKeyboardMarkup(buttons), disable_web_page_preview=True, parse_mode=enums.ParseMode.HTML, reply_to_message_id=message.id)
 
+@Client.on_callback_query(filters.regex(r'^setgs#'))
+async def settings_callback(client, callback: CallbackQuery):
+    _, key, value, grp_id = callback.data.split("#")
+    grp_id = int(grp_id)
+    
+    # Toggle the boolean value
+    current_val = True if value == "True" else False
+    new_val = not current_val
+    
+    # Save to database
+    await save_group_settings(grp_id, key, new_val)
+    
+    # Fetch updated settings to redraw the buttons
+    settings = await get_settings(grp_id)
+    
+    buttons = [
+        [InlineKeyboardButton('Rᴇsᴜʟᴛ Pᴀɢᴇ', callback_data=f'setgs#button#{settings["button"]}#{grp_id}'), InlineKeyboardButton('Bᴜᴛᴛᴏɴ' if settings["button"] else 'Tᴇxᴛ', callback_data=f'setgs#button#{settings["button"]}#{grp_id}')],
+        [InlineKeyboardButton('Fɪʟᴇ Sᴇɴᴅ Mᴏᴅᴇ', callback_data=f'setgs#botpm#{settings["botpm"]}#{grp_id}'), InlineKeyboardButton('Mᴀɴᴜᴀʟ Sᴛᴀʀᴛ' if settings["botpm"] else 'Aᴜᴛᴏ Sᴇɴᴅ', callback_data=f'setgs#botpm#{settings["botpm"]}#{grp_id}')],
+        [InlineKeyboardButton('Pʀᴏᴛᴇᴄْت Cᴏɴᴛᴇɴᴛ', callback_data=f'setgs#file_secure#{settings["file_secure"]}#{grp_id}'), InlineKeyboardButton('✔ Oɴ' if settings["file_secure"] else '✘ Oғғ', callback_data=f'setgs#file_secure#{settings["file_secure"]}#{grp_id}')],
+        [InlineKeyboardButton('Sᴘᴇʟʟ Cʜᴇᴄᴋ', callback_data=f'setgs#spell_check#{settings["spell_check"]}#{grp_id}'), InlineKeyboardButton('✔ Oɴ' if settings["spell_check"] else '✘ Oғғ', callback_data=f'setgs#spell_check#{settings["spell_check"]}#{grp_id}')],
+        [InlineKeyboardButton('Wᴇʟᴄᴏᴍᴇ Msɢ', callback_data=f'setgs#welcome#{settings["welcome"]}#{grp_id}'), InlineKeyboardButton('✔ Oɴ' if settings["welcome"] else '✘ Oғғ', callback_data=f'setgs#welcome#{settings["welcome"]}#{grp_id}')],
+        [InlineKeyboardButton('Aᴜᴛᴏ-Dᴇʟᴇᴛᴇ', callback_data=f'setgs#auto_delete#{settings["auto_delete"]}#{grp_id}'), InlineKeyboardButton('10 Mɪns' if settings["auto_delete"] else '✘ Oғғ', callback_data=f'setgs#auto_delete#{settings["auto_delete"]}#{grp_id}')],
+        [InlineKeyboardButton('Aᴜᴛᴏ-Fɪʟᴛᴇʀ', callback_data=f'setgs#auto_ffilter#{settings["auto_ffilter"]}#{grp_id}'), InlineKeyboardButton('✔ Oɴ' if settings["auto_ffilter"] else '✘ Oғғ', callback_data=f'setgs#auto_ffilter#{settings["auto_ffilter"]}#{grp_id}')],
+        [InlineKeyboardButton('Mᴀx Bᴜᴛᴛᴏns', callback_data=f'setgs#max_btn#{settings["max_btn"]}#{grp_id}'), InlineKeyboardButton('10' if settings["max_btn"] else f'{MAX_B_TN}', callback_data=f'setgs#max_btn#{settings["max_btn"]}#{grp_id}')],
+        [InlineKeyboardButton('ShortLink', callback_data=f'setgs#is_shortlink#{settings["is_shortlink"]}#{grp_id}'), InlineKeyboardButton('✔ Oɴ' if settings["is_shortlink"] else '✘ Oғғ', callback_data=f'setgs#is_shortlink#{settings["is_shortlink"]}#{grp_id}')],
+    ]
+    
+    try:
+        await callback.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
+    except Exception:
+        pass
+    await callback.answer("Settings Updated Successfully!")
+
 @Client.on_message(filters.command("deletefiles") & filters.user(ADMINS))
 async def deletemultiplefiles(bot, message):
     if message.chat.type != enums.ChatType.PRIVATE:
