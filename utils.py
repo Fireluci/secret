@@ -158,17 +158,41 @@ async def search_gagala(text):
         return []
 
 async def get_settings(group_id):
-    settings = temp.SETTINGS.get(group_id)
-    if not settings:
-        settings = await db.get_settings(group_id)
+    # Always fetch fresh from database to prevent stale cache bugs
+    settings = await db.get_settings(group_id)
+    if settings:
         temp.SETTINGS[group_id] = settings
-    return settings
+        return settings
     
+    # Fallback default if nothing found in DB
+    default_settings = {
+        "button": False,
+        "botpm": False,
+        "file_secure": False,
+        "spell_check": True,
+        "welcome": True,
+        "auto_delete": False,
+        "auto_ffilter": True,
+        "max_btn": False,
+        "is_shortlink": False
+    }
+    temp.SETTINGS[group_id] = default_settings
+    return default_settings
+
 async def save_group_settings(group_id, key, value):
-    current = await get_settings(group_id)
+    # Fetch current settings from DB first
+    current = await db.get_settings(group_id)
+    if not current:
+        current = await get_settings(group_id)
+    
+    # Update key
     current[key] = value
-    temp.SETTINGS[group_id] = current
+    
+    # Save back to MongoDB
     await db.update_settings(group_id, current)
+    
+    # Update local memory cache instantly
+    temp.SETTINGS[group_id] = current
     
 def get_size(size):
     """Get size in readable format"""
