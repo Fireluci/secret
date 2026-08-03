@@ -341,14 +341,38 @@ async def minimal_premium_command_cb(client, callback: CallbackQuery):
     await client.send_message(callback.message.chat.id, text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
 
 @Client.on_callback_query(filters.regex("^minimal_send_proof$"))
-async def minimal_send_proof_cb(client, callback: CallbackQuery):
-    await callback.answer()
+@Client.on_message(filters.command("start") & filters.regex(r"^i_paid$") & filters.private)
+async def handle_payment_proof_request(client, update):
+    # Check if the trigger is a CallbackQuery or a Message
+    is_callback = isinstance(update, CallbackQuery)
+    user_id = update.from_user.id
+    chat_id = update.message.chat.id if is_callback else update.chat.id
+
     try:
-        await callback.message.delete()
+        if hasattr(db, 'premium_pending'):
+            await db.premium_pending.update_one(
+                {"user_id": user_id}, 
+                {"$set": {"status": "waiting_screenshot"}}, 
+                upsert=True
+            )
     except Exception:
         pass
-    await client.send_message(callback.message.chat.id, "<b>📸 Please send your payment screenshot now in this chat.</b>", parse_mode=enums.ParseMode.HTML)
 
+    # If triggered via button click, answer the query and delete the old menu message
+    if is_callback:
+        await update.answer()
+        try:
+            await update.message.delete()
+        except Exception:
+            pass
+
+    # Send the final prompt asking for the screenshot
+    await client.send_message(
+        chat_id, 
+        "<b>📸 Please send your payment screenshot now in this chat.</b>", 
+        parse_mode=enums.ParseMode.HTML
+    )
+    
 @Client.on_message(filters.private & (filters.photo | filters.document) & ~filters.command(["start", "premium"]))
 async def minimal_screenshot_handler(client, message):
     user_id = message.from_user.id
