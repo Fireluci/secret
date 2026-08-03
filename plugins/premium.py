@@ -12,9 +12,6 @@ from utils import temp
 
 logger = logging.getLogger(__name__)
 
-# Track pending minimal flows locally if fallback is needed
-MINIMAL_PENDING_FLOW = {}
-
 def format_date_only(dt: datetime) -> str:
     if not isinstance(dt, datetime):
         return "N/A"
@@ -67,7 +64,7 @@ async def safe_kick_user(client: Client, chat_id, user_id):
             logger.error(f"Failed to kick user ID {user_id}: {e}")
 
 # ==========================================
-# BACKGROUND EXPIRY LOOP
+# BACKGROUND EXPIRY LOOP (Runs every 30 seconds)
 # ==========================================
 async def premium_expiry_reminder_loop(client: Client):
     await asyncio.sleep(5)
@@ -100,10 +97,12 @@ async def premium_expiry_reminder_loop(client: Client):
                             pass
         except Exception as e:
             logger.error(f"Error in expiry loop: {e}")
+        
+        # Loop interval set to 30 seconds
         await asyncio.sleep(30)
 
 # ==========================================
-# PREMIUM COMMANDS & CALLBACKS
+# PREMIUM COMMANDS & STEP-BY-STEP WORKFLOW
 # ==========================================
 @Client.on_message(filters.command("myplan") & filters.private)
 async def check_my_plan(client, message):
@@ -136,30 +135,28 @@ async def minimal_premium_command(client, update):
         await update.answer()
     text = "<b>💎 HeroFlix Premium Plans</b>\n\n• <b>1 Month</b>: ₹40\n• <b>2 Months</b>: ₹80\n• <b>6 Months</b>: ₹240\n• <b>1 Year</b>: ₹480\n\n1. Tap <b>Click Here To Buy</b> to pay.\n2. Click <b>I Have Paid</b> to send screenshot."
     kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔗 Click Here To Buy", url="https://fireluci.github.io/pay/")], [InlineKeyboardButton("✅ I Have Paid (Send Screenshot)", callback_data="minimal_send_proof")]])
+    
     if isinstance(update, CallbackQuery):
-        await message.edit_text(text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
+        try:
+            await message.delete()
+        except Exception:
+            pass
+        await client.send_message(message.chat.id, text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
     else:
         await message.reply_text(text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
 
 @Client.on_callback_query(filters.regex("^minimal_send_proof$"))
 async def minimal_send_proof_cb(client, callback: CallbackQuery):
+    await callback.answer()
     try:
-        if hasattr(db, 'premium_pending'):
-            await db.premium_pending.update_one({"user_id": callback.from_user.id}, {"$set": {"status": "waiting_screenshot"}}, upsert=True)
+        await callback.message.delete()
     except Exception:
         pass
-    await callback.answer()
-    await callback.message.edit_text("<b>📸 Please send your payment screenshot now in this chat.</b>", parse_mode=enums.ParseMode.HTML)
+    await client.send_message(callback.message.chat.id, "<b>📸 Please send your payment screenshot now in this chat.</b>", parse_mode=enums.ParseMode.HTML)
 
 @Client.on_message(filters.private & (filters.photo | filters.document) & ~filters.command(["start", "premium"]))
 async def minimal_screenshot_handler(client, message):
     user_id = message.from_user.id
-    try:
-        if hasattr(db, 'premium_pending'):
-            await db.premium_pending.update_one({"user_id": user_id}, {"$set": {"status": "waiting_screenshot"}}, upsert=True)
-    except Exception:
-        pass
-        
     await message.reply_text("<b>✅ Payment proof submitted! Please wait for admin verification.</b>", parse_mode=enums.ParseMode.HTML)
     
     admin_kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Approve", callback_data=f"min_app_{user_id}"), InlineKeyboardButton("❌ Reject", callback_data=f"min_rej_{user_id}")]])
@@ -181,7 +178,7 @@ async def minimal_admin_action_cb(client, callback: CallbackQuery):
         return await callback.answer("Unauthorized.", show_alert=True)
     target_user_id = int(callback.data.split("_")[2])
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("1 Month (Test) - ₹40", callback_data=f"selplan_{target_user_id}_30_40"), InlineKeyboardButton("2 Months - ₹80", callback_data=f"selplan_{target_user_id}_60_80")],
+        [InlineKeyboardButton("1 Month (Test 2 Mins) - ₹40", callback_data=f"selplan_{target_user_id}_30_40"), InlineKeyboardButton("2 Months - ₹80", callback_data=f"selplan_{target_user_id}_60_80")],
         [InlineKeyboardButton("6 Months - ₹240", callback_data=f"selplan_{target_user_id}_180_240"), InlineKeyboardButton("1 Year - ₹480", callback_data=f"selplan_{target_user_id}_365_480")],
         [InlineKeyboardButton("❌ Cancel", callback_data=f"min_rej_{target_user_id}")]
     ])
@@ -195,12 +192,16 @@ async def minimal_admin_action_cb(client, callback: CallbackQuery):
 async def select_plan_cb(client, callback: CallbackQuery):
     if str(callback.from_user.id) not in map(str, ADMINS):
         return await callback.answer("Unauthorized.", show_alert=True)
+    
+    # Format: selplan_USERID_DAYS_PRICE
     _, target_user_str, days_str, price = callback.data.split("_")
     target_user_id, days = int(target_user_str), int(days_str)
     
     is_test = (days == 30)
-    plan_label = "1 Month" if is_test else (f"2 Months" if days == 60 else (f"6 Months" if days == 180 else "1 Year"))
+    plan_label = "1 Month (2 Mins Test)" if is_test else (f"2 Months" if days == 60 else (f"6 Months" if days == 180 else "1 Year"))
     now = datetime.utcnow()
+    
+    # Set testing plan duration to 2 minutes
     expiry_date = (now + timedelta(minutes=2)) if is_test else (now + timedelta(days=days))
     
     try:
@@ -208,14 +209,13 @@ async def select_plan_cb(client, callback: CallbackQuery):
     except Exception:
         username = "User"
     
-    pending_state = {"user_id": target_user_id, "username": username, "plan": plan_label, "price": price, "days": days, "start_date": now, "expiry_date": expiry_date}
-    try:
-        if hasattr(db, 'premium_pending'):
-            await db.premium_pending.update_one({"user_id": target_user_id}, {"$set": pending_state}, upsert=True)
-    except PyMongoError:
-        pass
+    conf_callback_data = f"confact_{target_user_id}_{days}_{price}"
 
-    kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Confirm & Activate", callback_data=f"confact_{target_user_id}"), InlineKeyboardButton("◀ Back", callback_data=f"min_app_{target_user_id}")], [InlineKeyboardButton("❌ Cancel", callback_data=f"min_rej_{target_user_id}")]])
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ Confirm & Activate", callback_data=conf_callback_data), InlineKeyboardButton("◀ Back", callback_data=f"min_app_{target_user_id}")],
+        [InlineKeyboardButton("❌ Cancel", callback_data=f"min_rej_{target_user_id}")]
+    ])
+    
     preview_text = f"<b>💎 Preview</b>\n\n👤 User: <a href='tg://user?id={target_user_id}'>{username}</a> (<code>{target_user_id}</code>)\n💰 Plan: {plan_label} | ₹{price}\n⌛ Expiry: {format_date_only(expiry_date)}"
     await callback.answer()
     try:
@@ -227,30 +227,27 @@ async def select_plan_cb(client, callback: CallbackQuery):
 async def confirm_activation_cb(client, callback: CallbackQuery):
     if str(callback.from_user.id) not in map(str, ADMINS):
         return await callback.answer("Unauthorized.", show_alert=True)
-    target_user_id = int(callback.data.split("_")[1])
-    flow = None
+    
+    _, target_user_str, days_str, price = callback.data.split("_")
+    target_user_id, days = int(target_user_str), int(days_str)
+    
+    is_test = (days == 30)
+    plan = "1 Month" if is_test else (f"2 Months" if days == 60 else (f"6 Months" if days == 180 else "1 Year"))
+
     try:
-        if hasattr(db, 'premium_pending'):
-            flow = await db.premium_pending.find_one({"user_id": target_user_id})
-    except PyMongoError:
-        pass
-    if not flow:
-        return await callback.answer("Session expired.", show_alert=True)
-        
-    plan, days, price = flow.get("plan", "1 Month"), flow.get("days", 30), flow.get("price", "40")
-    try:
-        username = (await client.get_users(target_user_id)).first_name or flow.get("username", "User")
+        username = (await client.get_users(target_user_id)).first_name or "User"
     except Exception:
-        username = flow.get("username", "User")
+        username = "User"
     
     await callback.answer("Activating...")
     now = datetime.utcnow()
     col = get_premium_collection()
     existing = await col.find_one({"user_id": target_user_id, "active": True}) if col is not None else None
             
-    is_test = (days == 30)
     old_expiry = existing.get("expires_at") or existing.get("expiry_date") if existing else None
     start_date = old_expiry if old_expiry and isinstance(old_expiry, datetime) and old_expiry > now else now
+    
+    # Testing plan expires in 2 minutes
     expiry_date = (start_date + timedelta(minutes=2)) if is_test else (start_date + timedelta(days=days))
 
     already_joined = False
@@ -266,22 +263,44 @@ async def confirm_activation_cb(client, callback: CallbackQuery):
         except Exception:
             pass
 
-    activation_data = {"user_id": target_user_id, "username": username, "plan": plan, "plan_days": days, "price": price, "purchased_at": now, "start_date": start_date, "expires_at": expiry_date, "expiry_date": expiry_date, "active": True, "status": "active", "approved_by": callback.from_user.id, "approved_at": now, "welcomed": already_joined, "reminders": {"1_day": False}}
+    activation_data = {
+        "user_id": target_user_id, 
+        "username": username, 
+        "plan": plan, 
+        "plan_days": days, 
+        "price": price, 
+        "purchased_at": now, 
+        "start_date": start_date, 
+        "expires_at": expiry_date, 
+        "expiry_date": expiry_date, 
+        "active": True, 
+        "status": "active", 
+        "approved_by": callback.from_user.id, 
+        "approved_at": now, 
+        "welcomed": already_joined, 
+        "reminders": {"1_day": False}
+    }
+    
     if col is not None:
         await col.update_one({"user_id": target_user_id}, {"$set": activation_data}, upsert=True)
-        if hasattr(db, 'premium_pending'):
-            await db.premium_pending.delete_one({"user_id": target_user_id})
         
     perm_link = PREMIUM_PERMANENT_LINK if PREMIUM_PERMANENT_LINK else "https://t.me/your_group_link"
     user_msg_sent = None
     try:
-        user_msg_sent = await client.send_message(target_user_id, f"<b>🎉 HeroFlix Premium Activated</b>\n\n📦 <b>Plan</b>: {plan} | ₹{price}\n📅 <b>Start</b>: {format_date_only(start_date)}\n⌛ <b>Expires</b>: {format_date_only(expiry_date)}\n\n👇 Tap below to join:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ Click Here To Join", url=perm_link)]]), disable_web_page_preview=True, parse_mode=enums.ParseMode.HTML)
+        user_msg_sent = await client.send_message(
+            target_user_id, 
+            f"<b>🎉 HeroFlix Premium Activated</b>\n\n📦 <b>Plan</b>: {plan} | ₹{price}\n📅 <b>Start</b>: {format_date_only(start_date)}\n⌛ <b>Expires</b>: {format_date_only(expiry_date)}\n\n👇 Tap below to join:", 
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ Click Here To Join", url=perm_link)]]), 
+            disable_web_page_preview=True, 
+            parse_mode=enums.ParseMode.HTML
+        )
         if not already_joined and col is not None and user_msg_sent:
             await col.update_one({"user_id": target_user_id}, {"$set": {"dm_msg_id": user_msg_sent.id}})
     except Exception as e:
         logger.error(f"Failed to notify user: {e}")
         
     await log_premium_action(client, f"<b>💎 HeroFlix Premium {'Renewal' if existing else 'Activation'}</b>\n\n👤 User: <a href='tg://user?id={target_user_id}'>{username}</a> (<code>{target_user_id}</code>)\n📦 Plan: {plan} | ₹{price}\n⌛ Expiry: {format_date_only(expiry_date)}")
+    
     success_text = f"<b>✅ Premium Activated Successfully</b>\n\n👤 User: <a href='tg://user?id={target_user_id}'>{username}</a> (<code>{target_user_id}</code>)\n💰 Plan: {plan} | ₹{price}\n⌛ Expiry: {format_date_only(expiry_date)}"
     try:
         await callback.message.edit_caption(success_text, reply_markup=None, parse_mode=enums.ParseMode.HTML)
@@ -339,7 +358,8 @@ async def welcome_premium_user_handler(client, member_update: ChatMemberUpdated)
 async def minimal_admin_reject_cb(client, callback: CallbackQuery):
     if str(callback.from_user.id) not in map(str, ADMINS):
         return await callback.answer("Unauthorized.", show_alert=True)
-    target_user_id = int(callback.data.split("_")[2])
+    parts = callback.data.split("_")
+    target_user_id = int(parts[2] if len(parts) > 2 else parts[-1])
     try:
         if hasattr(db, 'premium_pending'):
             await db.premium_pending.delete_one({"user_id": target_user_id})
@@ -350,17 +370,3 @@ async def minimal_admin_reject_cb(client, callback: CallbackQuery):
         await callback.message.edit_caption("<b>❌ Status:</b> REJECTED", reply_markup=None, parse_mode=enums.ParseMode.HTML)
     except Exception:
         await callback.message.edit_text("<b>❌ Status:</b> REJECTED", reply_markup=None, parse_mode=enums.ParseMode.HTML)
-
-@Client.on_message(filters.command("text") & filters.user(ADMINS))
-async def admin_send_text_command(client, message):
-    if len(message.command) < 3:
-        return await message.reply_text("<b>Usage:</b> /text <code>user_id</code> <code>message</code>", parse_mode=enums.ParseMode.HTML)
-    try:
-        target_user_id = int(message.command[1])
-    except ValueError:
-        return await message.reply_text("<b>Invalid User ID format.</b>", parse_mode=enums.ParseMode.HTML)
-    try:
-        await client.send_message(target_user_id, message.text.split(None, 2)[2], parse_mode=enums.ParseMode.HTML)
-        await message.reply_text(f"<b>✅ Message successfully sent to user <code>{target_user_id}</code>.</b>", parse_mode=enums.ParseMode.HTML)
-    except Exception as e:
-        await message.reply_text(f"<b>❌ Failed to send message:</b>\n<code>{e}</code>", parse_mode=enums.ParseMode.HTML)
