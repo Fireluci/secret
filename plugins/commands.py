@@ -230,21 +230,37 @@ async def start(client, message):
         files_ = await get_file_details(file_id)
         files = files_[0]
         cleaned_file_name = f"{' '.join(filter(lambda x: not x.startswith('www.') and not x.startswith('@'), files.file_name.split()))}"
-        g = await get_shortlink(chat_id, f"https://telegram.me/{temp.U_NAME}?start=file_{file_id}")
-        k = await client.send_message(chat_id=user,text=f'<b>[ {get_size(files.file_size)} ] <a href="https://telegram.me/HEROFLiX">{cleaned_file_name}</a> \n\n📗 Download Link ➔ {g} {g}</b>', reply_markup=InlineKeyboardMarkup(
-                [
-                    [
-                        InlineKeyboardButton('♻️ Download Link ♻️', url=g)
-                    ], [
-                        InlineKeyboardButton('❓ How To Download ❓', url=f'https://telegram.me/{TUTORIAL}')
-                    ], [
-                        InlineKeyboardButton('🌟 Direct Download 🌟', url="https://telegram.me/HeroFlixx/49")
-                    ]
-                ]
+        
+        try:
+            g = await get_shortlink(chat_id, f"https://telegram.me/{temp.U_NAME}?start=file_{file_id}", client=client)
+        except Exception:
+            buttons = [[
+                InlineKeyboardButton('📲 Report to Admin 📲', url=f'https://telegram.me/{SUPPORT_CHAT}')
+            ]]
+            await message.reply_text(
+                "<b>❌ Link generation failed. Please try again later.</b>",
+                reply_markup=InlineKeyboardMarkup(buttons)
             )
+            return
+
+        k = await client.send_message(
+            chat_id=user,
+            text=f'<b>[ {get_size(files.file_size)} ] <a href="https://telegram.me/HEROFLiX">{cleaned_file_name}</a> \n\n📗 Download Link ➔ {g} {g}</b>',
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton('♻️ Download Link ♻️', url=g)
+                ], [
+                    InlineKeyboardButton('❓ How To Download ❓', url=f'https://telegram.me/{TUTORIAL}')
+                ], [
+                    InlineKeyboardButton('🌟 Direct Download 🌟', url="https://telegram.me/HeroFlixx/49")
+                ]
+            ])
         )
         await asyncio.sleep(900)
-        await k.edit("<b>Link Deleted!</b>")
+        try:
+            await k.edit("<b>Link Deleted!</b>")
+        except Exception:
+            pass
         return
         
     elif data.startswith("all"):
@@ -287,7 +303,7 @@ async def start(client, message):
         
     elif data.startswith("files"):
         user = message.from_user.id
-        if temp.SHORT.get(user)==None:
+        if temp.SHORT.get(user) == None:
             await message.reply_text(text="<b>Link Expired, Search Again in Group!</b>")
             return
         else:
@@ -296,19 +312,32 @@ async def start(client, message):
         if settings['is_shortlink'] and user not in PREMIUM_USER:
             files_ = await get_file_details(file_id)
             files = files_[0]
-            g = await get_shortlink(chat_id, f"https://telegram.me/{temp.U_NAME}?start=file_{file_id}")
-            cleaned_file_name = f"{' '.join(filter(lambda x: not x.startswith('www.') and not x.startswith('@'), files.file_name.split()))}"
-            k = await client.send_message(chat_id=message.from_user.id,text=f'<b>[ {get_size(files.file_size)} ] <a href="https://telegram.me/HEROFLiX">{cleaned_file_name}</a> \n\n📗 Download Link ➠ {g} {g}</b>', reply_markup=InlineKeyboardMarkup(
-                [
-                        [
-                            InlineKeyboardButton('♻️ Download Link ♻️', url=g)
-                        ], [
-                            InlineKeyboardButton('❓ How To Download ❓', url=f"https://telegram.me/{TUTORIAL}")
-                        ], [
-                            InlineKeyboardButton('🌟 Direct Download 🌟', url="https://telegram.me/HeroFlixx/49")
-                        ]
-                    ]
+            
+            try:
+                g = await get_shortlink(chat_id, f"https://telegram.me/{temp.U_NAME}?start=file_{file_id}", client=client)
+            except Exception:
+                buttons = [[
+                    InlineKeyboardButton('📲 Report to Admin 📲', url=f'https://telegram.me/{SUPPORT_CHAT}')
+                ]]
+                await message.reply_text(
+                    "<b>❌ Link generation failed. Please try again later.</b>",
+                    reply_markup=InlineKeyboardMarkup(buttons)
                 )
+                return
+
+            cleaned_file_name = f"{' '.join(filter(lambda x: not x.startswith('www.') and not x.startswith('@'), files.file_name.split()))}"
+            k = await client.send_message(
+                chat_id=message.from_user.id,
+                text=f'<b>[ {get_size(files.file_size)} ] <a href="https://telegram.me/HEROFLiX">{cleaned_file_name}</a> \n\n📗 Download Link ➠ {g} {g}</b>',
+                reply_markup=InlineKeyboardMarkup([
+                    [
+                        InlineKeyboardButton('♻️ Download Link ♻️', url=g)
+                    ], [
+                        InlineKeyboardButton('❓ How To Download ❓', url=f"https://telegram.me/{TUTORIAL}")
+                    ], [
+                        InlineKeyboardButton('🌟 Direct Download 🌟', url="https://telegram.me/HeroFlixx/49")
+                    ]
+                ])
             )
             await asyncio.sleep(900)
             try:
@@ -316,7 +345,7 @@ async def start(client, message):
             except Exception:
                 pass
             return
-    user = message.from_user.id
+        user = message.from_user.id
     files_ = await get_file_details(file_id)           
     if not files_:
         pre, file_id = ((base64.urlsafe_b64decode(data + "=" * (-len(data) % 4))).decode("ascii")).split("_", 1)
