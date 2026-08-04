@@ -599,7 +599,6 @@ async def update_shortlink1(bot, message):
     if message.chat.type == enums.ChatType.PRIVATE:
         return await message.reply_text("<b>Only works in groups !</b>")
     
-    # Restrict ONLY to global bot admins from info.py
     if str(userid) not in ADMINS and userid not in ADMINS:
         return await message.reply_text("<b>You don't have access to use this command! Only bot admins can change shorteners.</b>")
         
@@ -613,8 +612,8 @@ async def update_shortlink1(bot, message):
     shortlink_url = re.sub(r"https?://?", "", shortlink_url)
     shortlink_url = re.sub(r"[:/]", "", shortlink_url)
     
-    await save_group_settings(grpid, 'shortlink', shortlink_url)
-    await save_group_settings(grpid, 'shortlink_api', api)
+    await save_group_settings(grpid, 'short1_url', shortlink_url)
+    await save_group_settings(grpid, 'short1_api', api)
     await save_group_settings(grpid, 'is_shortlink', True)
     
     await reply.edit_text(f"<b>Successfully updated Primary Shortener (Short1)!\n\nWebsite: <code>{shortlink_url}</code>\nAPI: <code>{api}</code></b>")
@@ -630,7 +629,6 @@ async def update_shortlink2(bot, message):
     if message.chat.type == enums.ChatType.PRIVATE:
         return await message.reply_text("<b>Only works in groups !</b>")
         
-    # Restrict ONLY to global bot admins from info.py
     if str(userid) not in ADMINS and userid not in ADMINS:
         return await message.reply_text("<b>You don't have access to use this command! Only bot admins can change shorteners.</b>")
         
@@ -644,12 +642,13 @@ async def update_shortlink2(bot, message):
     shortlink_url = re.sub(r"https?://?", "", shortlink_url)
     shortlink_url = re.sub(r"[:/]", "", shortlink_url)
     
-    await save_group_settings(grpid, 'second_shortlink', shortlink_url)
-    await save_group_settings(grpid, 'second_shortlink_api', api)
+    await save_group_settings(grpid, 'short2_url', shortlink_url)
+    await save_group_settings(grpid, 'short2_api', api)
     
     await reply.edit_text(f"<b>Successfully updated Secondary Shortener (Short2)!\n\nWebsite: <code>{shortlink_url}</code>\nAPI: <code>{api}</code></b>")
     await asyncio.sleep(10)
     await reply.delete()
+
 
 @Client.on_message(filters.command("shorteners"))
 async def view_shorteners(bot, message):
@@ -659,17 +658,16 @@ async def view_shorteners(bot, message):
     if message.chat.type == enums.ChatType.PRIVATE:
         return await message.reply_text("<b>Only works in groups !</b>")
         
-    # Restrict ONLY to global bot admins from info.py
     if str(userid) not in ADMINS and userid not in ADMINS:
         return await message.reply_text("<b>You don't have access to use this command! Only bot admins can check shorteners.</b>")
         
     grpid = message.chat.id
     settings = await get_settings(grpid)
     
-    s1_url = settings.get('shortlink') or SHORT1_URL
-    s1_api = settings.get('shortlink_api') or SHORT1_API
-    s2_url = settings.get('second_shortlink') or SHORT2_URL
-    s2_api = settings.get('second_shortlink_api') or SHORT2_API
+    s1_url = settings.get('short1_url') or SHORT1_URL
+    s1_api = settings.get('short1_api') or SHORT1_API
+    s2_url = settings.get('short2_url') or SHORT2_URL
+    s2_api = settings.get('short2_api') or SHORT2_API
     is_active = settings.get('is_shortlink', False)
 
     status_text = (
