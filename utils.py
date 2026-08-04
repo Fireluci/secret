@@ -1,6 +1,6 @@
 import logging
 from pyrogram.errors import InputUserDeactivated, UserNotParticipant, FloodWait, UserIsBlocked, PeerIdInvalid
-from info import AUTH_CHANNEL, SHORTLINK_URL, SHORTLINK_API, IS_SHORTLINK, LOG_CHANNEL, TUTORIAL, GRP_LNK, CHNL_LNK, CUSTOM_FILE_CAPTION, SECOND_SHORTLINK_URL, SECOND_SHORTLINK_API
+from info import AUTH_CHANNEL, IS_SHORTLINK, TUTORIAL, GRP_LNK, CHNL_LNK, CUSTOM_FILE_CAPTION, SHORT1_URL, SHORT1_API, SHORT2_URL, SHORT2_API, LOG_CHANNEL
 import asyncio
 from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
 from pyrogram.errors import FloodWait, UserIsBlocked, MessageNotModified, PeerIdInvalid
@@ -410,35 +410,80 @@ def humanbytes(size):
         n += 1
     return str(round(size, 2)) + " " + Dic_powerN[n] + 'B'
 
-async def get_shortlink(chat_id, link, second=False):
+async def get_shortlink(chat_id, link, client=None):
     settings = await get_settings(chat_id) 
-    if 'shortlink' in settings.keys():
-        URL = settings['shortlink']
-        API = settings['shortlink_api']
+    
+    # 1. Load Primary Shortener (Short1)
+    if 'shortlink' in settings and settings['shortlink']:
+        p_url = settings['shortlink']
+        p_api = settings['shortlink_api']
     else:
-        URL = SHORTLINK_URL
-        API = SHORTLINK_API
-    if URL.startswith("shorturllink") or URL.startswith("terabox.in") or URL.startswith("urlshorten.in") or second:
-        URL = SECOND_SHORTLINK_URL
-        API = SECOND_SHORTLINK_API
-    if URL == "api.shareus.io":
-        url = f'https://{URL}/api'
-        params = {
-            "key": API,
-            "link": link,
-        }
-        try:
+        p_url = SHORT1_URL
+        p_api = SHORT1_API
+        
+    # 2. Load Secondary Shortener (Short2)
+    if 'second_shortlink' in settings and settings['second_shortlink']:
+        s_url = settings['second_shortlink']
+        s_api = settings['second_shortlink_api']
+    else:
+        s_url = SHORT2_URL
+        s_api = SHORT2_API
+
+    async def _request_shorten(base_site, api_key, target_link):
+        if base_site == "api.shareus.io":
+            url = f'https://{base_site}/api'
+            params = {"key": api_key, "link": target_link}
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, params=params, raise_for_status=True, ssl=False) as response:
-                    data = await response.text()
-                    return data
-        except Exception as e:
-            logger.error(e)
-            return link
-    else:
-        shortzy = Shortzy(api_key=API, base_site=URL)
-        link = await shortzy.convert(link)
-        return link
+                    return await response.text()
+        else:
+            shortzy = Shortzy(api_key=api_key, base_site=base_site)
+            return await shortzy.convert(target_link)
+
+    async def notify_admin(error_msg, shortener_name):
+        if client and LOG_CHANNEL:
+            try:
+                await client.send_message(
+                    LOG_CHANNEL, 
+                    f"⚠️ **Shortener Warning**\n"
+                    f"Provider: `{shortener_name}`\n"
+                    f"Error: `{error_msg}`\n"
+                    f"Chat ID: `{chat_id}`"
+                )
+            except Exception as e:
+                logger.error(f"Failed to send admin notification: {e}")
+
+    # --- ATTEMPT 1: SHORT1 ---
+    try:
+        return await _request_shorten(p_url, p_api, link)
+    except Exception as e1:
+        logger.warning(f"SHORT1 attempt 1 failed: {e1}")
+        await notify_admin(str(e1), p_url)
+
+        # Clear cache for this specific group safely
+        if chat_id in temp.SETTINGS:
+            del temp.SETTINGS[chat_id]
+
+        # --- ATTEMPT 2: SHORT1 Retry ---
+        try:
+            fresh_settings = await get_settings(chat_id)
+            retry_url = fresh_settings.get('shortlink', p_url) or p_url
+            retry_api = fresh_settings.get('shortlink_api', p_api) or p_api
+            
+            return await _request_shorten(retry_url, retry_api, link)
+        except Exception as e2:
+            logger.warning(f"SHORT1 retry attempt 2 failed: {e2}")
+            await notify_admin(str(e2), p_url)
+
+            # --- ATTEMPT 3: Fallback to SHORT2 ---
+            try:
+                return await _request_shorten(s_url, s_api, link)
+            except Exception as e3:
+                logger.error(f"SHORT2 fallback also failed: {e3}")
+                await notify_admin(str(e3), s_url)
+
+                # All attempts failed, raise exception to trigger user notice
+                raise Exception("All shorteners are down.")
     
 async def get_tutorial(chat_id):
     settings = await get_settings(chat_id)  
