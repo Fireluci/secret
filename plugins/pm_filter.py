@@ -333,18 +333,30 @@ async def cb_handler(client: Client, query: CallbackQuery):
             return await query.answer('Nᴏ sᴜᴄʜ ғɪʟᴇ ᴇxɪsᴛ.', show_alert=True)
         files = files_[0]
         f_caption = CUSTOM_FILE_CAPTION.format(file_name=files.file_name or '', file_size=get_size(files.file_size) or '', file_caption=files.caption or '') if CUSTOM_FILE_CAPTION else (files.caption or files.file_name)
-        settings = await get_settings(query.message.chat.id)
+        
+        # 🔑 Dynamically fetch fresh settings from MongoDB for this chat ID
+        chat_id = query.message.chat.id
+        settings = await get_settings(chat_id)
 
         try:
             if AUTH_CHANNEL and not await is_subscribed(client, query):
                 return await query.answer(url=f"https://telegram.me/{temp.U_NAME}?start={ident}_{file_id}")
             elif settings.get('is_shortlink') and clicked not in PREMIUM_USER:
-                temp.SHORT[clicked] = query.message.chat.id
+                temp.SHORT[clicked] = chat_id
                 return await query.answer(url=f"https://telegram.me/{temp.U_NAME}?start=short_{file_id}")
             elif settings.get('botpm') or clicked in PREMIUM_USER:
                 return await query.answer(url=f"https://telegram.me/{temp.U_NAME}?start={ident}_{file_id}")
             else:
-                await client.send_cached_media(chat_id=query.from_user.id, file_id=file_id, caption=f_caption, protect_content=(ident == "filep"), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🔆彡[ HEROFLiX ]彡🔆', url=f'https://telegram.me/{CHNL_LNK}')]]))
+                # Dynamically evaluate protect_content from MongoDB settings
+                is_protected = settings.get('file_secure', False)
+                
+                await client.send_cached_media(
+                    chat_id=query.from_user.id, 
+                    file_id=file_id, 
+                    caption=f_caption, 
+                    protect_content=is_protected,  # ✅ Respects live MongoDB setting
+                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🔆彡[ HEROFLiX ]彡🔆', url=f'https://telegram.me/{CHNL_LNK}')]])
+                )
                 return await query.answer('Cʜᴇᴄᴋ PM, I ʜᴀᴠᴇ sᴇɴᴛ ғɪʟᴇs ɪɴ PM', show_alert=True)
         except UserIsBlocked:
             return await query.answer('Uɴʙʟᴏᴄᴋ ᴛʜᴇ ʙᴏᴛ ᴍᴀʜɴ !', show_alert=True)
