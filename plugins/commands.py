@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 BATCH_FILES = {}
 
 def fmt_date(dt: datetime) -> str:
-    return (dt + timedelta(hours=5, minutes=30)).strftime('%d %b, %Y') if isinstance(dt, datetime) else "N/A"
+    return (dt + timedelta(hours=5, minutes=30)).strftime('%d %b, %Y at %I:%M %p') if isinstance(dt, datetime) else "N/A"
 
 def get_col():
     try:
@@ -54,6 +54,15 @@ async def premium_expiry_reminder_loop(client: Client):
                 async for doc in col.find({"active": True}):
                     uid, exp = doc.get("user_id"), doc.get("expires_at") or doc.get("expiry_date")
                     if not isinstance(exp, datetime): continue
+                    
+                    # 30 seconds before expiry reminder check
+                    reminders = doc.get("reminders", {})
+                    if not reminders.get("30_sec") and (exp - now) <= timedelta(seconds=30) and (exp - now) > timedelta(seconds=0):
+                        try:
+                            await client.send_message(uid, "<b>⚠️ <code>Your Premium Membership is expiring in 30 seconds!</code>\n\nRenew now to avoid getting ejected.</b>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Renew Now", callback_data="buy_premium_start")]]), parse_mode=enums.ParseMode.HTML)
+                            await col.update_one({"user_id": uid}, {"$set": {"reminders.30_sec": True}})
+                        except Exception: pass
+
                     if now >= exp:
                         await col.delete_one({"user_id": uid})
                         if PREMIUM_GROUP_ID: await safe_kick(client, PREMIUM_GROUP_ID, uid)
@@ -182,7 +191,7 @@ async def check_my_plan(client, message):
     plan, expires_at, price = doc.get("plan"), doc.get("expires_at") or doc.get("expiry_date"), doc.get("price", "40")
     now = datetime.utcnow()
     rem = expires_at - now if expires_at and expires_at > now else None
-    left_str = f"{rem.days} Days" if rem and rem.days > 0 else (f"{rem.seconds // 3600} Hours" if rem else "Expired")
+    left_str = f"{rem.days} Days" if rem and rem.days > 0 else (f"{rem.seconds // 60} Minutes {rem.seconds % 60} Seconds" if rem else "Expired")
     await message.reply_text(
         f"<b>🌟 Premium Membership Active ✅</b>\n\n"
         f"👤 User: <a href='tg://user?id={user_id}'>{message.from_user.first_name}</a> (<code>{user_id}</code>)\n"
@@ -200,8 +209,8 @@ async def premium_menu(client, update):
     if isinstance(update, CallbackQuery): await update.answer()
     text = (
         "<b>🌟 Premium Plans:-</b>\n\n"
-        "✨ 1 Month: ₹40\n"
-        "✨ 2 Months: ₹80\n"
+        "✨ 2 Min Test: ₹40\n"
+        "✨ 5 Min Test: ₹80\n"
         "✨ 6 Months: ₹240\n"
         "✨ 1 Year: ₹480\n\n"
         "1. Pay via Button below.\n"
@@ -247,8 +256,8 @@ async def admin_app_cb(client, callback: CallbackQuery):
     if str(callback.from_user.id) not in map(str, ADMINS): return await callback.answer("Unauthorized.", show_alert=True)
     uid = int(callback.data.split("_")[2])
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("1 Month (Test 2M) - ₹40", callback_data=f"selplan_{uid}_30_40"), InlineKeyboardButton("2 Months - ₹80", callback_data=f"selplan_{uid}_60_80")],
-        [InlineKeyboardButton("6 Months - ₹240", callback_data=f"selplan_{uid}_180_240"), InlineKeyboardButton("1 Year - ₹480", callback_data=f"selplan_{uid}_365_480")],
+        [InlineKeyboardButton("2 Min Test - ₹40", callback_data=f"selplan_{uid}_2m_40"), InlineKeyboardButton("5 Min Test - ₹80", callback_data=f"selplan_{uid}_5m_80")],
+        [InlineKeyboardButton("6 Months - ₹240", callback_data=f"selplan_{uid}_180d_240"), InlineKeyboardButton("1 Year - ₹480", callback_data=f"selplan_{uid}_365d_480")],
         [InlineKeyboardButton("❌ Cancel", callback_data=f"min_rej_{uid}")]
     ])
     await callback.answer()
@@ -258,20 +267,35 @@ async def admin_app_cb(client, callback: CallbackQuery):
 @Client.on_callback_query(filters.regex("^selplan_"))
 async def select_plan_cb(client, callback: CallbackQuery):
     if str(callback.from_user.id) not in map(str, ADMINS): return await callback.answer("Unauthorized.", show_alert=True)
-    _, uid_str, days_str, price = callback.data.split("_")
-    uid, days = int(uid_str), int(days_str)
-    is_test = (days == 30)
-    exp = datetime.utcnow() + (timedelta(minutes=2) if is_test else timedelta(days=days))
+    _, uid_str, duration_str, price = callback.data.split("_")
+    uid = int(uid_str)
+    
+    now = datetime.utcnow()
+    if duration_str.endswith("m"):
+        mins = int(duration_str[:-1])
+        delta = timedelta(minutes=mins)
+        plan_name = f"{mins} Min Test"
+    else:
+        days = int(duration_str[:-1])
+        delta = timedelta(days=days)
+        plan_name = f"{days} Days Plan"
+
+    col = get_col()
+    existing = await col.find_one({"user_id": uid, "active": True}) if col else None
+    start = existing.get("expires_at") or existing.get("expiry_date") if existing and isinstance(existing.get("expires_at"), datetime) and existing.get("expires_at") > now else now
+    exp = start + delta
+
     try: name = (await client.get_users(uid)).first_name or "User"
     except Exception: name = "User"
+    
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("✅ Confirm", callback_data=f"confact_{uid}_{days}_{price}"), InlineKeyboardButton("◀ Back", callback_data=f"min_app_{uid}")],
+        [InlineKeyboardButton("✅ Confirm", callback_data=f"confact_{uid}_{duration_str}_{price}"), InlineKeyboardButton("◀ Back", callback_data=f"min_app_{uid}")],
         [InlineKeyboardButton("❌ Cancel", callback_data=f"min_rej_{uid}")]
     ])
     text = (
         f"<b>💎 Preview</b>\n\n"
         f"👤 User: <a href='tg://user?id={uid}'>{name}</a> (<code>{uid}</code>)\n"
-        f"✨ Plan: {days} Days | ₹{price}\n"
+        f"✨ Plan: {plan_name} | ₹{price}\n"
         f"📆 Expiry: {fmt_date(exp)}"
     )
     await callback.answer()
@@ -281,18 +305,27 @@ async def select_plan_cb(client, callback: CallbackQuery):
 @Client.on_callback_query(filters.regex("^confact_"))
 async def conf_act_cb(client, callback: CallbackQuery):
     if str(callback.from_user.id) not in map(str, ADMINS): return await callback.answer("Unauthorized.", show_alert=True)
-    _, uid_str, days_str, price = callback.data.split("_")
-    uid, days = int(uid_str), int(days_str)
-    is_test = (days == 30)
-    plan = "1 Month" if is_test else (f"2 Months" if days == 60 else (f"6 Months" if days == 180 else "1 Year"))
+    _, uid_str, duration_str, price = callback.data.split("_")
+    uid = int(uid_str)
+    
+    now = datetime.utcnow()
+    if duration_str.endswith("m"):
+        mins = int(duration_str[:-1])
+        delta = timedelta(minutes=mins)
+        plan = f"{mins} Min Test"
+    else:
+        days = int(duration_str[:-1])
+        delta = timedelta(days=days)
+        plan = f"{days} Days Plan"
+
     try: name = (await client.get_users(uid)).first_name or "User"
     except Exception: name = "User"
     await callback.answer("Activating...")
-    now = datetime.utcnow()
+    
     col = get_col()
     existing = await col.find_one({"user_id": uid, "active": True}) if col else None
     start = existing.get("expires_at") or existing.get("expiry_date") if existing and isinstance(existing.get("expires_at"), datetime) and existing.get("expires_at") > now else now
-    exp = (start + timedelta(minutes=2)) if is_test else (start + timedelta(days=days))
+    exp = start + delta
     
     joined = False
     if PREMIUM_GROUP_ID:
@@ -303,7 +336,7 @@ async def conf_act_cb(client, callback: CallbackQuery):
         try: await client.approve_chat_join_request(chat_id=int(PREMIUM_GROUP_ID), user_id=uid); joined = True
         except Exception: pass
 
-    data = {"user_id": uid, "username": name, "plan": plan, "price": price, "purchased_at": now, "expires_at": exp, "expiry_date": exp, "active": True, "welcomed": joined, "reminders": {"1_day": False}}
+    data = {"user_id": uid, "username": name, "plan": plan, "price": price, "purchased_at": now, "expires_at": exp, "expiry_date": exp, "active": True, "welcomed": joined, "reminders": {"30_sec": False}}
     if col: await col.update_one({"user_id": uid}, {"$set": data}, upsert=True)
     
     link = PREMIUM_PERMANENT_LINK or "https://t.me/your_group_link"
