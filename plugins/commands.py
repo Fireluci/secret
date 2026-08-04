@@ -309,29 +309,37 @@ async def send_proof_cb(client, callback: CallbackQuery):
 async def screenshot_handler(client, message):
     user_id = message.from_user.id
     is_waiting = False
+    
     try:
         if hasattr(db, 'premium_pending'):
             doc = await db.premium_pending.find_one({"user_id": user_id})
             if doc and doc.get("status") == "waiting_screenshot":
                 is_waiting = True
                 await db.premium_pending.delete_one({"user_id": user_id})
-    except Exception: pass
+    except Exception: 
+        pass
 
-    if not is_waiting:
-        return
-    
+    # Fallback applied: We now accept the screenshot either way, 
+    # but tag it if they bypassed the button.
+    status_tag = "" if is_waiting else "\n⚠️ <i>(User sent screenshot without clicking 'I Have Paid')</i>"
+
     await message.reply_text("<b>✅ Your screenshot has been submitted for verification, please wait!</b>", parse_mode=enums.ParseMode.HTML)
+    
     kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Approve", callback_data=f"min_app_{user_id}"), InlineKeyboardButton("❌ Reject", callback_data=f"min_rej_{user_id}")]])
     text = (
-        f"<b>🔔 New Payment Verification\n\n"
+        f"<b>🔔 New Payment Verification{status_tag}\n\n"
         f"• 👤 User: <a href='tg://user?id={user_id}'>{message.from_user.first_name}</a> (<code>{user_id}</code>)</b>"
     )
+    
     fid = message.photo.file_id if message.photo else message.document.file_id
     for admin_id in ADMINS:
         try:
-            if message.photo: await client.send_photo(int(admin_id), fid, caption=text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
-            else: await client.send_document(int(admin_id), fid, caption=text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
-        except Exception: pass
+            if message.photo: 
+                await client.send_photo(int(admin_id), fid, caption=text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
+            else: 
+                await client.send_document(int(admin_id), fid, caption=text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
+        except Exception as e: 
+            logger.error(f"Failed to send payment proof to admin {admin_id}: {e}")
 
 @Client.on_callback_query(filters.regex("^min_app_"))
 async def admin_app_cb(client, callback: CallbackQuery):
