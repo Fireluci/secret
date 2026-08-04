@@ -562,39 +562,94 @@ async def deletemultiplefiles(bot, message):
         parse_mode=enums.ParseMode.HTML
     )
 
-@Client.on_message(filters.command("shortlink"))
-async def shortlink(bot, message):
+@Client.on_message(filters.command("shortlink1"))
+async def update_shortlink1(bot, message):
     userid = message.from_user.id if message.from_user else None
     if not userid:
-        return await message.reply(f"You are anonymous admin. Turn off anonymous admin and try again this command")
-    chat_type = message.chat.type
-    if chat_type == enums.ChatType.PRIVATE:
-        return await message.reply_text(f"<b>Only works in groups !</b>")
-    elif chat_type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
-        grpid = message.chat.id
-        title = message.chat.title
-    else:
-        return
-    data = message.text
-    userid = message.from_user.id
-    user = await bot.get_chat_member(grpid, userid)
-    if user.status != enums.ChatMemberStatus.ADMINISTRATOR and user.status != enums.ChatMemberStatus.OWNER and str(userid) not in ADMINS:
-        return await message.reply_text("<b>You don't have access to use this command!\n\nAdd Me to Your Own Group as Admin and Try This Command\n\nFor More PM Me With This Command</b>")
-    else:
-        pass
+        return await message.reply("Turn off anonymous admin and try again.")
+    if message.chat.type == enums.ChatType.PRIVATE:
+        return await message.reply_text("<b>Only works in groups !</b>")
+    
+    # Restrict ONLY to global bot admins from info.py
+    if str(userid) not in ADMINS and userid not in ADMINS:
+        return await message.reply_text("<b>You don't have access to use this command! Only bot admins can change shorteners.</b>")
+        
+    grpid = message.chat.id
     try:
-        command, shortlink_url, api = data.split(" ")
+        command, shortlink_url, api = message.text.split(" ", 2)
     except:
-        return await message.reply_text("<b>Wrong Format. Example - /shortlink omnifly.in 1f1da5c9df9a58058672ac8d8134e203b03426a1</b>")
+        return await message.reply_text("<b>Wrong Format. Example - /shortlink1 softurl.in YOUR_API</b>")
+        
     reply = await message.reply_text("<b>Please Wait...</b>")
     shortlink_url = re.sub(r"https?://?", "", shortlink_url)
     shortlink_url = re.sub(r"[:/]", "", shortlink_url)
+    
     await save_group_settings(grpid, 'shortlink', shortlink_url)
     await save_group_settings(grpid, 'shortlink_api', api)
     await save_group_settings(grpid, 'is_shortlink', True)
-    await reply.edit_text(f"<b>Successfully added shortlink API for {title}.\n\nCurrent Shortlink Website: <code>{shortlink_url}</code>\nCurrent API: <code>{api}</code></b>")
+    
+    await reply.edit_text(f"<b>Successfully updated Primary Shortener (Short1)!\n\nWebsite: <code>{shortlink_url}</code>\nAPI: <code>{api}</code></b>")
     await asyncio.sleep(10)
     await reply.delete()
+
+
+@Client.on_message(filters.command("shortlink2"))
+async def update_shortlink2(bot, message):
+    userid = message.from_user.id if message.from_user else None
+    if not userid:
+        return await message.reply("Turn off anonymous admin and try again.")
+    if message.chat.type == enums.ChatType.PRIVATE:
+        return await message.reply_text("<b>Only works in groups !</b>")
+        
+    # Restrict ONLY to global bot admins from info.py
+    if str(userid) not in ADMINS and userid not in ADMINS:
+        return await message.reply_text("<b>You don't have access to use this command! Only bot admins can change shorteners.</b>")
+        
+    grpid = message.chat.id
+    try:
+        command, shortlink_url, api = message.text.split(" ", 2)
+    except:
+        return await message.reply_text("<b>Wrong Format. Example - /shortlink2 nowshort.com YOUR_API</b>")
+        
+    reply = await message.reply_text("<b>Please Wait...</b>")
+    shortlink_url = re.sub(r"https?://?", "", shortlink_url)
+    shortlink_url = re.sub(r"[:/]", "", shortlink_url)
+    
+    await save_group_settings(grpid, 'second_shortlink', shortlink_url)
+    await save_group_settings(grpid, 'second_shortlink_api', api)
+    
+    await reply.edit_text(f"<b>Successfully updated Secondary Shortener (Short2)!\n\nWebsite: <code>{shortlink_url}</code>\nAPI: <code>{api}</code></b>")
+    await asyncio.sleep(10)
+    await reply.delete()
+
+@Client.on_message(filters.command("shorteners"))
+async def view_shorteners(bot, message):
+    userid = message.from_user.id if message.from_user else None
+    if not userid:
+        return await message.reply("Turn off anonymous admin and try again.")
+    if message.chat.type == enums.ChatType.PRIVATE:
+        return await message.reply_text("<b>Only works in groups !</b>")
+        
+    # Restrict ONLY to global bot admins from info.py
+    if str(userid) not in ADMINS and userid not in ADMINS:
+        return await message.reply_text("<b>You don't have access to use this command! Only bot admins can check shorteners.</b>")
+        
+    grpid = message.chat.id
+    settings = await get_settings(grpid)
+    
+    s1_url = settings.get('shortlink') or SHORT1_URL
+    s1_api = settings.get('shortlink_api') or SHORT1_API
+    s2_url = settings.get('second_shortlink') or SHORT2_URL
+    s2_api = settings.get('second_shortlink_api') or SHORT2_API
+    is_active = settings.get('is_shortlink', False)
+
+    status_text = (
+        f"⚙️ **Current Group Shortener Configuration**\n\n"
+        f"• **Status:** `{'Enabled' if is_active else 'Disabled'}`\n"
+        f"• **Primary (Short1):** `{s1_url}` (API: `{s1_api}`)\n"
+        f"• **Secondary (Short2):** `{s2_url}` (API: `{s2_api}`)"
+    )
+    await message.reply_text(status_text, parse_mode=enums.ParseMode.MARKDOWN)
 
 @Client.on_message(filters.command("restart") & filters.user(ADMINS))
 async def stop_button(bot, message):
