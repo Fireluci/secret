@@ -308,8 +308,9 @@ async def send_proof_cb(client, callback: CallbackQuery):
 @Client.on_message(filters.private & (filters.photo | filters.document) & ~filters.command(["start", "premium"]))
 async def screenshot_handler(client, message):
     user_id = message.from_user.id
-    is_waiting = False
     
+    # Gate: Verify if user clicked "I Have Paid"
+    is_waiting = False
     try:
         if hasattr(db, 'premium_pending'):
             doc = await db.premium_pending.find_one({"user_id": user_id})
@@ -319,15 +320,15 @@ async def screenshot_handler(client, message):
     except Exception: 
         pass
 
-    # Fallback applied: We now accept the screenshot either way, 
-    # but tag it if they bypassed the button.
-    status_tag = "" if is_waiting else "\n⚠️ <i>(User sent screenshot without clicking 'I Have Paid')</i>"
+    # If they didn't click "I Have Paid", ignore the image completely
+    if not is_waiting:
+        return
 
     await message.reply_text("<b>✅ Your screenshot has been submitted for verification, please wait!</b>", parse_mode=enums.ParseMode.HTML)
     
     kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Approve", callback_data=f"min_app_{user_id}"), InlineKeyboardButton("❌ Reject", callback_data=f"min_rej_{user_id}")]])
     text = (
-        f"<b>🔔 New Payment Verification{status_tag}\n\n"
+        f"<b>🔔 New Payment Verification\n\n"
         f"• 👤 User: <a href='tg://user?id={user_id}'>{message.from_user.first_name}</a> (<code>{user_id}</code>)</b>"
     )
     
@@ -338,8 +339,8 @@ async def screenshot_handler(client, message):
                 await client.send_photo(int(admin_id), fid, caption=text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
             else: 
                 await client.send_document(int(admin_id), fid, caption=text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
-        except Exception as e: 
-            logger.error(f"Failed to send payment proof to admin {admin_id}: {e}")
+        except Exception: 
+            pass
 
 @Client.on_callback_query(filters.regex("^min_app_"))
 async def admin_app_cb(client, callback: CallbackQuery):
