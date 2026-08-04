@@ -1,5 +1,5 @@
 import motor.motor_asyncio
-from info import DATABASE_NAME, DATABASE_URI, MELCOW_NEW_USERS, P_TTI_SHOW_OFF, SINGLE_BUTTON, SPELL_CHECK_REPLY, PROTECT_CONTENT, AUTO_DELETE, MAX_BTN, AUTO_FFILTER, SHORTLINK_API, SHORTLINK_URL, IS_SHORTLINK, TUTORIAL, IS_TUTORIAL
+from info import DATABASE_NAME, DATABASE_URI, MELCOW_NEW_USERS, P_TTI_SHOW_OFF, SINGLE_BUTTON, SPELL_CHECK_REPLY, PROTECT_CONTENT, AUTO_DELETE, MAX_BTN, AUTO_FFILTER, SHORT1_URL, SHORT1_API, SHORT2_URL, SHORT2_API, IS_SHORTLINK, TUTORIAL, IS_TUTORIAL
 
 class Database:
     
@@ -106,13 +106,15 @@ class Database:
             'auto_delete': AUTO_DELETE,
             'auto_ffilter': AUTO_FFILTER,
             'max_btn': MAX_BTN,
-            'shortlink': SHORTLINK_URL,
-            'shortlink_api': SHORTLINK_API,
+            'shortlink': SHORT1_URL,
+            'shortlink_api': SHORT1_API,
+            'second_shortlink': SHORT2_URL,
+            'second_shortlink_api': SHORT2_API,
             'is_shortlink': IS_SHORTLINK,
             'tutorial': TUTORIAL,
             'is_tutorial': IS_TUTORIAL
         }
-        chat = await self.grp.find_one({'id':int(id)})
+        chat = await self.grp.find_one({'id': int(id)})
         if chat:
             return chat.get('settings', default)
         return default
