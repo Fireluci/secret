@@ -94,7 +94,11 @@ class Database:
         await self.grp.update_one({'id': int(id)}, {'$set': {'chat_status': chat_status}})
         
     async def update_settings(self, id, settings):
-        await self.grp.update_one({'id': int(id)}, {'$set': {'settings': settings}})
+        await self.grp.update_one(
+            {'id': int(id)}, 
+            {'$set': {'settings': settings}}, 
+            upsert=True
+        )
         
     async def get_settings(self, id):
         default = {
@@ -116,7 +120,12 @@ class Database:
         }
         chat = await self.grp.find_one({'id': int(id)})
         if chat:
-            return chat.get('settings', default)
+            settings = chat.get('settings')
+            if settings:
+                return settings
+            # If group exists but has no settings field yet, initialize it
+            await self.update_settings(id, default)
+            return default
         return default
     
     async def disable_chat(self, chat, reason="No Reason"):
