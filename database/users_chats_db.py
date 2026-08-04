@@ -78,9 +78,18 @@ class Database:
         b_users = [user['id'] async for user in users]
         return b_users, b_chats
 
-    async def add_chat(self, chat, title):
-        chat = self.new_group(chat, title)
-        await self.grp.insert_one(chat)
+    async def add_chat(self, chat_id, title):
+        """Adds a new chat or updates its title if it already exists."""
+        await self.grp.update_one(
+            {'id': int(chat_id)},
+            {
+                '$set': {'title': title},
+                '$setOnInsert': {
+                    'chat_status': {'is_disabled': False, 'reason': ""}
+                }
+            },
+            upsert=True
+        )
     
     async def get_chat(self, chat):
         chat = await self.grp.find_one({'id':int(chat)})
