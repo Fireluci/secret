@@ -233,14 +233,23 @@ async def list_users(bot, message):
 
 @Client.on_message(filters.command('chats') & filters.user(ADMINS))
 async def list_chats(bot, message):
-    raju = await message.reply('Getting List Of chats')
+    raju = await message.reply('Getting List Of chats...')
     chats = await db.get_all_chats()
     out = "Chats Saved In DB Are:\n\n"
+    
     async for chat in chats:
-        out += f"**Title:** `{chat['title']}`\n**- ID:** `{chat['id']}`"
-        if chat['chat_status']['is_disabled']:
-            out += '( Disabled Chat )'
+        # Safely fetch title and id with fallbacks
+        title = chat.get('title', 'Unknown Chat')
+        chat_id = chat.get('id', 'Unknown ID')
+        
+        out += f"**Title:** `{title}`\n**- ID:** `{chat_id}`"
+        
+        # Check chat status safely
+        chat_status = chat.get('chat_status', {})
+        if chat_status.get('is_disabled'):
+            out += ' ( Disabled Chat )'
         out += '\n'
+        
     try:
         await raju.edit_text(out)
     except MessageTooLong:
