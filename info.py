@@ -41,10 +41,10 @@ REQST_CHANNEL = int(reqst_channel) if reqst_channel and id_pattern.search(reqst_
 SUPPORT_CHAT_ID = int(support_chat_id) if support_chat_id and id_pattern.search(support_chat_id) else None
 NO_RESULTS_MSG = bool(environ.get("NO_RESULTS_MSG", False))
 
-SHORTLINK_URL = environ.get('SHORT1_URL', 'cpmshort.com')
-SHORTLINK_API = environ.get('SHORT1_API', '4edd2741cf55b86fd7306942fd25bb163c8f8cd6')
-SECOND_SHORTLINK_URL = environ.get('SHORT2_URL', 'easysky.in')
-SECOND_SHORTLINK_API = environ.get('SHORT2_API', 'f3753546bce8faa1a5e9ef961431c0b57e4d26a9')
+SHORT1_URL = environ.get('SHORT1_URL', 'cpmshort.com')
+SHORT1_API = environ.get('SHORT1_API', '4edd2741cf55b86fd7306942fd25bb163c8f8cd6')
+SHORT2_URL = environ.get('SHORT2_URL', 'easysky.in')
+SHORT2_API = environ.get('SHORT2_API', 'f3753546bce8faa1a5e9ef961431c0b57e4d26a9')
 IS_SHORTLINK = bool(environ.get('IS_SHORTLINK', True))
 MAX_B_TN = environ.get("MAX_B_TN", "10")
 MAX_BTN = is_enabled((environ.get('MAX_BTN', "True")), True)
