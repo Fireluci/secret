@@ -1,6 +1,6 @@
 import logging
 from pyrogram.errors import InputUserDeactivated, UserNotParticipant, FloodWait, UserIsBlocked, PeerIdInvalid
-from info import AUTH_CHANNEL, SHORTLINK_URL, SHORTLINK_API, IS_SHORTLINK, LOG_CHANNEL, TUTORIAL, GRP_LNK, CHNL_LNK, CUSTOM_FILE_CAPTION, SECOND_SHORTLINK_URL, SECOND_SHORTLINK_API
+from info import AUTH_CHANNEL, LOG_CHANNEL, TUTORIAL, GRP_LNK, CHNL_LNK, CUSTOM_FILE_CAPTION
 import asyncio
 from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
 from pyrogram.errors import FloodWait, UserIsBlocked, MessageNotModified, PeerIdInvalid
@@ -17,7 +17,6 @@ import requests
 import aiohttp
 from rapidfuzz import fuzz
 import urllib.parse
-from shortzy import Shortzy
 import regex
 import http.client
 import json
@@ -30,7 +29,6 @@ BTN_URL_REGEX = re.compile(
 )
 
 BANNED = {}
-SECOND_SHORTENER = {}
 SMART_OPEN = '“'
 SMART_CLOSE = '”'
 START_CHAR = ('\'', '"', SMART_OPEN)
@@ -46,7 +44,6 @@ class temp(object):
     B_NAME = None
     GETALL = {}
     SHORT = {}
-    SETTINGS = {}
 
 async def is_subscribed(bot, query):
     try:
@@ -97,82 +94,49 @@ async def broadcast_messages_group(chat_id, message):
         return False, "Error"
     
 async def search_gagala(text):
-
     query = text.replace(" ", "+")
-
     url = f"https://html.duckduckgo.com/html/?q={query}"
-
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
         )
     }
-
     timeout = aiohttp.ClientTimeout(total=8)
-
     try:
         async with aiohttp.ClientSession(
             timeout=timeout
         ) as session:
-
             async with session.get(
                 url,
                 headers=headers,
                 ssl=False
             ) as response:
-
                 if response.status != 200:
                     return []
-
                 html = await response.text()
-
         soup = BeautifulSoup(html, "html.parser")
-
         titles = soup.find_all(
             "a",
             class_="result__a"
         )
-
         results = []
-
         for t in titles[:20]:
-
             title = t.get_text(strip=True)
-
             score = fuzz.token_set_ratio(
                 text.lower(),
                 title.lower()
             )
-
             if score >= 25:
                 results.append((score, title))
-
         results.sort(reverse=True)
-
         return [x[1] for x in results[:6]]
-
     except asyncio.TimeoutError:
         return []
-
     except Exception:
         return []
 
-async def get_settings(group_id):
-    settings = temp.SETTINGS.get(group_id)
-    if not settings:
-        settings = await db.get_settings(group_id)
-        temp.SETTINGS[group_id] = settings
-    return settings
-    
-async def save_group_settings(group_id, key, value):
-    current = await get_settings(group_id)
-    current[key] = value
-    temp.SETTINGS[group_id] = current
-    await db.update_settings(group_id, current)
-    
 def get_size(size):
     """Get size in readable format"""
-
     units = ["Bytes", "KB", "MB", "GB", "TB", "PB", "EB"]
     size = float(size)
     i = 0
@@ -209,13 +173,11 @@ def extract_user(message: Message) -> Union[int, str]:
     if message.reply_to_message:
         user_id = message.reply_to_message.from_user.id
         user_first_name = message.reply_to_message.from_user.first_name
-
     elif len(message.command) > 1:
         if (
             len(message.entities) > 1 and
             message.entities[1].type == enums.MessageEntityType.TEXT_MENTION
         ):
-           
             required_entity = message.entities[1]
             user_id = required_entity.user.id
             user_first_name = required_entity.user.first_name
@@ -263,7 +225,7 @@ def last_online(from_user):
 def split_quotes(text: str) -> List:
     if not any(text.startswith(char) for char in START_CHAR):
         return text.split(None, 1)
-    counter = 1  # ignore first char -> is some kind of quote
+    counter = 1 
     while counter < len(text):
         if text[counter] == "\\":
             counter += 1
@@ -274,7 +236,6 @@ def split_quotes(text: str) -> List:
         return text.split(None, 1)
 
     key = remove_escapes(text[1:counter].strip())
-    
     rest = text[counter + 1:].strip()
     if not key:
         key = text[0] + text[0]
@@ -321,7 +282,6 @@ def gfilterparser(text, keyword):
                     text=match.group(2),
                     url=match.group(4).replace(" ", "")
                 )])
-
         else:
             note_data += text[prev:to_check]
             prev = match.start(1) - 1
@@ -374,7 +334,6 @@ def parser(text, keyword):
                     text=match.group(2),
                     url=match.group(4).replace(" ", "")
                 )])
-
         else:
             note_data += text[prev:to_check]
             prev = match.start(1) - 1
@@ -410,140 +369,10 @@ def humanbytes(size):
         n += 1
     return str(round(size, 2)) + " " + Dic_powerN[n] + 'B'
 
-async def get_shortlink(chat_id, link, second=False):
-    settings = await get_settings(chat_id) 
-    if 'shortlink' in settings.keys():
-        URL = settings['shortlink']
-        API = settings['shortlink_api']
-    else:
-        URL = SHORTLINK_URL
-        API = SHORTLINK_API
-    if URL.startswith("shorturllink") or URL.startswith("terabox.in") or URL.startswith("urlshorten.in") or second:
-        URL = SECOND_SHORTLINK_URL
-        API = SECOND_SHORTLINK_API
-    if URL == "api.shareus.io":
-        url = f'https://{URL}/api'
-        params = {
-            "key": API,
-            "link": link,
-        }
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, params=params, raise_for_status=True, ssl=False) as response:
-                    data = await response.text()
-                    return data
-        except Exception as e:
-            logger.error(e)
-            return link
-    else:
-        shortzy = Shortzy(api_key=API, base_site=URL)
-        link = await shortzy.convert(link)
-        return link
-    
-async def get_tutorial(chat_id):
-    settings = await get_settings(chat_id)  
-    if 'tutorial' in settings.keys():
-        TUTORIAL_URL = settings['tutorial']
-    else:
-        TUTORIAL_URL = TUTORIAL
-    return TUTORIAL_URL
-    
-async def send_all(bot, userid, files, ident, chat_id, user_name, query):
-    settings = await get_settings(chat_id)
-    if 'is_shortlink' in settings.keys():
-        ENABLE_SHORTLINK = settings['is_shortlink']
-    else:
-        await save_group_settings(message.chat.id, 'is_shortlink', False)
-        ENABLE_SHORTLINK = False
-    try:
-        if ENABLE_SHORTLINK:
-            for file in files:
-                title = file.file_name
-                size = get_size(file.file_size)
-                await bot.send_message(chat_id=userid, text=f"<b>Hᴇʏ ᴛʜᴇʀᴇ {user_name} 👋🏽 \n\n✅ Sᴇᴄᴜʀᴇ ʟɪɴᴋ ᴛᴏ ʏᴏᴜʀ ғɪʟᴇ ʜᴀs sᴜᴄᴄᴇssғᴜʟʟʏ ʙᴇᴇɴ ɢᴇɴᴇʀᴀᴛᴇᴅ ᴘʟᴇᴀsᴇ ᴄʟɪᴄᴋ ᴅᴏᴡɴʟᴏᴀᴅ ʙᴜᴛᴛᴏɴ\n\n🗃️ Fɪʟᴇ Nᴀᴍᴇ : {title}\n🔖 Fɪʟᴇ Sɪᴢᴇ : {size}</b>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📤 Dᴏᴡɴʟᴏᴀᴅ 📥", url=await get_shortlink(chat_id, f"https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}"))]]))
-        else:
-            for file in files:
-                    f_caption = file.caption
-                    title = file.file_name
-                    size = get_size(file.file_size)
-                    if CUSTOM_FILE_CAPTION:
-                        try:
-                            f_caption = CUSTOM_FILE_CAPTION.format(file_name='' if title is None else title,
-                                                                    file_size='' if size is None else size,
-                                                                    file_caption='' if f_caption is None else f_caption)
-                        except Exception as e:
-                            print(e)
-                            f_caption = f_caption
-                    if f_caption is None:
-                        f_caption = f"{title}"
-                    await bot.send_cached_media(
-                        chat_id=userid,
-                        file_id=file.file_id,
-                        caption=f_caption,
-                        protect_content=True if ident == "filep" else False,
-                        reply_markup=InlineKeyboardMarkup(
-                            [
-                                [
-                                InlineKeyboardButton('Sᴜᴘᴘᴏʀᴛ Gʀᴏᴜᴘ', url=GRP_LNK),
-                                InlineKeyboardButton('Uᴘᴅᴀᴛᴇs Cʜᴀɴɴᴇʟ', url=CHNL_LNK)
-                            ],[
-                                InlineKeyboardButton("Bᴏᴛ Oᴡɴᴇʀ", url="t.me/heroflix")
-                                ]
-                            ]
-                        )
-                    )
-    except UserIsBlocked:
-        await query.answer('Uɴʙʟᴏᴄᴋ ᴛʜᴇ ʙᴏᴛ ᴍᴀʜɴ !', show_alert=True)
-    except PeerIdInvalid:
-        await query.answer('Hᴇʏ, Sᴛᴀʀᴛ Bᴏᴛ Fɪʀsᴛ Aɴᴅ Cʟɪᴄᴋ Sᴇɴᴅ Aʟʟ', show_alert=True)
-    except Exception as e:
-        await query.answer('Hᴇʏ, Sᴛᴀʀᴛ Bᴏᴛ Fɪʀsᴛ Aɴᴅ Cʟɪᴄᴋ Sᴇɴᴅ Aʟʟ', show_alert=True)
-    '''if IS_SHORTLINK == True:
-        for file in files:
-            title = file.file_name
-            size = get_size(file.file_size)
-            await bot.send_message(chat_id=userid, text=f"<b>Hᴇʏ ᴛʜᴇʀᴇ {user_name} 👋🏽 \n\n✅ Sᴇᴄᴜʀᴇ ʟɪɴᴋ ᴛᴏ ʏᴏᴜʀ ғɪʟᴇ ʜᴀs sᴜᴄᴄᴇssғᴜʟʟʏ ʙᴇᴇɴ ɢᴇɴᴇʀᴀᴛᴇᴅ ᴘʟᴇᴀsᴇ ᴄʟɪᴄᴋ ᴅᴏᴡɴʟᴏᴀᴅ ʙᴜᴛᴛᴏɴ\n\n🗃️ Fɪʟᴇ Nᴀᴍᴇ : {title}\n🔖 Fɪʟᴇ Sɪᴢᴇ : {size}</b>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📤 Dᴏᴡɴʟᴏᴀᴅ 📥", url=await get_shortlink(chat_id, f"https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}"))]])
-    )
-    else:
-        for file in files:
-            f_caption = file.caption
-            title = file.file_name
-            size = get_size(file.file_size)
-            if CUSTOM_FILE_CAPTION:
-                try:
-                    f_caption = CUSTOM_FILE_CAPTION.format(file_name='' if title is None else title,
-                                                            file_size='' if size is None else size,
-                                                            file_caption='' if f_caption is None else f_caption)
-                except Exception as e:
-                    print(e)
-                    f_caption = f_caption
-            if f_caption is None:
-                f_caption = f"{title}"
-            await bot.send_cached_media(
-                chat_id=userid,
-                file_id=file.file_id,
-                caption=f_caption,
-                protect_content=True if ident == "filep" else False,
-                reply_markup=InlineKeyboardMarkup(
-                    [
-                        [
-                        InlineKeyboardButton('Sᴜᴘᴘᴏʀᴛ Gʀᴏᴜᴘ', url=GRP_LNK),
-                        InlineKeyboardButton('Uᴘᴅᴀᴛᴇs Cʜᴀɴɴᴇʟ', url=CHNL_LNK)
-                    ],[
-                        InlineKeyboardButton("Bᴏᴛ Oᴡɴᴇʀ", url="t.me/heroflix")
-                        ]
-                    ]
-                )
-            )'''
-
 async def extract_v2(text):
     text = text.lower()
-
-    # remove emojis & symbols early
     text = regex.sub(r'\p{So}', '', text)
     text = re.sub(r"[@!$_\-.+:*#⁓(),/?]", " ", text)
-
-    # normalize season / episode words
     text = re.sub(
         r'\bseason\s*(\d{1,2})\b',
         lambda m: f's{m.group(1).zfill(2)}',
@@ -554,8 +383,6 @@ async def extract_v2(text):
         lambda m: f'e{m.group(1).zfill(2)}',
         text
     )
-
-    # normalize short forms
     text = re.sub(r'\bs(\d)\b', r's0\1', text)
     text = re.sub(r'\be(\d)\b', r'e0\1', text)
     text = re.sub(
@@ -563,35 +390,22 @@ async def extract_v2(text):
         lambda m: f"e{m.group(1).zfill(2)}",
         text
     )
-
-    # 🔥 normalize ALL season + episode combinations
-
-    # season 5 episode 1 / season 5 ep1
     text = re.sub(
         r'season\s*(\d{1,2})\s*(?:episode|ep)\s*(\d{1,2})',
         lambda m: f"s{m.group(1).zfill(2)}e{m.group(2).zfill(2)}",
         text
     )
-
-    # s5 episode 1 / s5 ep1 / s05 ep01
     text = re.sub(
         r's(\d{1,2})\s*(?:episode|ep)\s*(\d{1,2})',
         lambda m: f"s{m.group(1).zfill(2)}e{m.group(2).zfill(2)}",
         text
     )
-
-    # s5 e1 / s05 e01 / s5e1
     text = re.sub(
         r's(\d{1,2})\s*e(\d{1,2})',
         lambda m: f"s{m.group(1).zfill(2)}e{m.group(2).zfill(2)}",
         text
     )
-
-    # cleanup spaces
     text = re.sub(r'\s+', ' ', text).strip()
-
-    # 🔥 if episode exists but season missing → assume s01
     if re.search(r'\be\d{2}\b', text) and not re.search(r'\bs\d{2}\b', text):
         text = re.sub(r'\be(\d{2})\b', r's01e\1', text)
-
     return text
