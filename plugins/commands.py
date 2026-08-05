@@ -33,7 +33,8 @@ async def notify_admins(client: Client, text: str):
             pass
 
 async def safe_kick(client: Client, chat_id, user_id):
-    if not chat_id: return
+    if not chat_id: 
+        return
     try:
         cid = int(chat_id)
         await client.ban_chat_member(cid, user_id)
@@ -41,8 +42,27 @@ async def safe_kick(client: Client, chat_id, user_id):
         await client.unban_chat_member(cid, user_id)
     except Exception as e:
         if "USER_NOT_PARTICIPANT" not in str(e) and "PEER_ID_INVALID" not in str(e):
-            await notify_admins(client, f"<b>⚠️ Automated Kick Failed Error\n\n• User ID: <code>{user_id}</code>\n• Reason: <code>{e}</code></b>")
-
+            await notify_admins(client, f"<b>⚠️ Automated Kick Failed (Attempt 1)\n\n• User ID: <code>{user_id}</code>\n• Reason: <code>{e}</code>\n\n<i>Retrying in 1 minute...</i></b>")
+            
+            # Wait 1 minute as requested
+            await asyncio.sleep(60)
+            
+            # Retry second attempt
+            try:
+                # Clear/refresh peer cache if method exists or fallback to clean call
+                if hasattr(client, "get_chat"):
+                    try:
+                        await client.get_chat(cid)
+                    except Exception:
+                        pass
+                
+                await client.ban_chat_member(cid, user_id)
+                await asyncio.sleep(0.3)
+                await client.unban_chat_member(cid, user_id)
+                
+                await notify_admins(client, f"<b>✅ Automated Kick Succeeded on Retry (Attempt 2)\n\n• User ID: <code>{user_id}</code></b>")
+            except Exception as retry_err:
+                await notify_admins(client, f"<b>❌ Automated Kick Permanently Failed (Attempt 2)\n\n• User ID: <code>{user_id}</code>\n• Final Error: <code>{retry_err}</code></b>")
 async def premium_expiry_reminder_loop(client: Client):
     await asyncio.sleep(5)
     while True:
