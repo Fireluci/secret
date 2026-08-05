@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.ERROR)
 
 SPELL_CHECK = {}
+QUERY_CACHE = {}
 lock = asyncio.Lock()
 
 GLOBAL_SEM = asyncio.Semaphore(12)
