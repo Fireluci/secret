@@ -531,8 +531,8 @@ async def advantage_spell_chok(client, msg):
     btn = [[InlineKeyboardButton(text=movie, callback_data=f"spolling#{reqstr1}#{idx}")] for idx, movie in enumerate(movielist)]
     btn.append([InlineKeyboardButton("×××× ⟨ Close ⟩ ××××", callback_data="close_data")])
     k = await msg.reply("<b>🎬 Select Your Pick ↡</b>", reply_markup=InlineKeyboardMarkup(btn))
-    asyncio.create_task(handle_auto_delete(k, await get_settings(msg.chat.id)))
-
+    await asyncio.sleep(30)
+    await k.delete()
 async def manual_filters(client, message, text=False):
     settings = await get_settings(message.chat.id)
     group_id = message.chat.id
