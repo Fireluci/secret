@@ -13,7 +13,7 @@ from database.connections_mdb import active_connection, all_connections, delete_
 from database.ia_filterdb import Media, get_file_details, get_search_results, get_bad_files
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logger.ERROR)
+logger.setLevel(logging.ERROR)
 
 SPELL_CHECK = {}
 QUERY_CACHE = {}
