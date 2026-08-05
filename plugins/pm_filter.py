@@ -53,8 +53,9 @@ def is_spam(uid, cooldown=2):
 
 async def handle_auto_delete(message_obj, settings):
     try:
-        if settings.get('auto_delete', True):
-            await asyncio.sleep(900)
+        # 🔑 Ensure it checks if auto_delete is explicitly True for this group
+        if settings.get('auto_delete') is True:
+            await asyncio.sleep(900)  # 15 minutes / 900 seconds
             await message_obj.delete()
     except Exception:
         pass
@@ -439,6 +440,11 @@ async def auto_filter(client, msg, spoll=False):
         message = msg
         if message.text.startswith("/") or re.findall("((^\/|^,|^!|^\.|^[\U0001F900-\U000E007F]).*)", message.text) or len(message.text) >= 100:
             return
+            
+        # 🔑 CRITICAL CHECK: Fetch settings and abort if Auto-Filter is turned OFF
+        settings = await get_settings(message.chat.id)
+        if not settings.get('auto_ffilter', True):
+            return  # Completely stops the bot from replying when disabled!
         search = remove_words(message.text.lower())
         search = re.sub(r"\b(complete|combined|all\s*episodes?|full\s*episodes?)\b", "com", search, flags=re.IGNORECASE)
         search = re.sub(r"[-:–]+", " ", search)
