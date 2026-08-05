@@ -8,9 +8,8 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQ
 from pyrogram.errors import FloodWait, MessageNotModified
 from database.ia_filterdb import Media, get_file_details, unpack_new_file_id, get_bad_files
 from database.users_chats_db import db
-from info import CHANNELS, ADMINS, AUTH_CHANNEL, LOG_CHANNEL, PICS, BATCH_FILE_CAPTION, CUSTOM_FILE_CAPTION, CHNL_LNK, FORCE, MAX_B_TN, TUTORIAL, PREMIUM_USER, PREMIUM_GROUP_ID, PREMIUM_PERMANENT_LINK, SUPPORT_CHAT
-from utils import get_size, is_subscribed, temp
-from database.connections_mdb import active_connection
+from info import CHANNELS, ADMINS, LOG_CHANNEL, PICS, BATCH_FILE_CAPTION, CUSTOM_FILE_CAPTION, CHNL_LNK, PREMIUM_GROUP_ID, PREMIUM_PERMANENT_LINK
+from utils import get_size, temp
 from pymongo.errors import PyMongoError
 import re, sys, json, base64
 
@@ -43,35 +42,6 @@ async def safe_kick(client: Client, chat_id, user_id):
     except Exception as e:
         if "USER_NOT_PARTICIPANT" not in str(e) and "PEER_ID_INVALID" not in str(e):
             await notify_admins(client, f"<b>⚠️ Automated Kick Failed Error\n\n• User ID: <code>{user_id}</code>\n• Reason: <code>{e}</code></b>")
-
-async def premium_expiry_reminder_loop(client: Client):
-    await asyncio.sleep(5)
-    while True:
-        try:
-            now = datetime.utcnow()
-            col = get_col()
-            if col:
-                async for doc in col.find({"active": True}):
-                    uid, exp = doc.get("user_id"), doc.get("expires_at") or doc.get("expiry_date")
-                    if not isinstance(exp, datetime): continue
-                    
-                    reminders = doc.get("reminders", {})
-                    if not reminders.get("30_sec") and (exp - now) <= timedelta(seconds=30) and (exp - now) > timedelta(seconds=0):
-                        try:
-                            await client.send_message(uid, "<b>⚠️ Your Premium Membership is expiring in 30 seconds!\n\nRenew now to avoid getting ejected.</b>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Renew Now", callback_data="buy_premium_start")]]), parse_mode=enums.ParseMode.HTML)
-                            await col.update_one({"user_id": uid}, {"$set": {"reminders.30_sec": True}})
-                        except Exception: pass
-
-                    if now >= exp:
-                        await col.delete_one({"user_id": uid})
-                        if PREMIUM_GROUP_ID: await safe_kick(client, PREMIUM_GROUP_ID, uid)
-                        await notify_admins(client, f"<b>❌ Premium Membership Expired & Ejected\n\n• User ID: <code>{uid}</code>\n• Plan: <code>{doc.get('plan', 'N/A')}</code>\n• Expired On: <code>{fmt_date(exp)}</code></b>")
-                        try:
-                            await client.send_message(uid, "<b>⚠️ Premium Membership Expired!\n\nRenew your plan to restore your premium status.</b>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Renew Plan", callback_data="buy_premium_start")]]), parse_mode=enums.ParseMode.HTML)
-                        except Exception: pass
-        except Exception as e:
-            logger.error(f"Expiry loop error: {e}")
-        await asyncio.sleep(30)
 
 @Client.on_message(filters.command("approve") & filters.user(ADMINS))
 async def approve_command(client, message):
@@ -142,7 +112,7 @@ async def premiums_command(client, message):
 @Client.on_message(filters.command("start") & filters.incoming)
 async def start(client, message):
     if message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
-        await message.reply(script.START_TXT.format(message.from_user.mention if message.from_user else message.chat.title, temp.U_NAME, temp.B_NAME), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('❓How To Use Me❓', url=f'https://telegram.me/{TUTORIAL}')]]), disable_web_page_preview=True)
+        await message.reply(script.START_TXT.format(message.from_user.mention if message.from_user else message.chat.title, temp.U_NAME, temp.B_NAME), disable_web_page_preview=True)
         await asyncio.sleep(2)
         if not await db.get_chat(message.chat.id):
             total = await client.get_chat_members_count(message.chat.id)
@@ -199,11 +169,7 @@ async def start(client, message):
                     file_id=msg.get("file_id"),
                     caption=f_caption,
                     reply_markup=InlineKeyboardMarkup(
-                        [
-                         [
-                          InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}'),
-                         ]
-                        ]
+                        [[InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}')]]
                     )
                 )
             except FloodWait as e:
@@ -214,11 +180,7 @@ async def start(client, message):
                     file_id=msg.get("file_id"),
                     caption=f_caption,
                     reply_markup=InlineKeyboardMarkup(
-                        [
-                         [
-                          InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}'),
-                         ]
-                        ]
+                        [[InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}')]]
                     )
                 )
             except Exception as e:
