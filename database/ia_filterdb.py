@@ -9,7 +9,7 @@ from umongo import Instance, Document, fields
 from motor.motor_asyncio import AsyncIOMotorClient
 from marshmallow.exceptions import ValidationError
 from info import DATABASE_URI, DATABASE_NAME, COLLECTION_NAME, CAPTION_INDEX_CHANNEL
-from utils import get_settings, save_group_settings, extract_v2
+from utils import extract_v2
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
