@@ -23,7 +23,6 @@ BUTTONS = {}
 FRESH = {}
 SPELL_CHECK = {}
 
-# 🔑 EDITED: RAM Cache dictionary
 SETTINGS_CACHE = {}
 
 GLOBAL_SEM = asyncio.Semaphore(12)
@@ -36,23 +35,34 @@ REMOVES = [
     "television series", "tv show", "with subtitles"
 ]
 
-# 🔑 EDITED: Cached get_settings function
 async def get_settings(chat_id):
     chat_id = int(chat_id)
     if chat_id in SETTINGS_CACHE:
         return SETTINGS_CACHE[chat_id]
     settings = await db.get_settings(chat_id)
+    if not isinstance(settings, dict):
+        settings = {
+            'button': True,
+            'file_secure': False,
+            'auto_filter': True,
+            'spell_check': True,
+            'max_btn': True,
+            'botpm': True,
+            'is_shortlink': False,
+            'auto_delete': False
+        }
     SETTINGS_CACHE[chat_id] = settings
     return settings
 
-# 🔑 EDITED: Cached save_group_settings function
 async def save_group_settings(chat_id, key, value):
     chat_id = int(chat_id)
     await db.update_settings(chat_id, key, value)
     if chat_id in SETTINGS_CACHE:
         SETTINGS_CACHE[chat_id][key] = value
     else:
-        SETTINGS_CACHE[chat_id] = await db.get_settings(chat_id)
+        settings = await db.get_settings(chat_id)
+        SETTINGS_CACHE[chat_id] = settings if isinstance(settings, dict) else {}
+        SETTINGS_CACHE[chat_id][key] = value
 
 def remove_words(text):
     text = " ".join(text.split())
@@ -400,7 +410,7 @@ async def auto_filter(client, msg, spoll=False):
         if message.text.startswith("/") or re.findall("((^\/|^,|^!|^\.|^[\U0001F900-\U000E007F]).*)", message.text) or len(message.text) >= 100:
             return
         settings = await get_settings(message.chat.id)
-        if not settings.get('auto_ffilter', True): return
+        if not settings.get('auto_filter', True): return
         search = remove_words(message.text.lower())
         search = re.sub(r"\b(complete|combined|all\s*episodes?|full\s*episodes?)\b", "com", search, flags=re.IGNORECASE)
         search = re.sub(r"[-:–]+", " ", search)
@@ -410,7 +420,6 @@ async def auto_filter(client, msg, spoll=False):
         for lang, code in [("english", "eng"), ("hindi", "hin"), ("tamil", "tam"), ("telugu", "tel"), ("kannada", "kan"), ("malayalam", "mal")]:
             search = search.replace(lang, code)
         files, offset, total_results = await get_search_results(message.chat.id, search, offset=0, filter=True)
-        settings = await get_settings(message.chat.id)
         if not files:
             if settings.get("spell_check", True): return await advantage_spell_chok(client, msg)
             return
