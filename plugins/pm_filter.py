@@ -98,9 +98,40 @@ async def advantage_spoll_choker(bot, query):
                 asyncio.create_task(handle_auto_delete(msg))
             except: pass
 
+@Client.on_callback_query(filters.regex(r"^next"))
+async def next_page(bot, query):
+    ident, req, offset, query_str = query.data.split("_")
+    try:
+        offset = int(offset)
+    except:
+        offset = 0
+    search = query_str.replace("_", " ")
+    files, offset, total_results = await get_search_results(query.message.chat.id, search, offset=offset, filter=True)
+    if not files:
+        return await query.answer("No more files found !", show_alert=True)
+    
+    cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n</b>"
+    for file in files:
+        f_size = get_size(file.file_size)
+        f_name = escape(file.file_name)
+        cap += f"<b>🍿 <a href='https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}'>[{f_size}] {f_name}</a></b>\n\n"
+
+    btn = []
+    if offset != 0:
+        btn.append(InlineKeyboardButton("⏪ Back", callback_data=f"next_{req}_{offset - 10}_{query_str}"))
+    btn.append(InlineKeyboardButton(f"📁 Pages {math.ceil(offset / 10) + 1} / {math.ceil(total_results / 10)}", callback_data="pages"))
+    if total_results > offset + len(files):
+        btn.append(InlineKeyboardButton("Next ⏩", callback_data=f"next_{req}_{offset + 10}_{query_str}"))
+    
+    try:
+        await query.message.edit_text(text=cap, disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup([btn]))
+    except MessageNotModified:
+        pass
+    await query.answer()
+
 @Client.on_callback_query()
 async def cb_handler(client: Client, query: CallbackQuery):
-    if query.data and query.data.startswith(("premium_", "buy_plan_", "prem_")): return
+    if query.data and query.data.startswith(("premium_", "buy_plan_", "prem_", "next_")): return
     user_id = query.from_user.id
     chat_type = query.message.chat.type
 
@@ -160,7 +191,16 @@ async def auto_filter(client, msg, spoll=False):
         f_name = escape(file.file_name)
         cap += f"<b>🍿 <a href='https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}'>[{f_size}] {f_name}</a></b>\n\n"
 
-    sent_msg = await message.reply_text(text=cap, disable_web_page_preview=True)
+    req = message.from_user.id if message.from_user else 0
+    query_str = search.replace(" ", "_")
+    btn = []
+    if offset != 0:
+        btn.append(InlineKeyboardButton("⏪ Back", callback_data=f"next_{req}_{offset - 10}_{query_str}"))
+    btn.append(InlineKeyboardButton(f"📁 Pages 1 / {math.ceil(total_results / 10)}", callback_data="pages"))
+    if total_results > offset + len(files):
+        btn.append(InlineKeyboardButton("Next ⏩", callback_data=f"next_{req}_{offset + 10}_{query_str}"))
+
+    sent_msg = await message.reply_text(text=cap, disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup([btn]))
     asyncio.create_task(handle_auto_delete(sent_msg))
     asyncio.create_task(handle_auto_delete(message))
 
