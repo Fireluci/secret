@@ -1,6 +1,6 @@
 import logging
 from pyrogram.errors import InputUserDeactivated, UserNotParticipant, FloodWait, UserIsBlocked, PeerIdInvalid
-from info import AUTH_CHANNEL, LOG_CHANNEL, TUTORIAL, GRP_LNK, CHNL_LNK, CUSTOM_FILE_CAPTION
+from info import AUTH_CHANNEL, LOG_CHANNEL, GRP_LNK, CHNL_LNK 
 import asyncio
 from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
 from pyrogram.errors import FloodWait, UserIsBlocked, MessageNotModified, PeerIdInvalid
@@ -39,11 +39,8 @@ class temp(object):
     ME = None
     CURRENT=int(os.environ.get("SKIP", 2))
     CANCEL = False
-    MELCOW = {}
     U_NAME = None
     B_NAME = None
-    GETALL = {}
-    SHORT = {}
 
 async def is_subscribed(bot, query):
     try:
