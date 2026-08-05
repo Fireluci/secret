@@ -319,7 +319,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
             alert = ast.literal_eval(alerts)[int(i)].replace("\\n", "\n").replace("\\t", "\t")
             return await query.answer(alert, show_alert=True)
         return await query.answer("Alert displayed!", show_alert=True)
-    elif query.data.startswith("file"):
+elif query.data.startswith("file"):
         clicked = query.from_user.id
         try: typed = query.message.reply_to_message.from_user.id
         except: typed = clicked
@@ -335,7 +335,6 @@ async def cb_handler(client: Client, query: CallbackQuery):
         files = files_[0]
         f_caption = CUSTOM_FILE_CAPTION.format(file_name=files.file_name or '', file_size=get_size(files.file_size) or '', file_caption=files.caption or '') if CUSTOM_FILE_CAPTION else (files.caption or files.file_name)
         
-        # 🔑 Dynamically fetch fresh settings from MongoDB for this chat ID
         chat_id = query.message.chat.id
         settings = await get_settings(chat_id)
 
@@ -345,20 +344,19 @@ async def cb_handler(client: Client, query: CallbackQuery):
             elif settings.get('is_shortlink') and clicked not in PREMIUM_USER:
                 temp.SHORT[clicked] = chat_id
                 return await query.answer(url=f"https://telegram.me/{temp.U_NAME}?start=short_{file_id}")
-            elif settings.get('botpm') or clicked in PREMIUM_USER:
-                return await query.answer(url=f"https://telegram.me/{temp.U_NAME}?start={ident}_{file_id}")
-            else:
-                # Dynamically evaluate protect_content from MongoDB settings
+            # ✅ Fixed: botpm setting correctly evaluated here (sends via background task if False)
+            elif not settings.get('botpm', True) and clicked not in PREMIUM_USER:
                 is_protected = settings.get('file_secure', False)
-                
                 await client.send_cached_media(
                     chat_id=query.from_user.id, 
                     file_id=file_id, 
                     caption=f_caption, 
-                    protect_content=is_protected,  # ✅ Respects live MongoDB setting
+                    protect_content=is_protected, 
                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🔆彡[ HEROFLiX ]彡🔆', url=f'https://telegram.me/{CHNL_LNK}')]])
                 )
                 return await query.answer('Cʜᴇᴄᴋ PM, I ʜᴀᴠᴇ sᴇɴᴛ ғɪʟᴇs ɪɴ PM', show_alert=True)
+            else:
+                return await query.answer(url=f"https://telegram.me/{temp.U_NAME}?start={ident}_{file_id}")
         except UserIsBlocked:
             return await query.answer('Uɴʙʟᴏᴄᴋ ᴛʜᴇ ʙᴏᴛ ᴍᴀʜɴ !', show_alert=True)
         except PeerIdInvalid:
@@ -371,9 +369,9 @@ async def cb_handler(client: Client, query: CallbackQuery):
         except: return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
         settings = await get_settings(query.message.chat.id)
         try:
-            if settings.get('botpm') and settings.get('is_shortlink') and clicked not in PREMIUM_USER:
+            if settings.get('botpm', True) and settings.get('is_shortlink') and clicked not in PREMIUM_USER:
                 return await query.answer(url=f"https://telegram.me/{temp.U_NAME}?start=sendfiles1_{key}")
-            elif settings.get('is_shortlink') and not settings.get('botpm') and clicked not in PREMIUM_USER:
+            elif settings.get('is_shortlink') and not settings.get('botpm', True) and clicked not in PREMIUM_USER:
                 return await query.answer(url=f"https://telegram.me/{temp.U_NAME}?start=sendfiles2_{key}")
             else:
                 return await query.answer(url=f"https://telegram.me/{temp.U_NAME}?start=allfiles_{key}")
@@ -455,8 +453,10 @@ async def auto_filter(client, msg, spoll=False):
             search = search.replace(lang, code)
         files, offset, total_results = await get_search_results(message.chat.id, search, offset=0, filter=True)
         settings = await get_settings(message.chat.id)
+        
         if not files:
-            if settings.get("spell_check"):
+            # 🔑 Only trigger spell check if it is enabled in MongoDB settings
+            if settings.get("spell_check", True):
                 return await advantage_spell_chok(client, msg)
             return
     else:
