@@ -356,147 +356,131 @@ async def start(client, message):
         files = temp.GETALL.get(file_id)
         if not files:
             return await message.reply('<b><i>No such file exist.</b></i>')
+        
+        # 🔑 Fetch live settings for 'all' files
+        user_id = message.from_user.id
+        chat_id = temp.SHORT.get(user_id)
+        if not chat_id:
+            from database.connections_mdb import active_connection
+            chat_id = await active_connection(str(user_id))
+        settings = await get_settings(int(chat_id)) if chat_id else {}
+        is_protected = bool(settings.get('file_secure', False))
+
         filesarr = []
         for file in files:
-            file_id = file.file_id
-            files_ = await get_file_details(file_id)
+            f_id = file.file_id
+            files_ = await get_file_details(f_id)
+            if not files_: continue
             files1 = files_[0]
             title = ' '.join(filter(lambda x: not x.startswith('www.') and not x.startswith('@'), files1.file_name.split()))
-            size=get_size(files1.file_size)
-            f_caption=files1.caption
+            size = get_size(files1.file_size)
+            f_caption = files1.caption
             if CUSTOM_FILE_CAPTION:
                 try:
-                    f_caption=CUSTOM_FILE_CAPTION.format(file_name= '' if title is None else title, file_size='' if size is None else size, file_caption='' if f_caption is None else f_caption)
+                    f_caption = CUSTOM_FILE_CAPTION.format(file_name='' if title is None else title, file_size='' if size is None else size, file_caption='' if f_caption is None else f_caption)
                 except Exception as e:
                     logger.exception(e)
-                    f_caption=f_caption
             if f_caption is None:
-                f_caption = f"{' '.join(filter(lambda x: not x.startswith('www.') and not x.startswith('@'), files1.file_name.split()))}"
+                f_caption = f"{title}"
 
             msg = await client.send_cached_media(
                 chat_id=message.from_user.id,
-                file_id=file_id,
+                file_id=f_id,
                 caption=f_caption,
-                protect_content=True if pre == 'filep' else False,
+                protect_content=is_protected,  # ✅ Live MongoDB check
                 reply_markup=InlineKeyboardMarkup(
-                    [
-                     [
-                      InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}'),
-                     ]
-                    ]
+                    [[InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}')]]
                 )
             )
             filesarr.append(msg)
-        await k.edit_text("<b>File Deleted!</b>")
+        await k.edit_text("<b>File Sent!</b>")
         return    
-        
+
     elif data.startswith("files"):
         user = message.from_user.id
-        if temp.SHORT.get(user) == None:
-            await message.reply_text(text="<b>Link Expired, Search Again in Group!</b>")
-            return
-        else:
-            chat_id = temp.SHORT.get(user)
+        chat_id = temp.SHORT.get(user)
+        if not chat_id:
+            return await message.reply_text(text="<b>Link Expired, Search Again in Group!</b>")
+            
         settings = await get_settings(chat_id)
-        if settings['is_shortlink'] and user not in PREMIUM_USER:
+        if settings.get('is_shortlink') and user not in PREMIUM_USER:
             files_ = await get_file_details(file_id)
             files = files_[0]
-            
             try:
                 g = await get_shortlink(chat_id, f"https://telegram.me/{temp.U_NAME}?start=file_{file_id}", client=client)
             except Exception:
-                buttons = [[
-                    InlineKeyboardButton('📲 Report to Admin 📲', url=f'https://telegram.me/{SUPPORT_CHAT}')
-                ]]
-                await message.reply_text(
-                    "<b>❌ Link generation failed. Please try again later.</b>",
-                    reply_markup=InlineKeyboardMarkup(buttons)
-                )
-                return
+                buttons = [[InlineKeyboardButton('📲 Report to Admin 📲', url=f'https://telegram.me/{SUPPORT_CHAT}')]]
+                return await message.reply_text("<b>❌ Link generation failed. Please try again later.</b>", reply_markup=InlineKeyboardMarkup(buttons))
 
             cleaned_file_name = f"{' '.join(filter(lambda x: not x.startswith('www.') and not x.startswith('@'), files.file_name.split()))}"
             k = await client.send_message(
                 chat_id=message.from_user.id,
-                text=f'<b>[ {get_size(files.file_size)} ] <a href="https://telegram.me/HEROFLiX">{cleaned_file_name}</a> \n\n📗 Download Link ➔ {g} {g}</b>',
+                text=f'<b>[ {get_size(files.file_size)} ] <a href="https://telegram.me/HEROFLiX">{cleaned_file_name}</a> \n\n📗 Download Link ➔ {g}</b>',
                 reply_markup=InlineKeyboardMarkup([
-                    [
-                        InlineKeyboardButton('♻️ Download Link ♻️', url=g)
-                    ], [
-                        InlineKeyboardButton('❓ How To Download ❓', url=f"https://telegram.me/{TUTORIAL}")
-                    ], [
-                        InlineKeyboardButton('🌟 Direct Download 🌟', url="https://telegram.me/HeroFlixx/49")
-                    ]
+                    [InlineKeyboardButton('♻️ Download Link ♻️', url=g)],
+                    [InlineKeyboardButton('❓ How To Download ❓', url=f"https://telegram.me/{TUTORIAL}")],
+                    [InlineKeyboardButton('🌟 Direct Download 🌟', url="https://telegram.me/HeroFlixx/49")]
                 ])
             )
             await asyncio.sleep(900)
-            try:
-                await k.edit_text("Link Deleted!")
-            except Exception:
-                pass
+            try: await k.edit_text("Link Deleted!")
+            except Exception: pass
             return
-        user = message.from_user.id
+
+    # 🔑 Live settings lookup for standard / fallback file delivery
+    user_id = message.from_user.id
+    chat_id = temp.SHORT.get(user_id)
+    if not chat_id:
+        from database.connections_mdb import active_connection
+        chat_id = await active_connection(str(user_id))
+    settings = await get_settings(int(chat_id)) if chat_id else {}
+    is_protected = bool(settings.get('file_secure', False))
+
     files_ = await get_file_details(file_id)            
     if not files_:
-        pre, file_id = ((base64.urlsafe_b64decode(data + "=" * (-len(data) % 4))).decode("ascii")).split("_", 1)
         try:
+            pre, file_id = ((base64.urlsafe_b64decode(data + "=" * (-len(data) % 4))).decode("ascii")).split("_", 1)
             msg = await client.send_cached_media(
                 chat_id=message.from_user.id,
                 file_id=file_id,
-                protect_content=True if pre == 'filep' else False,
-                reply_markup=InlineKeyboardMarkup(
-                    [
-                     [
-                      InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}'),
-                     ]
-                    ]
-                )
+                protect_content=is_protected,  # ✅ Live MongoDB check
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}')]])
             )
             filetype = msg.media
             file = getattr(msg, filetype.value)
-            title = '' + ' '.join(filter(lambda x: not x.startswith('www.') and not x.startswith('@'), file.file_name.split()))
-            size=get_size(file.file_size)
+            title = ' '.join(filter(lambda x: not x.startswith('www.') and not x.startswith('@'), file.file_name.split()))
+            size = get_size(file.file_size)
             f_caption = f"<code>{title}</code>"
             if CUSTOM_FILE_CAPTION:
                 try:
-                    f_caption=CUSTOM_FILE_CAPTION.format(file_name= '' if title is None else title, file_size='' if size is None else size, file_caption='')
+                    f_caption = CUSTOM_FILE_CAPTION.format(file_name=title, file_size=size, file_caption='')
                 except:
-                    return
+                    pass
             await msg.edit_caption(f_caption)
-            btn = [[
-                InlineKeyboardButton("Get File Again", callback_data=f'delfile#{file_id}')
-            ]]
-            await k.edit_text("<b>Your File/Video is deleted!!!\n\nClick below button to get your deleted file 👇</b>",reply_markup=InlineKeyboardMarkup(btn))
             return
-        except:
-            pass
-        return await message.reply('No such file exist.')
+        except Exception:
+            return await message.reply('No such file exist.')
+
     files = files_[0]
-    title = '' + ' '.join(filter(lambda x: not x.startswith('www.') and not x.startswith('@'), files.file_name.split()))
-    size=get_size(files.file_size)
-    f_caption=files.caption
+    title = ' '.join(filter(lambda x: not x.startswith('www.') and not x.startswith('@'), files.file_name.split()))
+    size = get_size(files.file_size)
+    f_caption = files.caption
     if CUSTOM_FILE_CAPTION:
         try:
-            f_caption=CUSTOM_FILE_CAPTION.format(file_name= '' if title is None else title, file_size='' if size is None else size, file_caption='' if f_caption is None else f_caption)
+            f_caption = CUSTOM_FILE_CAPTION.format(file_name=title, file_size=size, file_caption=f_caption or '')
         except Exception as e:
             logger.exception(e)
-            f_caption=f_caption
     if f_caption is None:
-        f_caption = f"{' '.join(filter(lambda x: not x.startswith('www.') and not x.startswith('@'), files.file_name.split()))}"
+        f_caption = title
 
     msg = await client.send_cached_media(
         chat_id=message.from_user.id,
         file_id=file_id,
         caption=f_caption,
-        protect_content=True if pre == 'filep' else False,
-        reply_markup=InlineKeyboardMarkup(
-            [
-             [
-              InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}'),
-             ]
-            ]
-        )
+        protect_content=is_protected,  # ✅ Strictly honors live MongoDB settings!
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}')]])
     )
-    return  
+    return
 
 @Client.on_message(filters.command("myplan") & filters.private)
 async def check_my_plan(client, message):
