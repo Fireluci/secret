@@ -28,17 +28,6 @@ Nᴀᴍᴇ - {}"""
  
     TOP_ALRT_MSG = """🔆彡[ @HEROFLiX ]彡🔆"""
 
-    MELCOW_ENG = """<b>🌀 Unlimited Movies, Series, Anime\n🔆 New Releases Upload Every Day\n♻️ 24 x 7 Service 📆 Daily Updates</b>"""
- 
-    NORSLTS = """
-★ #𝗡𝗼𝗥𝗲𝘀𝘂𝗹𝘁𝘀 ★
-
-𝗜𝗗 <b>: {}</b>
-
-𝗡𝗮𝗺𝗲 <b>: {}</b>
-
-𝗠𝗲𝘀𝘀𝗮𝗴𝗲 <b>: {}</b>"""
-
     CAPTION = """
  <a href="https://telegram.me/HEROFLiX"><b><i>{file_name}</i></b></a>"""
 
