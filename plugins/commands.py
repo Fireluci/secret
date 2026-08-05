@@ -43,6 +43,35 @@ async def safe_kick(client: Client, chat_id, user_id):
         if "USER_NOT_PARTICIPANT" not in str(e) and "PEER_ID_INVALID" not in str(e):
             await notify_admins(client, f"<b>⚠️ Automated Kick Failed Error\n\n• User ID: <code>{user_id}</code>\n• Reason: <code>{e}</code></b>")
 
+async def premium_expiry_reminder_loop(client: Client):
+    await asyncio.sleep(5)
+    while True:
+        try:
+            now = datetime.utcnow()
+            col = get_col()
+            if col:
+                async for doc in col.find({"active": True}):
+                    uid, exp = doc.get("user_id"), doc.get("expires_at") or doc.get("expiry_date")
+                    if not isinstance(exp, datetime): continue
+                    
+                    reminders = doc.get("reminders", {})
+                    if not reminders.get("30_sec") and (exp - now) <= timedelta(seconds=30) and (exp - now) > timedelta(seconds=0):
+                        try:
+                            await client.send_message(uid, "<b>⚠️ Your Premium Membership is expiring in 30 seconds!\n\nRenew now to avoid getting ejected.</b>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Renew Now", callback_data="buy_premium_start")]]), parse_mode=enums.ParseMode.HTML)
+                            await col.update_one({"user_id": uid}, {"$set": {"reminders.30_sec": True}})
+                        except Exception: pass
+
+                    if now >= exp:
+                        await col.delete_one({"user_id": uid})
+                        if PREMIUM_GROUP_ID: await safe_kick(client, PREMIUM_GROUP_ID, uid)
+                        await notify_admins(client, f"<b>❌ Premium Membership Expired & Ejected\n\n• User ID: <code>{uid}</code>\n• Plan: <code>{doc.get('plan', 'N/A')}</code>\n• Expired On: <code>{fmt_date(exp)}</code></b>")
+                        try:
+                            await client.send_message(uid, "<b>⚠️ Premium Membership Expired!\n\nRenew your plan to restore your premium status.</b>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Renew Plan", callback_data="buy_premium_start")]]), parse_mode=enums.ParseMode.HTML)
+                        except Exception: pass
+        except Exception as e:
+            logger.error(f"Expiry loop error: {e}")
+        await asyncio.sleep(30)
+
 @Client.on_message(filters.command("approve") & filters.user(ADMINS))
 async def approve_command(client, message):
     if len(message.command) < 2:
