@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.ERROR)
 
 lock = asyncio.Lock()
-
+SPELL_CHECK = {}
 GLOBAL_SEM = asyncio.Semaphore(12)
 USER_COOLDOWN = {}
 
