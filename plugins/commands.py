@@ -5,10 +5,10 @@ from datetime import datetime, timedelta
 from Script import script
 from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, ChatJoinRequest, ChatMemberUpdated
-from pyrogram.errors import FloodWait
+from pyrogram.errors import FloodWait, MessageNotModified
 from database.ia_filterdb import Media, get_file_details, unpack_new_file_id, get_bad_files
 from database.users_chats_db import db
-from info import CHANNELS, ADMINS, AUTH_CHANNEL, LOG_CHANNEL, PICS, BATCH_FILE_CAPTION, CUSTOM_FILE_CAPTION, PROTECT_CONTENT, CHNL_LNK, FORCE, MAX_B_TN, TUTORIAL, PREMIUM_USER, PREMIUM_GROUP_ID, PREMIUM_PERMANENT_LINK
+from info import CHANNELS, ADMINS, AUTH_CHANNEL, LOG_CHANNEL, PICS, BATCH_FILE_CAPTION, CUSTOM_FILE_CAPTION, PROTECT_CONTENT, CHNL_LNK, FORCE, MAX_B_TN, TUTORIAL, PREMIUM_USER, PREMIUM_GROUP_ID, PREMIUM_PERMANENT_LINK, SUPPORT_CHAT
 from utils import get_settings, get_size, is_subscribed, save_group_settings, temp, get_shortlink
 from database.connections_mdb import active_connection
 from pymongo.errors import PyMongoError
@@ -174,82 +174,322 @@ async def start(client, message):
     except: file_id, pre = data, ""
 
     if data.split("-", 1)[0] == "BATCH":
-        sts = await message.reply("<b>⏳ Processing batch files, please wait...</b>")
+        sts = await message.reply("<b>Please wait...</b>")
         file_id = data.split("-", 1)[1]
         msgs = BATCH_FILES.get(file_id)
         if not msgs:
             file = await client.download_media(file_id)
-            try:
-                with open(file) as f: msgs = json.loads(f.read())
+            try: 
+                with open(file) as file_data:
+                    msgs=json.loads(file_data.read())
             except:
-                await sts.edit("<b>❌ Critical Error: Failed to load batch data.</b>")
+                await sts.edit("FAILED")
                 return await client.send_message(LOG_CHANNEL, "UNABLE TO OPEN FILE.")
             os.remove(file)
             BATCH_FILES[file_id] = msgs
         for msg in msgs:
-            title, size = msg.get("title"), get_size(int(msg.get("size", 0)))
-            f_caption = BATCH_FILE_CAPTION.format(file_name=title or '', file_size=size or '', file_caption=msg.get("caption", "")) if BATCH_FILE_CAPTION else (msg.get("caption") or title)
+            title = msg.get("title")
+            size=get_size(int(msg.get("size", 0)))
+            f_caption=msg.get("caption", "")
+            if BATCH_FILE_CAPTION:
+                try:
+                    f_caption=BATCH_FILE_CAPTION.format(file_name= '' if title is None else title, file_size='' if size is None else size, file_caption='' if f_caption is None else f_caption)
+                except Exception as e:
+                    logger.exception(e)
+                    f_caption=f_caption
+            if f_caption is None:
+                f_caption = f"{title}"
             try:
-                await client.send_cached_media(chat_id=message.from_user.id, file_id=msg.get("file_id"), caption=f_caption, protect_content=msg.get('protect', False), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}')]]))
+                await client.send_cached_media(
+                    chat_id=message.from_user.id,
+                    file_id=msg.get("file_id"),
+                    caption=f_caption,
+                    protect_content=msg.get('protect', False),
+                    reply_markup=InlineKeyboardMarkup(
+                        [
+                         [
+                          InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}'),
+                         ]
+                        ]
+                    )
+                )
             except FloodWait as e:
                 await asyncio.sleep(e.x)
-                await client.send_cached_media(chat_id=message.from_user.id, file_id=msg.get("file_id"), caption=f_caption, protect_content=msg.get('protect', False), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}')]]))
-            except Exception: continue
-            await asyncio.sleep(1)
-        return await sts.delete()
+                logger.warning(f"Floodwait of {e.x} sec.")
+                await client.send_cached_media(
+                    chat_id=message.from_user.id,
+                    file_id=msg.get("file_id"),
+                    caption=f_caption,
+                    protect_content=msg.get('protect', False),
+                    reply_markup=InlineKeyboardMarkup(
+                        [
+                         [
+                          InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}'),
+                         ]
+                        ]
+                    )
+                )
+            except Exception as e:
+                logger.warning(e, exc_info=True)
+                continue
+            await asyncio.sleep(1) 
+        await sts.delete()
+        return
     
     elif data.split("-", 1)[0] == "DSTORE":
-        sts = await message.reply("<b>⏳ Retrieving store database items...</b>")
+        sts = await message.reply("<b>Please wait...</b>")
         b_string = data.split("-", 1)[1]
-        try: decoded = base64.urlsafe_b64decode(b_string + "=" * (-len(b_string) % 4)).decode("utf-8")
-        except: return await sts.edit("<b>❌ Error: The provided store link is invalid.</b>")
-        try: f_msg_id, l_msg_id, f_chat_id, protect = decoded.split("_", 3)
-        except: f_msg_id, l_msg_id, f_chat_id = decoded.split("_", 2); protect = "/pbatch" if PROTECT_CONTENT else "batch"
+        decoded = (base64.urlsafe_b64decode(b_string + "=" * (-len(b_string) % 4))).decode("ascii")
+        try:
+            f_msg_id, l_msg_id, f_chat_id, protect = decoded.split("_", 3)
+        except:
+            f_msg_id, l_msg_id, f_chat_id = decoded.split("_", 2)
+            protect = "/pbatch" if PROTECT_CONTENT else "batch"
+        diff = int(l_msg_id) - int(f_msg_id)
         async for msg in client.iter_messages(int(f_chat_id), int(l_msg_id), int(f_msg_id)):
             if msg.media:
                 media = getattr(msg, msg.media.value)
-                f_caption = BATCH_FILE_CAPTION.format(file_name=getattr(media, 'file_name', ''), file_size=getattr(media, 'file_size', ''), file_caption=getattr(msg, 'caption', '')) if BATCH_FILE_CAPTION else getattr(msg, 'caption', getattr(media, 'file_name', ''))
-                try: await msg.copy(message.chat.id, caption=f_caption, protect_content=(protect == "/pbatch"))
-                except FloodWait as e: await asyncio.sleep(e.x); await msg.copy(message.chat.id, caption=f_caption, protect_content=(protect == "/pbatch"))
-                except Exception: continue
-            elif not msg.empty:
-                try: await msg.copy(message.chat.id, protect_content=(protect == "/pbatch"))
-                except FloodWait as e: await asyncio.sleep(e.x); await msg.copy(message.chat.id, protect_content=(protect == "/pbatch"))
-                except Exception: continue
-            await asyncio.sleep(1)
+                if BATCH_FILE_CAPTION:
+                    try:
+                        f_caption=BATCH_FILE_CAPTION.format(file_name=getattr(media, 'file_name', ''), file_size=getattr(media, 'file_size', ''), file_caption=getattr(msg, 'caption', ''))
+                    except Exception as e:
+                        logger.exception(e)
+                        f_caption = getattr(msg, 'caption', '')
+                else:
+                    media = getattr(msg, msg.media.value)
+                    file_name = getattr(media, 'file_name', '')
+                    f_caption = getattr(msg, 'caption', file_name)
+                try:
+                    await msg.copy(message.chat.id, caption=f_caption, protect_content=True if protect == "/pbatch" else False)
+                except FloodWait as e:
+                    await asyncio.sleep(e.x)
+                    await msg.copy(message.chat.id, caption=f_caption, protect_content=True if protect == "/pbatch" else False)
+                except Exception as e:
+                    logger.exception(e)
+                    continue
+            elif msg.empty:
+                continue
+            else:
+                try:
+                    await msg.copy(message.chat.id, protect_content=True if protect == "/pbatch" else False)
+                except FloodWait as e:
+                    await asyncio.sleep(e.x)
+                    await msg.copy(message.chat.id, protect_content=True if protect == "/pbatch" else False)
+                except Exception as e:
+                    logger.exception(e)
+                    continue
+            await asyncio.sleep(1) 
         return await sts.delete()
 
-    files_ = await get_file_details(file_id)
-    if not files_:
-        try:
-            decoded_string = base64.urlsafe_b64decode(data + "=" * (-len(data) % 4)).decode("utf-8")
-            pre, file_id = decoded_string.split("_", 1)
-        except Exception:
-            return await message.reply('<b>❌ Error: Invalid or corrupted file link!</b>')
-        try:
-            msg = await client.send_cached_media(chat_id=message.from_user.id, file_id=file_id, protect_content=(pre == 'filep'), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}')]]))
-            file = getattr(msg, msg.media.value)
-            title = ' '.join(filter(lambda x: not x.startswith(('www.', '@')), file.file_name.split()))
-            await msg.edit_caption(CUSTOM_FILE_CAPTION.format(file_name=title, file_size=get_size(file.file_size), file_caption='') if CUSTOM_FILE_CAPTION else f"<b>{title}</b>")
-            return await message.reply_text("<b>⚠️ The original file was deleted!\n\nTap below to get it again:</b>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Get File Again", callback_data=f'delfile#{file_id}')]]))
-        except Exception: pass
-        return await message.reply('<b>❌ Error: No such file exists in our database.</b>')
-        
-    files = files_[0]
-    title = ' '.join(filter(lambda x: not x.startswith(('www.', '@')), files.file_name.split()))
-    
-    settings = await get_settings(message.chat.id)
-    if settings.get('is_shortlink', False):
-        f_caption = CUSTOM_FILE_CAPTION.format(file_name=title or '', file_size=get_size(files.file_size) or '', file_caption=files.caption or '') if CUSTOM_FILE_CAPTION else (files.caption or title)
-        short_link = await get_shortlink(message.chat.id, f"https://telegram.me/{temp.U_NAME}?start={data}")
-        await client.send_message(
-            chat_id=message.from_user.id,
-            text=f"<b>📂 {title}\n\n🔗 Click below link to get your file:</b>",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📥 Get File", url=short_link)], [InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}')]])
+    if data.startswith("sendfiles"):
+        chat_id = int("-" + file_id.split("-")[1])
+        userid = message.from_user.id if message.from_user else None
+        st = await client.get_chat_member(chat_id, userid)
+        if (
+                st.status != enums.ChatMemberStatus.ADMINISTRATOR
+                and st.status != enums.ChatMemberStatus.OWNER
+        ):
+            g = await get_shortlink(chat_id, f"https://telegram.me/{temp.U_NAME}?start=allfiles_{file_id}", True)
+        else:
+            g = await get_shortlink(chat_id, f"https://telegram.me/{temp.U_NAME}?start=allfiles_{file_id}", False)
+        k = await client.send_message(chat_id=message.from_user.id,text=f"<b>Get All Files in a Single Click!!!\n\n♻️ ʟɪɴᴋ ➠ {g}</b>", reply_markup=InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton('♻️ Download Link ♻️', url=g)
+                    ], [
+                        InlineKeyboardButton('❓ How To Download ❓', url=f'https://telegram.me/{TUTORIAL}')
+                    ]
+                ]
+            )
         )
-    else:
-        f_caption = CUSTOM_FILE_CAPTION.format(file_name=title or '', file_size=get_size(files.file_size) or '', file_caption=files.caption or '') if CUSTOM_FILE_CAPTION else (files.caption or title)
-        await client.send_cached_media(chat_id=message.from_user.id, file_id=file_id, caption=f_caption, protect_content=(pre == 'filep'), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}')]]))
+        await asyncio.sleep(900)
+        await k.edit("<b>Link Deleted!</b>")
+        return
+        
+    elif data.startswith("short"):
+        user = message.from_user.id
+        chat_id = temp.SHORT.get(user)
+        files_ = await get_file_details(file_id)
+        files = files_[0]
+        cleaned_file_name = f"{' '.join(filter(lambda x: not x.startswith('www.') and not x.startswith('@'), files.file_name.split()))}"
+        
+        try:
+            g = await get_shortlink(chat_id, f"https://telegram.me/{temp.U_NAME}?start=file_{file_id}", client=client)
+        except Exception:
+            buttons = [[
+                InlineKeyboardButton('📲 Report to Admin 📲', url=f'https://telegram.me/{SUPPORT_CHAT}')
+            ]]
+            await message.reply_text(
+                "<b>❌ Link generation failed. Please try again later.</b>",
+                reply_markup=InlineKeyboardMarkup(buttons)
+            )
+            return
+
+        k = await client.send_message(
+            chat_id=user,
+            text=f'<b>[ {get_size(files.file_size)} ] <a href="https://telegram.me/HEROFLiX">{cleaned_file_name}</a> \n\n📗 Download Link ➔ {g} {g}</b>',
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton('♻️ Download Link ♻️', url=g)
+                ], [
+                    InlineKeyboardButton('❓ How To Download ❓', url=f'https://telegram.me/{TUTORIAL}')
+                ], [
+                    InlineKeyboardButton('🌟 Direct Download 🌟', url="https://telegram.me/HeroFlixx/49")
+                ]
+            ])
+        )
+        await asyncio.sleep(900)
+        try:
+            await k.edit("<b>Link Deleted!</b>")
+        except Exception:
+            pass
+        return
+        
+    elif data.startswith("all"):
+        files = temp.GETALL.get(file_id)
+        if not files:
+            return await message.reply('<b><i>No such file exist.</b></i>')
+        filesarr = []
+        for file in files:
+            file_id = file.file_id
+            files_ = await get_file_details(file_id)
+            files1 = files_[0]
+            title = ' '.join(filter(lambda x: not x.startswith('www.') and not x.startswith('@'), files1.file_name.split()))
+            size=get_size(files1.file_size)
+            f_caption=files1.caption
+            if CUSTOM_FILE_CAPTION:
+                try:
+                    f_caption=CUSTOM_FILE_CAPTION.format(file_name= '' if title is None else title, file_size='' if size is None else size, file_caption='' if f_caption is None else f_caption)
+                except Exception as e:
+                    logger.exception(e)
+                    f_caption=f_caption
+            if f_caption is None:
+                f_caption = f"{' '.join(filter(lambda x: not x.startswith('www.') and not x.startswith('@'), files1.file_name.split()))}"
+
+            msg = await client.send_cached_media(
+                chat_id=message.from_user.id,
+                file_id=file_id,
+                caption=f_caption,
+                protect_content=True if pre == 'filep' else False,
+                reply_markup=InlineKeyboardMarkup(
+                    [
+                     [
+                      InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}'),
+                     ]
+                    ]
+                )
+            )
+            filesarr.append(msg)
+        await k.edit_text("<b>File Deleted!</b>")
+        return    
+        
+    elif data.startswith("files"):
+        user = message.from_user.id
+        if temp.SHORT.get(user) == None:
+            await message.reply_text(text="<b>Link Expired, Search Again in Group!</b>")
+            return
+        else:
+            chat_id = temp.SHORT.get(user)
+        settings = await get_settings(chat_id)
+        if settings['is_shortlink'] and user not in PREMIUM_USER:
+            files_ = await get_file_details(file_id)
+            files = files_[0]
+            
+            try:
+                g = await get_shortlink(chat_id, f"https://telegram.me/{temp.U_NAME}?start=file_{file_id}", client=client)
+            except Exception:
+                buttons = [[
+                    InlineKeyboardButton('📲 Report to Admin 📲', url=f'https://telegram.me/{SUPPORT_CHAT}')
+                ]]
+                await message.reply_text(
+                    "<b>❌ Link generation failed. Please try again later.</b>",
+                    reply_markup=InlineKeyboardMarkup(buttons)
+                )
+                return
+
+            cleaned_file_name = f"{' '.join(filter(lambda x: not x.startswith('www.') and not x.startswith('@'), files.file_name.split()))}"
+            k = await client.send_message(
+                chat_id=message.from_user.id,
+                text=f'<b>[ {get_size(files.file_size)} ] <a href="https://telegram.me/HEROFLiX">{cleaned_file_name}</a> \n\n📗 Download Link ➠ {g} {g}</b>',
+                reply_markup=InlineKeyboardMarkup([
+                    [
+                        InlineKeyboardButton('♻️ Download Link ♻️', url=g)
+                    ], [
+                        InlineKeyboardButton('❓ How To Download ❓', url=f"https://telegram.me/{TUTORIAL}")
+                    ], [
+                        InlineKeyboardButton('🌟 Direct Download 🌟', url="https://telegram.me/HeroFlixx/49")
+                    ]
+                ])
+            )
+            await asyncio.sleep(900)
+            try:
+                await k.edit_text("Link Deleted!")
+            except Exception:
+                pass
+            return
+        user = message.from_user.id
+    files_ = await get_file_details(file_id)            
+    if not files_:
+        pre, file_id = ((base64.urlsafe_b64decode(data + "=" * (-len(data) % 4))).decode("ascii")).split("_", 1)
+        try:
+            msg = await client.send_cached_media(
+                chat_id=message.from_user.id,
+                file_id=file_id,
+                protect_content=True if pre == 'filep' else False,
+                reply_markup=InlineKeyboardMarkup(
+                    [
+                     [
+                      InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}'),
+                     ]
+                    ]
+                )
+            )
+            filetype = msg.media
+            file = getattr(msg, filetype.value)
+            title = '' + ' '.join(filter(lambda x: not x.startswith('www.') and not x.startswith('@'), file.file_name.split()))
+            size=get_size(file.file_size)
+            f_caption = f"<code>{title}</code>"
+            if CUSTOM_FILE_CAPTION:
+                try:
+                    f_caption=CUSTOM_FILE_CAPTION.format(file_name= '' if title is None else title, file_size='' if size is None else size, file_caption='')
+                except:
+                    return
+            await msg.edit_caption(f_caption)
+            btn = [[
+                InlineKeyboardButton("Get File Again", callback_data=f'delfile#{file_id}')
+            ]]
+            await k.edit_text("<b>Your File/Video is deleted!!!\n\nClick below button to get your deleted file 👇</b>",reply_markup=InlineKeyboardMarkup(btn))
+            return
+        except:
+            pass
+        return await message.reply('No such file exist.')
+    files = files_[0]
+    title = '' + ' '.join(filter(lambda x: not x.startswith('www.') and not x.startswith('@'), files.file_name.split()))
+    size=get_size(files.file_size)
+    f_caption=files.caption
+    if CUSTOM_FILE_CAPTION:
+        try:
+            f_caption=CUSTOM_FILE_CAPTION.format(file_name= '' if title is None else title, file_size='' if size is None else size, file_caption='' if f_caption is None else f_caption)
+        except Exception as e:
+            logger.exception(e)
+            f_caption=f_caption
+    if f_caption is None:
+        f_caption = f"{' '.join(filter(lambda x: not x.startswith('www.') and not x.startswith('@'), files.file_name.split()))}"
+
+    msg = await client.send_cached_media(
+        chat_id=message.from_user.id,
+        file_id=file_id,
+        caption=f_caption,
+        protect_content=True if pre == 'filep' else False,
+        reply_markup=InlineKeyboardMarkup(
+            [
+             [
+              InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}'),
+             ]
+            ]
+        )
+    )
+    return  
 
 @Client.on_message(filters.command("myplan") & filters.private)
 async def check_my_plan(client, message):
@@ -309,7 +549,6 @@ async def send_proof_cb(client, callback: CallbackQuery):
 async def screenshot_handler(client, message):
     user_id = message.from_user.id
     
-    # Gate: Verify if user clicked "I Have Paid"
     is_waiting = False
     try:
         if hasattr(db, 'premium_pending'):
@@ -317,10 +556,8 @@ async def screenshot_handler(client, message):
             if doc and doc.get("status") == "waiting_screenshot":
                 is_waiting = True
                 await db.premium_pending.delete_one({"user_id": user_id})
-    except Exception: 
-        pass
+    except Exception: pass
 
-    # If they didn't click "I Have Paid", ignore the image completely
     if not is_waiting:
         return
 
@@ -335,12 +572,9 @@ async def screenshot_handler(client, message):
     fid = message.photo.file_id if message.photo else message.document.file_id
     for admin_id in ADMINS:
         try:
-            if message.photo: 
-                await client.send_photo(int(admin_id), fid, caption=text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
-            else: 
-                await client.send_document(int(admin_id), fid, caption=text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
-        except Exception: 
-            pass
+            if message.photo: await client.send_photo(int(admin_id), fid, caption=text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
+            else: await client.send_document(int(admin_id), fid, caption=text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
+        except Exception: pass
 
 @Client.on_callback_query(filters.regex("^min_app_"))
 async def admin_app_cb(client, callback: CallbackQuery):
@@ -352,8 +586,16 @@ async def admin_app_cb(client, callback: CallbackQuery):
         [InlineKeyboardButton("❌ Cancel", callback_data=f"min_rej_{uid}")]
     ])
     await callback.answer()
-    try: await callback.message.edit_caption("<b>💎 Select Plan Package</b>", reply_markup=kb, parse_mode=enums.ParseMode.HTML)
-    except Exception: await callback.message.edit_text("<b>💎 Select Plan Package</b>", reply_markup=kb, parse_mode=enums.ParseMode.HTML)
+    text = "<b>💎 Select Plan Package</b>"
+    try: 
+        await callback.message.edit_caption(text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
+    except MessageNotModified: 
+        pass
+    except Exception: 
+        try: 
+            await callback.message.edit_text(text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
+        except MessageNotModified: 
+            pass
 
 @Client.on_callback_query(filters.regex("^selplan_"))
 async def select_plan_cb(client, callback: CallbackQuery):
@@ -390,8 +632,15 @@ async def select_plan_cb(client, callback: CallbackQuery):
         f"• 📆 Expiry: <code>{fmt_date(exp)}</code></b>"
     )
     await callback.answer()
-    try: await callback.message.edit_caption(text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
-    except Exception: await callback.message.edit_text(text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
+    try: 
+        await callback.message.edit_caption(text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
+    except MessageNotModified: 
+        pass
+    except Exception: 
+        try: 
+            await callback.message.edit_text(text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
+        except MessageNotModified: 
+            pass
 
 @Client.on_callback_query(filters.regex("^confact_"))
 async def conf_act_cb(client, callback: CallbackQuery):
@@ -448,8 +697,16 @@ async def conf_act_cb(client, callback: CallbackQuery):
     
     log_title = "<b>🌟 Premium Renewed ✅</b>" if is_renewal else "<b>🌟 Premium Activated ✅</b>"
     await notify_admins(client, f"{log_title}\n\n• <b>👤 User:</b> <a href='tg://user?id={uid}'>{name}</a> (<code>{uid}</code>)\n• <b>💰 Plan:</b> <code>{plan} | ₹{price}</code>\n• <b>⌛ Expiry:</b> <code>{fmt_date(exp)}</code>")
-    try: await callback.message.edit_caption(f"<b>✅ Activated Successfully\n• 👤 User:</b> <a href='tg://user?id={uid}'>{name}</a> (<code>{uid}</code>)", reply_markup=None, parse_mode=enums.ParseMode.HTML)
-    except Exception: await callback.message.edit_text(f"<b>✅ Activated Successfully\n• 👤 User:</b> <a href='tg://user?id={uid}'>{name}</a> (<code>{uid}</code>)", reply_markup=None, parse_mode=enums.ParseMode.HTML)
+    success_text = f"<b>✅ Activated Successfully\n• 👤 User:</b> <a href='tg://user?id={uid}'>{name}</a> (<code>{uid}</code>)"
+    try: 
+        await callback.message.edit_caption(success_text, reply_markup=None, parse_mode=enums.ParseMode.HTML)
+    except MessageNotModified: 
+        pass
+    except Exception: 
+        try: 
+            await callback.message.edit_text(success_text, reply_markup=None, parse_mode=enums.ParseMode.HTML)
+        except MessageNotModified: 
+            pass
 
 @Client.on_chat_join_request()
 async def auto_accept(client, req: ChatJoinRequest):
@@ -498,8 +755,16 @@ async def admin_reject_cb(client, callback: CallbackQuery):
     try:
         await client.send_message(uid, "<b>⚠️ Payment Verification Failed.\n\nPlease pay and send a valid screenshot.</b>", parse_mode=enums.ParseMode.HTML)
     except Exception: pass
-    try: await callback.message.edit_caption("<b>❌ Status: REJECTED</b>", reply_markup=None, parse_mode=enums.ParseMode.HTML)
-    except Exception: await callback.message.edit_text("<b>❌ Status: REJECTED</b>", reply_markup=None, parse_mode=enums.ParseMode.HTML)
+    rej_text = "<b>❌ Status: REJECTED</b>"
+    try: 
+        await callback.message.edit_caption(rej_text, reply_markup=None, parse_mode=enums.ParseMode.HTML)
+    except MessageNotModified: 
+        pass
+    except Exception: 
+        try: 
+            await callback.message.edit_text(rej_text, reply_markup=None, parse_mode=enums.ParseMode.HTML)
+        except MessageNotModified: 
+            pass
 
 @Client.on_message(filters.command('channel') & filters.user(ADMINS))
 async def channel_info(bot, message):
@@ -547,7 +812,10 @@ async def delete_all_index_confirm(bot, callback):
     try:
         await Media.collection.drop()
         await callback.answer('Done')
-        await callback.message.edit('Successfully Deleted All Indexed Files.')
+        try: 
+            await callback.message.edit('Successfully Deleted All Indexed Files.')
+        except MessageNotModified: 
+            pass
     except PyMongoError as e: await callback.answer(f'Error: {e}')
 
 @Client.on_message(filters.command("deletefiles") & filters.user(ADMINS))
@@ -580,7 +848,10 @@ async def shortlink_cmd(bot, message):
 async def restart_bot(bot, message):
     msg = await message.reply("<b>🔄 RESTARTING...</b>")
     await asyncio.sleep(2)
-    await msg.edit("<b>✅ RESTARTED!</b>")
+    try: 
+        await msg.edit("<b>✅ RESTARTED!</b>")
+    except MessageNotModified: 
+        pass
     os.execl(sys.executable, sys.executable, *sys.argv)
 
 @Client.on_callback_query(filters.regex(r'^setgs'))
@@ -593,8 +864,12 @@ async def settings_callback(client, callback):
     
     await save_group_settings(chat_id, setting, not current)
     settings = await get_settings(chat_id)
-    try: await callback.message.edit_reply_markup(reply_markup=get_settings_keyboard(settings, chat_id))
-    except Exception: pass
+    try: 
+        await callback.message.edit_reply_markup(reply_markup=get_settings_keyboard(settings, chat_id))
+    except MessageNotModified: 
+        pass
+    except Exception: 
+        pass
 
 @Client.on_message(filters.command('settings'))
 async def settings(client, message):
