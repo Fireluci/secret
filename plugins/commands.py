@@ -95,10 +95,10 @@ async def approve_command(client, message):
         try: name = (await client.get_users(uid)).first_name or "User"
         except Exception: name = "User"
         
-        # Save session in separate premium_sessions collection
         try:
-            if hasattr(db, 'premium_sessions'):
-                await db.premium_sessions.update_one({"admin_id": message.from_user.id}, {"$set": {"target_user_id": uid}}, upsert=True)
+            col_ses = db.admin_approval_sessions if hasattr(db, 'admin_approval_sessions') else (db.db.admin_approval_sessions if hasattr(db, 'db') else db.get_collection('admin_approval_sessions'))
+            if col_ses is not None:
+                await col_ses.update_one({"admin_id": message.from_user.id}, {"$set": {"target_user_id": uid}}, upsert=True)
         except Exception: pass
 
         kb = InlineKeyboardMarkup([
@@ -170,8 +170,9 @@ async def start(client, message):
     
     if len(message.command) == 2 and message.command[1] == "i_paid":
         try:
-            if hasattr(db, 'premium_pending'):
-                await db.premium_pending.update_one({"user_id": message.from_user.id}, {"$set": {"status": "waiting_screenshot"}}, upsert=True)
+            col_intent = db.user_payment_intents if hasattr(db, 'user_payment_intents') else (db.db.user_payment_intents if hasattr(db, 'db') else db.get_collection('user_payment_intents'))
+            if col_intent is not None:
+                await col_intent.update_one({"user_id": message.from_user.id}, {"$set": {"action": "i_paid_clicked", "timestamp": datetime.utcnow()}}, upsert=True)
         except Exception: pass
         return await message.reply_text("<b>📸 Send Payment Proof!\n\nPlease upload your transaction screenshot to verify!</b>", parse_mode=enums.ParseMode.HTML)
 
@@ -252,7 +253,7 @@ async def start(client, message):
             f_msg_id, l_msg_id, f_chat_id = decoded.split("_", 2)
             protect = "/pbatch" if PROTECT_CONTENT else "batch"
         diff = int(l_msg_id) - int(f_msg_id)
-        async for msg in client.iter_messages(int(f_chat_id), int(l_msg_id), int(f_msg_id)):
+        async for msg in client.iter_messages(int(f_chat_id), int(l_msg_id), int(f_chat_id)):
             if msg.media:
                 media = getattr(msg, msg.media.value)
                 if BATCH_FILE_CAPTION:
@@ -543,8 +544,9 @@ async def premium_menu(client, update):
 @Client.on_callback_query(filters.regex("^minimal_send_proof$"))
 async def send_proof_cb(client, callback: CallbackQuery):
     try:
-        if hasattr(db, 'premium_pending'):
-            await db.premium_pending.update_one({"user_id": callback.from_user.id}, {"$set": {"status": "waiting_screenshot"}}, upsert=True)
+        col_intent = db.user_payment_intents if hasattr(db, 'user_payment_intents') else (db.db.user_payment_intents if hasattr(db, 'db') else db.get_collection('user_payment_intents'))
+        if col_intent is not None:
+            await col_intent.update_one({"user_id": callback.from_user.id}, {"$set": {"action": "i_paid_clicked", "timestamp": datetime.utcnow()}}, upsert=True)
     except Exception: pass
     await callback.answer()
     try: await callback.message.delete()
@@ -554,17 +556,18 @@ async def send_proof_cb(client, callback: CallbackQuery):
 @Client.on_message(filters.private & (filters.photo | filters.document) & ~filters.command(["start", "premium"]))
 async def screenshot_handler(client, message):
     user_id = message.from_user.id
+    is_valid_intent = False
     
-    is_waiting = False
     try:
-        if hasattr(db, 'premium_pending'):
-            doc = await db.premium_pending.find_one({"user_id": user_id})
-            if doc and doc.get("status") == "waiting_screenshot":
-                is_waiting = True
-                await db.premium_pending.delete_one({"user_id": user_id})
+        col_intent = db.user_payment_intents if hasattr(db, 'user_payment_intents') else (db.db.user_payment_intents if hasattr(db, 'db') else db.get_collection('user_payment_intents'))
+        if col_intent is not None:
+            doc = await col_intent.find_one({"user_id": user_id})
+            if doc:
+                is_valid_intent = True
+                await col_intent.delete_one({"user_id": user_id})
     except Exception: pass
 
-    if not is_waiting:
+    if not is_valid_intent:
         return
 
     await message.reply_text("<b>✅ Your screenshot has been submitted for verification, please wait!</b>", parse_mode=enums.ParseMode.HTML)
@@ -587,10 +590,10 @@ async def admin_app_cb(client, callback: CallbackQuery):
     if str(callback.from_user.id) not in map(str, ADMINS): return await callback.answer("Unauthorized.", show_alert=True)
     uid = int(callback.data.split("_")[2])
     
-    # Store session in separate premium_sessions collection
     try:
-        if hasattr(db, 'premium_sessions'):
-            await db.premium_sessions.update_one({"admin_id": callback.from_user.id}, {"$set": {"target_user_id": uid}}, upsert=True)
+        col_ses = db.admin_approval_sessions if hasattr(db, 'admin_approval_sessions') else (db.db.admin_approval_sessions if hasattr(db, 'db') else db.get_collection('admin_approval_sessions'))
+        if col_ses is not None:
+            await col_ses.update_one({"admin_id": callback.from_user.id}, {"$set": {"target_user_id": uid}}, upsert=True)
     except Exception: pass
 
     kb = InlineKeyboardMarkup([
@@ -693,10 +696,10 @@ async def conf_act_cb(client, callback: CallbackQuery):
     data = {"user_id": uid, "username": name, "plan": plan, "price": price, "purchased_at": now, "expires_at": exp, "expiry_date": exp, "active": True, "welcomed": joined, "reminders": {"30_sec": False}}
     if col: await col.update_one({"user_id": uid}, {"$set": data}, upsert=True)
     
-    # Cleanup session state
     try:
-        if hasattr(db, 'premium_sessions'):
-            await db.premium_sessions.delete_one({"admin_id": callback.from_user.id})
+        col_ses = db.admin_approval_sessions if hasattr(db, 'admin_approval_sessions') else (db.db.admin_approval_sessions if hasattr(db, 'db') else db.get_collection('admin_approval_sessions'))
+        if col_ses is not None:
+            await col_ses.delete_one({"admin_id": callback.from_user.id})
     except Exception: pass
 
     link = PREMIUM_PERMANENT_LINK or "https://t.me/your_group_link"
@@ -768,8 +771,10 @@ async def admin_reject_cb(client, callback: CallbackQuery):
     if str(callback.from_user.id) not in map(str, ADMINS): return await callback.answer("Unauthorized.", show_alert=True)
     uid = int(callback.data.split("_")[-1])
     try:
-        if hasattr(db, 'premium_pending'): await db.premium_pending.delete_one({"user_id": uid})
-        if hasattr(db, 'premium_sessions'): await db.premium_sessions.delete_one({"admin_id": callback.from_user.id})
+        col_intent = db.user_payment_intents if hasattr(db, 'user_payment_intents') else (db.db.user_payment_intents if hasattr(db, 'db') else db.get_collection('user_payment_intents'))
+        col_ses = db.admin_approval_sessions if hasattr(db, 'admin_approval_sessions') else (db.db.admin_approval_sessions if hasattr(db, 'db') else db.get_collection('admin_approval_sessions'))
+        if col_intent is not None: await col_intent.delete_one({"user_id": uid})
+        if col_ses is not None: await col_ses.delete_one({"admin_id": callback.from_user.id})
     except Exception: pass
     await callback.answer("Rejected.")
     try:
