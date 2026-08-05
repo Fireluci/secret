@@ -12,7 +12,6 @@ from utils import get_size, is_subscribed, search_gagala, temp, get_tutorial, se
 from database.users_chats_db import db
 from database.connections_mdb import active_connection, all_connections, delete_connection, if_active, make_active, make_inactive
 from database.ia_filterdb import Media, get_file_details, get_search_results, get_bad_files
-from database.filters_mdb import del_all, find_filter, get_filters
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.ERROR)
@@ -56,13 +55,12 @@ async def handle_auto_delete(message_obj):
 
 @Client.on_message(filters.group & filters.text & filters.incoming)
 async def give_filter(client, message):
-    if not await manual_filters(client, message):
-        await auto_filter(client, message)
+    await auto_filter(client, message)
 
 @Client.on_message(filters.private & filters.text & filters.incoming)
 async def pm_text(bot, message):
     content = message.text
-    if content.startswith("/") or content.startswith("#") or content.startswith("file") or content.startswith("short") or message.from_user.id in ADMINS:
+    if content.startswith("/") or content.startswith("#") or content.startswith("file") or message.from_user.id in ADMINS:
         return
     await message.reply_text(
         text="<b>🌀 Unlimited Movies, Series, Anime\n🔆 New Releases Upload Same Day\n♻️ 24x7 Service 📆 Daily Updates</b>",
@@ -94,14 +92,15 @@ async def advantage_spoll_choker(bot, query):
         except: return await query.answer("❗Invalid Option", show_alert=True)
         try: await query.answer("Checking, Please Wait ♻️\n\n[ Don't Spam – Just Wait! ]", show_alert=True)
         except: pass
-        if await manual_filters(bot, query.message, text=movie) is False:
-            files, offset, total_results = await get_search_results(query.message.chat.id, movie, offset=0, filter=True)
-            if files: await auto_filter(bot, query, (movie, files, offset, total_results))
-            else:
-                try:
-                    msg = await query.message.edit_text(text=script.NO_RESULTS, disable_web_page_preview=True)
-                    asyncio.create_task(handle_auto_delete(msg))
-                except: pass
+        
+        files, offset, total_results = await get_search_results(query.message.chat.id, movie, offset=0, filter=True)
+        if files: 
+            await auto_filter(bot, query, (movie, files, offset, total_results))
+        else:
+            try:
+                msg = await query.message.edit_text(text=script.NO_RESULTS, disable_web_page_preview=True)
+                asyncio.create_task(handle_auto_delete(msg))
+            except: pass
 
 @Client.on_callback_query()
 async def cb_handler(client: Client, query: CallbackQuery):
@@ -112,92 +111,6 @@ async def cb_handler(client: Client, query: CallbackQuery):
     if query.data == "close_data":
         await query.message.delete()
         return await query.answer("Closed !")
-    elif query.data == "gfiltersdeleteallconfirm":
-        await del_allg(query.message, 'gfilters')
-        return await query.answer("Done !", show_alert=True)
-    elif query.data == "gfiltersdeleteallcancel":
-        try: await query.message.reply_to_message.delete()
-        except: pass
-        await query.message.delete()
-        return await query.answer("Process Cancelled !", show_alert=True)
-    elif query.data == "delallconfirm":
-        if chat_type == enums.ChatType.PRIVATE:
-            grpid = await active_connection(str(user_id))
-            if grpid is not None:
-                try:
-                    chat = await client.get_chat(grpid)
-                    title, grp_id = chat.title, grpid
-                except:
-                    await query.message.edit_text("Mᴀᴋᴇ sᴜʀᴇ I'ᴍ ᴘʀᴇsᴇɴᴛ ɪɴ ʏᴏᴜʀ ɢʀᴏᴜᴘ!!", quote=True)
-                    return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
-            else:
-                await query.message.edit_text("I'ᴍ ɴᴏᴛ ᴄᴏɴɴᴇᴄᴛᴇᴅ ᴛᴏ ᴀɴʏ ɢʀᴏᴜᴘs!\nCʜᴇᴄᴋ /connections ᴏʀ ᴄᴏɴɴᴇᴄᴛ ᴛᴏ ᴀɴʏ ɢʀᴏᴜᴘs", quote=True)
-                return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
-        elif chat_type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
-            grp_id, title = query.message.chat.id, query.message.chat.title
-        else: return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
-
-        st = await client.get_chat_member(grp_id, user_id)
-        if (st.status == enums.ChatMemberStatus.OWNER) or (str(user_id) in ADMINS):
-            await del_all(query.message, grp_id, title)
-            return await query.answer("Successfully deleted all filters!", show_alert=True)
-        else: return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
-    elif query.data == "delallcancel":
-        if chat_type == enums.ChatType.PRIVATE:
-            try: await query.message.reply_to_message.delete()
-            except: pass
-            await query.message.delete()
-            return await query.answer("Cancelled !", show_alert=True)
-        elif chat_type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
-            st = await client.get_chat_member(query.message.chat.id, user_id)
-            if (st.status == enums.ChatMemberStatus.OWNER) or (str(user_id) in ADMINS):
-                await query.message.delete()
-                try: await query.message.reply_to_message.delete()
-                except: pass
-                return await query.answer("Cancelled !", show_alert=True)
-            else: return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
-    elif "groupcb" in query.data:
-        try: _, group_id, act = query.data.split(":")
-        except: return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
-        hr = await client.get_chat(int(group_id))
-        stat, cb = ("DISCONNECT", "disconnect") if act else ("CONNECT", "connectcb")
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(stat, callback_data=f"{cb}:{group_id}"), InlineKeyboardButton("DELETE", callback_data=f"deletecb:{group_id}")], [InlineKeyboardButton("BACK", callback_data="backcb")]])
-        await query.message.edit_text(f"Gʀᴏᴜᴘ Nᴀᴍᴇ : **{hr.title}**\nGʀᴏᴜᴘ ID : `{group_id}`", reply_markup=keyboard, parse_mode=enums.ParseMode.MARKDOWN)
-        return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
-    elif "connectcb" in query.data or "disconnect" in query.data:
-        try: _, group_id = query.data.split(":")
-        except: return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
-        hr = await client.get_chat(int(group_id))
-        if "connectcb" in query.data:
-            mkact = await make_active(str(user_id), str(group_id))
-            msg = f"Cᴏɴɴᴇᴄᴛᴇᴅ ᴛᴏ **{hr.title}**" if mkact else 'Sᴏᴍᴇ ᴇʀʀᴏʀ ᴏᴄᴄᴜʀʀᴇᴅ!!'
-        else:
-            mkinact = await make_inactive(str(user_id))
-            msg = f"Dɪsᴄᴏɴɴᴇᴄᴛᴇᴅ ғʀᴏᴍ **{hr.title}**" if mkinact else 'Sᴏᴍᴇ ᴇʀʀᴏʀ ᴏᴄᴄᴜʀʀᴇᴅ!!'
-        await query.message.edit_text(msg, parse_mode=enums.ParseMode.MARKDOWN)
-        return await query.answer(msg, show_alert=True)
-    elif "deletecb" in query.data:
-        try: _, group_id = query.data.split(":")
-        except: return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
-        delcon = await delete_connection(str(user_id), str(group_id))
-        msg = "Sᴜᴄᴄᴇssғᴜʟʟʏ ᴅᴇʟᴇᴛᴇᴅ ᴄᴏɴɴᴇᴄᴛɪᴏɴ !" if delcon else 'Sᴏᴍᴇ ᴇʀʀᴏʀ ᴏᴄᴄᴜʀʀᴇᴅ!!'
-        await query.message.edit_text(msg, parse_mode=enums.ParseMode.MARKDOWN)
-        return await query.answer(msg, show_alert=True)
-    elif query.data == "backcb":
-        groupids = await all_connections(str(user_id))
-        if not groupids:
-            await query.message.edit_text("Tʜᴇʀᴇ ᴀʀᴇ ɴᴏ ᴀᴄᴛɪᴠᴇ ᴄᴏɴɴᴇᴄᴛɪᴏns!! Cᴏɴɴᴇᴄᴛ ᴛᴏ sᴏᴍᴇ ɢʀᴏᴜᴘs ғɪʀsᴛ.")
-            return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
-        buttons = []
-        for groupid in groupids:
-            try:
-                ttl = await client.get_chat(int(groupid))
-                active = await if_active(str(user_id), str(groupid))
-                buttons.append([InlineKeyboardButton(text=f"{ttl.title}{' - ACTIVE' if active else ''}", callback_data=f"groupcb:{groupid}:{' - ACTIVE' if active else ''}")])
-            except: pass
-        if buttons:
-            await query.message.edit_text("Yᴏᴜʀ ᴄᴏɴɴᴇᴄᴛᴇᴅ ɢʀᴏᴜᴘ ᴅᴇᴛᴀɪʟs ;\n\n", reply_markup=InlineKeyboardMarkup(buttons))
-            return await query.answer()
     elif query.data == "pages":
         return await query.answer("You are on the page navigation.", show_alert=True)
     elif query.data.startswith("killfilesdq"):
@@ -245,7 +158,6 @@ async def auto_filter(client, msg, spoll=False):
         search, files, offset, total_results = spoll
         await msg.message.delete()
 
-    # Direct delivery: send files straight to the chat as text links / direct media references
     cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n</b>"
     for file in files:
         f_size = get_size(file.file_size)
@@ -265,7 +177,6 @@ async def advantage_spell_chok(client, msg):
     query = re.sub(r"\s+", " ", remove_words(mv_rqst)).strip() + "movie"
     g_s = await search_gagala(query) + await search_gagala(msg.text)
     if not g_s:
-        if NO_RESULTS_MSG: await client.send_message(chat_id=LOG_CHANNEL, text=script.NORSLTS.format(reqstr.id, reqstr.mention, mv_rqst))
         k = await msg.reply(script.NO_RESULTS, disable_web_page_preview=True)
         asyncio.create_task(handle_auto_delete(k))
         return
@@ -278,7 +189,6 @@ async def advantage_spell_chok(client, msg):
     gs_parsed = list(dict.fromkeys(filter(None, gs_parsed)))[:3]
     movielist = list(dict.fromkeys(filter(None, [re.sub(r'(\-|\(|\)|_)', '', i, flags=re.IGNORECASE).strip() for i in gs_parsed])))
     if not movielist:
-        if NO_RESULTS_MSG: await client.send_message(chat_id=LOG_CHANNEL, text=script.NORSLTS.format(reqstr.id, reqstr.mention, mv_rqst))
         k = await msg.reply(script.NO_RESULTS, disable_web_page_preview=True)
         asyncio.create_task(handle_auto_delete(k))
         return
@@ -287,24 +197,3 @@ async def advantage_spell_chok(client, msg):
     btn.append([InlineKeyboardButton("×××× ⟨ Close ⟩ ××××", callback_data="close_data")])
     k = await msg.reply("<b>🎬 Select Your Pick ↡</b>", reply_markup=InlineKeyboardMarkup(btn))
     asyncio.create_task(handle_auto_delete(k))
-
-async def manual_filters(client, message, text=False):
-    group_id = message.chat.id
-    name = text or message.text
-    reply_id = message.reply_to_message.id if message.reply_to_message else message.id
-    keywords = await get_filters('filters')
-    for keyword in reversed(sorted(keywords, key=len)):
-        if re.search(r"( |^|[^\w])" + re.escape(keyword) + r"( |$|[^\w])", name, flags=re.IGNORECASE):
-            reply_text, btn, alert, fileid = await find_filter('filters', keyword)
-            if reply_text: reply_text = reply_text.replace("\\n", "\n").replace("\\t", "\t")
-            if btn is not None:
-                try:
-                    button = ast.literal_eval(btn) if btn != "[]" else []
-                    if fileid == "None":
-                        joelkb = await client.send_message(group_id, reply_text, disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup(button) if button else None, protect_content=False, reply_to_message_id=reply_id)
-                    else:
-                        joelkb = await client.send_cached_media(group_id, fileid, caption=reply_text or "", reply_markup=InlineKeyboardMarkup(button) if button else None, protect_content=False, reply_to_message_id=reply_id)
-                    asyncio.create_task(handle_auto_delete(joelkb))
-                except Exception as e: logger.exception(e)
-                break
-    else: return False
