@@ -226,27 +226,42 @@ async def auto_filter(client, msg, spoll=False):
 async def advantage_spell_chok(client, msg):
     mv_rqst = msg.text
     reqstr1 = msg.from_user.id if msg.from_user else None
-    if not reqstr1: return
-    try: reqstr = await client.get_users(reqstr1)
-    except: return await msg.reply("❌ Unable to fetch user.")
-    query = re.sub(r"\s+", " ", remove_words(mv_rqst)).strip() + "movie"
-    g_s = await search_gagala(query) + await search_gagala(msg.text)
+    if not reqstr1: 
+        return
+    try: 
+        reqstr = await client.get_users(reqstr1)
+    except: 
+        return await msg.reply("❌ Unable to fetch user.")
+
+    # 1. Fixed: Added a proper space before "movie" and cleaned the query once
+    cleaned_query = re.sub(r"\s+", " ", remove_words(mv_rqst)).strip()
+    query = f"{cleaned_query} movie"
+
+    # 2. Fixed: Call search_gagala only once to cut network latency in half
+    g_s = await search_gagala(query)
     if not g_s:
         k = await msg.reply(script.NO_RESULTS, disable_web_page_preview=True)
         asyncio.create_task(handle_auto_delete(k))
         return
+
     gs = list(filter(re.compile(r".*(imdb|wikipedia).*", re.IGNORECASE).search, g_s))
     gs_parsed = list(dict.fromkeys(filter(None, [re.sub(r'\b(imdb|wikipedia|reviews|full|all|episode(s)?|film|movie|tv\s*series|television\s*series|web\s*series|tv\s*show|show|series)\b|[\(\)\-]', ' ', i, flags=re.IGNORECASE).strip() for i in gs])))
+    
     if not gs_parsed:
         for mv in g_s:
             match = re.compile(r"watch\s+([a-zA-Z0-9_\s\-\(\)]+)", re.IGNORECASE).search(mv)
-            if match: gs_parsed.append(match.group(1).strip())
-    gs_parsed = list(dict.fromkeys(filter(None, gs_parsed)))[:3]
+            if match: 
+                gs_parsed.append(match.group(1).strip())
+                
+    # 3. Fixed: Increased the limit from 3 to 6 so users don't miss options further down the list
+    gs_parsed = list(dict.fromkeys(filter(None, gs_parsed)))[:6]
+    
     movielist = list(dict.fromkeys(filter(None, [re.sub(r'(\-|\(|\)|_)', '', i, flags=re.IGNORECASE).strip() for i in gs_parsed])))
     if not movielist:
         k = await msg.reply(script.NO_RESULTS, disable_web_page_preview=True)
         asyncio.create_task(handle_auto_delete(k))
         return
+        
     SPELL_CHECK[msg.id] = movielist
     btn = [[InlineKeyboardButton(text=movie, callback_data=f"spolling#{reqstr1}#{idx}")] for idx, movie in enumerate(movielist)]
     btn.append([InlineKeyboardButton("×××× ⟨ Close ⟩ ××××", callback_data="close_data")])
