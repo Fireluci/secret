@@ -180,7 +180,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
                 await query.message.edit_text(f"<b>Process Completed for file deletion !\n\nSuccessfully deleted {deleted} files from database for your query {keyword}.</b>")
         return await query.answer("Deletion process completed!", show_alert=True)
 
-async def auto_filter(client, msg, spoll=False):
+async def auto_filter(client, msg, spoll=False, is_spellcheck=False):
     if not spoll:
         message = msg
         if message.text.startswith("/") or re.findall("((^\/|^,|^!|^\.|^[\U0001F900-\U000E007F]).*)", message.text) or len(message.text) >= 100:
@@ -193,13 +193,27 @@ async def auto_filter(client, msg, spoll=False):
         search = re.sub(r"so(\d+)", lambda x: f"s{x.group(1).zfill(2)}", search, flags=re.IGNORECASE)
         for lang, code in [("english", "eng"), ("hindi", "hin"), ("tamil", "tam"), ("telugu", "tel"), ("kannada", "kan"), ("malayalam", "mal")]:
             search = search.replace(lang, code)
-        files, offset, total_results = await get_search_results(message.chat.id, search, offset=0, filter=True)
+        
+        # Explicitly set initial offset to integer 0 here
+        offset = 0
+        files, offset, total_results = await get_search_results(message.chat.id, search, offset=offset, filter=True)
         if not files:
             return await advantage_spell_chok(client, msg)
     else:
-        message = msg.message.reply_to_message
-        search, files, offset, total_results = spoll
-        await msg.message.delete()
+        if is_spellcheck:
+            message = msg.message.reply_to_message
+            search, files, offset, total_results = spoll
+            await msg.message.delete()
+        else:
+            message = msg.message.reply_to_message
+            search, files, offset, total_results = spoll
+            await msg.message.delete()
+
+    # Safely cast offset to an int right before pagination math
+    try:
+        offset = int(offset)
+    except (TypeError, ValueError):
+        offset = 0
 
     cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n</b>"
     for file in files:
@@ -207,21 +221,27 @@ async def auto_filter(client, msg, spoll=False):
         f_name = escape(file.file_name)
         cap += f"<b>🍿 <a href='https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}'>[{f_size}] {f_name}</a></b>\n\n"
 
-    req = message.from_user.id if message.from_user else 0
-    query_str = search.replace(" ", "_")
+    req = message.from_user.id if (message and message.from_user) else (msg.from_user.id if hasattr(msg, 'from_user') else 0)
+    
+    cache_id = str(random.randint(10000, 99999))
+    QUERY_CACHE[cache_id] = search
+
     btn = []
     current_page = math.floor(offset / 10) + 1
     total_pages = math.ceil(total_results / 10)
 
     if offset > 0:
-        btn.append(InlineKeyboardButton("⏪ Back", callback_data=f"next_{req}_{offset - 10}_{req}_{query_str}"))
+        btn.append(InlineKeyboardButton("⏪ Back", callback_data=f"next_{cache_id}_{offset - 10}_{req}"))
     btn.append(InlineKeyboardButton(f"📁 Pages {current_page} / {total_pages}", callback_data="pages"))
     if offset + len(files) < total_results:
-        btn.append(InlineKeyboardButton("Next ⏩", callback_data=f"next_{req}_{offset + 10}_{req}_{query_str}"))
+        btn.append(InlineKeyboardButton("Next ⏩", callback_data=f"next_{cache_id}_{offset + 10}_{req}"))
 
-    sent_msg = await message.reply_text(text=cap, disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup([btn]))
+    target_chat = msg.message.chat.id if hasattr(msg, 'message') else msg.chat.id
+    sent_msg = await client.send_message(chat_id=target_chat, text=cap, disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup([btn]))
+    
     asyncio.create_task(handle_auto_delete(sent_msg))
-    asyncio.create_task(handle_auto_delete(message))
+    if not spoll and message:
+        asyncio.create_task(handle_auto_delete(message))
 
 async def advantage_spell_chok(client, msg):
     mv_rqst = msg.text
@@ -233,12 +253,17 @@ async def advantage_spell_chok(client, msg):
     except: 
         return await msg.reply("❌ Unable to fetch user.")
 
-    # 1. Fixed: Added a proper space before "movie" and cleaned the query once
     cleaned_query = re.sub(r"\s+", " ", remove_words(mv_rqst)).strip()
-    query = f"{cleaned_query} movie"
+    query_raw = cleaned_query
+    query_movie = f"{cleaned_query} movie"
 
-    # 2. Fixed: Call search_gagala only once to cut network latency in half
-    g_s = await search_gagala(query)
+    # Run both searches simultaneously in parallel to ensure maximum matching coverage
+    results_raw, results_movie = await asyncio.gather(
+        search_gagala(query_raw),
+        search_gagala(query_movie)
+    )
+    g_s = list(dict.fromkeys(results_raw + results_movie))
+
     if not g_s:
         k = await msg.reply(script.NO_RESULTS, disable_web_page_preview=True)
         asyncio.create_task(handle_auto_delete(k))
@@ -253,7 +278,6 @@ async def advantage_spell_chok(client, msg):
             if match: 
                 gs_parsed.append(match.group(1).strip())
                 
-    # 3. Fixed: Increased the limit from 3 to 6 so users don't miss options further down the list
     gs_parsed = list(dict.fromkeys(filter(None, gs_parsed)))[:6]
     
     movielist = list(dict.fromkeys(filter(None, [re.sub(r'(\-|\(|\)|_)', '', i, flags=re.IGNORECASE).strip() for i in gs_parsed])))
