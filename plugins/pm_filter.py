@@ -14,9 +14,9 @@ from database.ia_filterdb import Media, get_file_details, get_search_results, ge
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.ERROR)
-
-lock = asyncio.Lock()
 SPELL_CHECK = {}
+lock = asyncio.Lock()
+
 GLOBAL_SEM = asyncio.Semaphore(12)
 USER_COOLDOWN = {}
 
