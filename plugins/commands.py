@@ -95,6 +95,12 @@ async def approve_command(client, message):
         try: name = (await client.get_users(uid)).first_name or "User"
         except Exception: name = "User"
         
+        # Save session in separate premium_sessions collection
+        try:
+            if hasattr(db, 'premium_sessions'):
+                await db.premium_sessions.update_one({"admin_id": message.from_user.id}, {"$set": {"target_user_id": uid}}, upsert=True)
+        except Exception: pass
+
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton("2 Min Test - ₹40", callback_data=f"selplan_{uid}_2m_40"), InlineKeyboardButton("5 Min Test - ₹80", callback_data=f"selplan_{uid}_5m_80")],
             [InlineKeyboardButton("6 Months - ₹240", callback_data=f"selplan_{uid}_180d_240"), InlineKeyboardButton("1 Year - ₹480", callback_data=f"selplan_{uid}_365d_480")],
@@ -410,7 +416,7 @@ async def start(client, message):
             cleaned_file_name = f"{' '.join(filter(lambda x: not x.startswith('www.') and not x.startswith('@'), files.file_name.split()))}"
             k = await client.send_message(
                 chat_id=message.from_user.id,
-                text=f'<b>[ {get_size(files.file_size)} ] <a href="https://telegram.me/HEROFLiX">{cleaned_file_name}</a> \n\n📗 Download Link ➠ {g} {g}</b>',
+                text=f'<b>[ {get_size(files.file_size)} ] <a href="https://telegram.me/HEROFLiX">{cleaned_file_name}</a> \n\n📗 Download Link ➔ {g} {g}</b>',
                 reply_markup=InlineKeyboardMarkup([
                     [
                         InlineKeyboardButton('♻️ Download Link ♻️', url=g)
@@ -580,6 +586,13 @@ async def screenshot_handler(client, message):
 async def admin_app_cb(client, callback: CallbackQuery):
     if str(callback.from_user.id) not in map(str, ADMINS): return await callback.answer("Unauthorized.", show_alert=True)
     uid = int(callback.data.split("_")[2])
+    
+    # Store session in separate premium_sessions collection
+    try:
+        if hasattr(db, 'premium_sessions'):
+            await db.premium_sessions.update_one({"admin_id": callback.from_user.id}, {"$set": {"target_user_id": uid}}, upsert=True)
+    except Exception: pass
+
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("2 Min Test - ₹40", callback_data=f"selplan_{uid}_2m_40"), InlineKeyboardButton("5 Min Test - ₹80", callback_data=f"selplan_{uid}_5m_80")],
         [InlineKeyboardButton("6 Months - ₹240", callback_data=f"selplan_{uid}_180d_240"), InlineKeyboardButton("1 Year - ₹480", callback_data=f"selplan_{uid}_365d_480")],
@@ -680,6 +693,12 @@ async def conf_act_cb(client, callback: CallbackQuery):
     data = {"user_id": uid, "username": name, "plan": plan, "price": price, "purchased_at": now, "expires_at": exp, "expiry_date": exp, "active": True, "welcomed": joined, "reminders": {"30_sec": False}}
     if col: await col.update_one({"user_id": uid}, {"$set": data}, upsert=True)
     
+    # Cleanup session state
+    try:
+        if hasattr(db, 'premium_sessions'):
+            await db.premium_sessions.delete_one({"admin_id": callback.from_user.id})
+    except Exception: pass
+
     link = PREMIUM_PERMANENT_LINK or "https://t.me/your_group_link"
     title_msg = "<b>🌟 Premium Membership Renewed ✅</b>" if is_renewal else "<b>🌟 Premium Membership Active ✅</b>"
     try:
@@ -750,6 +769,7 @@ async def admin_reject_cb(client, callback: CallbackQuery):
     uid = int(callback.data.split("_")[-1])
     try:
         if hasattr(db, 'premium_pending'): await db.premium_pending.delete_one({"user_id": uid})
+        if hasattr(db, 'premium_sessions'): await db.premium_sessions.delete_one({"admin_id": callback.from_user.id})
     except Exception: pass
     await callback.answer("Rejected.")
     try:
@@ -765,6 +785,17 @@ async def admin_reject_cb(client, callback: CallbackQuery):
             await callback.message.edit_text(rej_text, reply_markup=None, parse_mode=enums.ParseMode.HTML)
         except MessageNotModified: 
             pass
+
+@Client.on_message(filters.private & filters.text & filters.incoming & ~filters.command(["start", "premium", "myplan", "approve", "revoke", "premiums", "channel", "logs", "delete", "deleteall", "deletefiles", "shortlink", "restart", "settings"]))
+async def pm_text(bot, message):
+    content = message.text
+    user_id = message.from_user.id
+    if content.startswith("/") or content.startswith("#"): return  # ignore commands and hashtags
+    if str(user_id) in map(str, ADMINS): return # ignore admins
+    await message.reply_text(
+        text="<b>🌀 Unlimited Movies, Series, Anime\n🔆 New Releases Upload Same Day\n♻️ 24x7 Service 📆 Daily Updates</b>",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌟 Paid (No Ads)", url="https://telegram.me/HeroFlixx/49"), InlineKeyboardButton("🍿 Free (With Ads)", url="https://telegram.me/addlist/X5k2lnJLIGAyZjQ1")]])
+    )
 
 @Client.on_message(filters.command('channel') & filters.user(ADMINS))
 async def channel_info(bot, message):
