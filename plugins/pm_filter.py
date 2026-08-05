@@ -319,7 +319,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
             alert = ast.literal_eval(alerts)[int(i)].replace("\\n", "\n").replace("\\t", "\t")
             return await query.answer(alert, show_alert=True)
         return await query.answer("Alert displayed!", show_alert=True)
-elif query.data.startswith("file"):
+    elif query.data.startswith("file"):
         clicked = query.from_user.id
         try: typed = query.message.reply_to_message.from_user.id
         except: typed = clicked
