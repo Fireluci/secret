@@ -14,6 +14,7 @@ from database.ia_filterdb import Media, get_file_details, get_search_results, ge
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.ERROR)
+
 SPELL_CHECK = {}
 lock = asyncio.Lock()
 
@@ -77,6 +78,7 @@ async def advantage_spoll_choker(bot, query):
         if movie_ == "close_spellcheck":
             await query.message.delete()
             return await query.answer("Closed !")
+        
         movies = SPELL_CHECK.get(query.message.reply_to_message.id if query.message.reply_to_message else 0)
         if not movies:
             await query.answer(script.OLD_ALRT_TXT.format(query.from_user.first_name), show_alert=True)
@@ -99,11 +101,24 @@ async def advantage_spoll_choker(bot, query):
 
 @Client.on_callback_query(filters.regex(r"^next"))
 async def next_page(bot, query):
-    ident, req, offset, query_str = query.data.split("_")
+    try:
+        ident, req, offset, owner_id, query_str = query.data.split("_", 4)
+    except ValueError:
+        # Fallback if old format lacks owner_id
+        try:
+            ident, req, offset, query_str = query.data.split("_", 3)
+            owner_id = "0"
+        except Exception:
+            return await query.answer("Invalid query data.", show_alert=True)
+
+    if owner_id != "0" and query.from_user.id != int(owner_id):
+        return await query.answer("❌ This is not your search request! Please send your own query.", show_alert=True)
+
     try:
         offset = int(offset)
     except:
         offset = 0
+
     search = query_str.replace("_", " ")
     files, offset, total_results = await get_search_results(query.message.chat.id, search, offset=offset, filter=True)
     if not files:
@@ -117,10 +132,10 @@ async def next_page(bot, query):
 
     btn = []
     if offset != 0:
-        btn.append(InlineKeyboardButton("⏪ Back", callback_data=f"next_{req}_{offset - 10}_{query_str}"))
+        btn.append(InlineKeyboardButton("⏪ Back", callback_data=f"next_{req}_{int(offset) - 10}_{owner_id}_{query_str}"))
     btn.append(InlineKeyboardButton(f"📁 Pages {math.ceil(offset / 10) + 1} / {math.ceil(total_results / 10)}", callback_data="pages"))
     if total_results > offset + len(files):
-        btn.append(InlineKeyboardButton("Next ⏩", callback_data=f"next_{req}_{offset + 10}_{query_str}"))
+        btn.append(InlineKeyboardButton("Next ⏩", callback_data=f"next_{req}_{int(offset) + 10}_{owner_id}_{query_str}"))
     
     try:
         await query.message.edit_text(text=cap, disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup([btn]))
@@ -194,10 +209,10 @@ async def auto_filter(client, msg, spoll=False):
     query_str = search.replace(" ", "_")
     btn = []
     if offset != 0:
-        btn.append(InlineKeyboardButton("⏪ Back", callback_data=f"next_{req}_{offset - 10}_{query_str}"))
+        btn.append(InlineKeyboardButton("⏪ Back", callback_data=f"next_{req}_{int(offset) - 10}_{req}_{query_str}"))
     btn.append(InlineKeyboardButton(f"📁 Pages 1 / {math.ceil(total_results / 10)}", callback_data="pages"))
     if total_results > offset + len(files):
-        btn.append(InlineKeyboardButton("Next ⏩", callback_data=f"next_{req}_{offset + 10}_{query_str}"))
+        btn.append(InlineKeyboardButton("Next ⏩", callback_data=f"next_{req}_{int(offset) + 10}_{req}_{query_str}"))
 
     sent_msg = await message.reply_text(text=cap, disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup([btn]))
     asyncio.create_task(handle_auto_delete(sent_msg))
