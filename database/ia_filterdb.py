@@ -8,7 +8,7 @@ from pymongo.errors import DuplicateKeyError
 from umongo import Instance, Document, fields
 from motor.motor_asyncio import AsyncIOMotorClient
 from marshmallow.exceptions import ValidationError
-from info import DATABASE_URI, DATABASE_NAME, COLLECTION_NAME, USE_CAPTION_FILTER, MAX_B_TN, CAPTION_INDEX_CHANNEL
+from info import DATABASE_URI, DATABASE_NAME, COLLECTION_NAME, CAPTION_INDEX_CHANNEL
 from utils import get_settings, save_group_settings, extract_v2
 
 logger = logging.getLogger(__name__)
@@ -91,13 +91,7 @@ async def save_file(media):
     return True, 1
 
 async def get_search_results(chat_id, query, file_type=None, max_results=10, offset=0, filter=False, **kwargs):
-    if chat_id is not None:
-        settings = await get_settings(int(chat_id))
-        try:
-            max_results = 10 if settings.get("max_btn") else int(MAX_B_TN)
-        except Exception:
-            await save_group_settings(int(chat_id), "max_btn", False)
-            max_results = int(MAX_B_TN)
+    max_results = 10
 
     query = await extract_v2(query)
     query = query.strip()
@@ -108,15 +102,7 @@ async def get_search_results(chat_id, query, file_type=None, max_results=10, off
     else:
         # stage 1: strict search (whole word matching using word boundaries)
         strict_conditions = [{"file_name": {"$regex": rf"\b{re.escape(w)}\b", "$options": "i"}} for w in words]
-        if USE_CAPTION_FILTER:
-            strict_filter = {
-                "$or": [
-                    {"$and": strict_conditions},
-                    {"$and": [{"caption": {"$regex": rf"\b{re.escape(w)}\b", "$options": "i"}} for w in words]}
-                ]
-            }
-        else:
-            strict_filter = {"$and": strict_conditions}
+        strict_filter = {"$and": strict_conditions}
 
         if file_type:
             strict_filter["file_type"] = file_type
@@ -133,9 +119,6 @@ async def get_search_results(chat_id, query, file_type=None, max_results=10, off
 
         # stage 2: fallback search (loose substring matching)
         mongo_filter = {"$and": [{"file_name": {"$regex": re.escape(w), "$options": "i"}} for w in words]}
-
-    if USE_CAPTION_FILTER:
-        mongo_filter = {"$or": [mongo_filter, {"caption": mongo_filter.get("$and", [])}]}
 
     if file_type:
         mongo_filter["file_type"] = file_type
