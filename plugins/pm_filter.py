@@ -93,23 +93,20 @@ async def advantage_spoll_choker(bot, query):
         
         files, offset, total_results = await get_search_results(query.message.chat.id, movie, offset=0, filter=True)
         if files: 
-            await auto_filter(bot, query, (movie, files, 0, total_results))
+            await auto_filter(bot, query, (movie, files, 0, total_results), is_spellcheck=True)
         else:
             try:
                 msg = await query.message.edit_text(text=script.NO_RESULTS, disable_web_page_preview=True)
-                asyncio.create_task(handle_auto_delete(msg))
+                await asyncio.sleep(30)
+                await msg.delete()
             except: pass
 
 @Client.on_callback_query(filters.regex(r"^next"))
 async def next_page(bot, query):
     try:
-        ident, req, offset, owner_id, query_str = query.data.split("_", 4)
+        _, cache_id, offset, owner_id = query.data.split("_", 3)
     except ValueError:
-        try:
-            ident, req, offset, query_str = query.data.split("_", 3)
-            owner_id = req
-        except Exception:
-            return await query.answer("Invalid query data.", show_alert=True)
+        return await query.answer("Invalid query data.", show_alert=True)
 
     if owner_id != "0" and query.from_user.id != int(owner_id):
         return await query.answer("❌ This is not your search request! Please send your own query.", show_alert=True)
@@ -119,7 +116,10 @@ async def next_page(bot, query):
     except:
         offset = 0
 
-    search = query_str.replace("_", " ")
+    search = QUERY_CACHE.get(cache_id)
+    if not search:
+        return await query.answer("Search session expired. Please search again.", show_alert=True)
+
     files, _, total_results = await get_search_results(query.message.chat.id, search, offset=offset, filter=True)
     if not files:
         return await query.answer("No more files found !", show_alert=True)
@@ -130,15 +130,15 @@ async def next_page(bot, query):
         f_name = escape(file.file_name)
         cap += f"<b>🍿 <a href='https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}'>[{f_size}] {f_name}</a></b>\n\n"
 
-    btn = []
     current_page = math.floor(offset / 10) + 1
     total_pages = math.ceil(total_results / 10)
 
+    btn = []
     if offset > 0:
-        btn.append(InlineKeyboardButton("⏪ Back", callback_data=f"next_{req}_{offset - 10}_{owner_id}_{query_str}"))
+        btn.append(InlineKeyboardButton("⏪ Back", callback_data=f"next_{cache_id}_{offset - 10}_{owner_id}"))
     btn.append(InlineKeyboardButton(f"📁 Pages {current_page} / {total_pages}", callback_data="pages"))
     if offset + len(files) < total_results:
-        btn.append(InlineKeyboardButton("Next ⏩", callback_data=f"next_{req}_{offset + 10}_{owner_id}_{query_str}"))
+        btn.append(InlineKeyboardButton("Next ⏩", callback_data=f"next_{cache_id}_{offset + 10}_{owner_id}"))
     
     try:
         await query.message.edit_text(text=cap, disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup([btn]))
@@ -150,7 +150,6 @@ async def next_page(bot, query):
 async def cb_handler(client: Client, query: CallbackQuery):
     if query.data and query.data.startswith(("premium_", "buy_plan_", "prem_", "next_")): return
     user_id = query.from_user.id
-    chat_type = query.message.chat.type
 
     if query.data == "close_data":
         await query.message.delete()
@@ -195,22 +194,22 @@ async def auto_filter(client, msg, spoll=False, is_spellcheck=False):
         for lang, code in [("english", "eng"), ("hindi", "hin"), ("tamil", "tam"), ("telugu", "tel"), ("kannada", "kan"), ("malayalam", "mal")]:
             search = search.replace(lang, code)
         
-        # Explicitly set initial offset to integer 0 here
         offset = 0
         files, offset, total_results = await get_search_results(message.chat.id, search, offset=offset, filter=True)
         if not files:
             return await advantage_spell_chok(client, msg)
     else:
         if is_spellcheck:
-            message = msg.message.reply_to_message
+            message = msg.message.reply_to_message if hasattr(msg.message, 'reply_to_message') else msg.message
             search, files, offset, total_results = spoll
-            await msg.message.delete()
+            try: await msg.message.delete()
+            except: pass
         else:
-            message = msg.message.reply_to_message
+            message = msg.message.reply_to_message if hasattr(msg.message, 'reply_to_message') else msg.message
             search, files, offset, total_results = spoll
-            await msg.message.delete()
+            try: await msg.message.delete()
+            except: pass
 
-    # Safely cast offset to an int right before pagination math
     try:
         offset = int(offset)
     except (TypeError, ValueError):
@@ -227,24 +226,18 @@ async def auto_filter(client, msg, spoll=False, is_spellcheck=False):
     cache_id = str(random.randint(10000, 99999))
     QUERY_CACHE[cache_id] = search
 
-    btn = []
     current_page = math.floor(offset / 10) + 1
     total_pages = math.ceil(total_results / 10)
 
     btn = []
-    
-    # Show Back button only if we are past the first page (offset > 0)
     if offset > 0:
         btn.append(InlineKeyboardButton("⏪ Back", callback_data=f"next_{cache_id}_{offset - 10}_{req}"))
-        
     btn.append(InlineKeyboardButton(f"📁 Pages {current_page} / {total_pages}", callback_data="pages"))
-    
-    # Show Next button only if there are more files remaining
     if offset + len(files) < total_results:
         btn.append(InlineKeyboardButton("Next ⏩", callback_data=f"next_{cache_id}_{offset + 10}_{req}"))
 
     target_chat = msg.message.chat.id if hasattr(msg, 'message') else msg.chat.id
-    sent_msg = await message.reply_text(text=cap, disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup([btn]))
+    sent_msg = await client.send_message(chat_id=target_chat, text=cap, disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup([btn]))
     
     asyncio.create_task(handle_auto_delete(sent_msg))
     if not spoll and message:
@@ -264,7 +257,6 @@ async def advantage_spell_chok(client, msg):
     query_raw = cleaned_query
     query_movie = f"{cleaned_query} movie"
 
-    # Run both searches simultaneously in parallel to ensure maximum matching coverage
     results_raw, results_movie = await asyncio.gather(
         search_gagala(query_raw),
         search_gagala(query_movie)
@@ -273,7 +265,8 @@ async def advantage_spell_chok(client, msg):
 
     if not g_s:
         k = await msg.reply(script.NO_RESULTS, disable_web_page_preview=True)
-        asyncio.create_task(handle_auto_delete(k))
+        await asyncio.sleep(30)
+        await k.delete()
         return
 
     gs = list(filter(re.compile(r".*(imdb|wikipedia).*", re.IGNORECASE).search, g_s))
@@ -289,14 +282,15 @@ async def advantage_spell_chok(client, msg):
     
     movielist = list(dict.fromkeys(filter(None, [re.sub(r'(\-|\(|\)|_)', '', i, flags=re.IGNORECASE).strip() for i in gs_parsed])))
     if not movielist:
-    k = await msg.reply(script.NO_RESULTS, disable_web_page_preview=True)
-    await asyncio.sleep(30)
-    await k.delete()
-    return
+        k = await msg.reply(script.NO_RESULTS, disable_web_page_preview=True)
+        await asyncio.sleep(30)
+        await k.delete()
+        return
         
     SPELL_CHECK[msg.id] = movielist
     btn = [[InlineKeyboardButton(text=movie, callback_data=f"spolling#{reqstr1}#{idx}")] for idx, movie in enumerate(movielist)]
     btn.append([InlineKeyboardButton("×××× ⟨ Close ⟩ ××××", callback_data="close_data")])
+    
     k = await msg.reply("<b>🎬 Select Your Pick ↡</b>", reply_markup=InlineKeyboardMarkup(btn))
     await asyncio.sleep(30)
     await k.delete()
