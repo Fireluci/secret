@@ -92,7 +92,7 @@ async def advantage_spoll_choker(bot, query):
         
         files, offset, total_results = await get_search_results(query.message.chat.id, movie, offset=0, filter=True)
         if files: 
-            await auto_filter(bot, query, (movie, files, offset, total_results))
+            await auto_filter(bot, query, (movie, files, 0, total_results))
         else:
             try:
                 msg = await query.message.edit_text(text=script.NO_RESULTS, disable_web_page_preview=True)
@@ -104,10 +104,9 @@ async def next_page(bot, query):
     try:
         ident, req, offset, owner_id, query_str = query.data.split("_", 4)
     except ValueError:
-        # Fallback if old format lacks owner_id
         try:
             ident, req, offset, query_str = query.data.split("_", 3)
-            owner_id = "0"
+            owner_id = req
         except Exception:
             return await query.answer("Invalid query data.", show_alert=True)
 
@@ -120,7 +119,7 @@ async def next_page(bot, query):
         offset = 0
 
     search = query_str.replace("_", " ")
-    files, offset, total_results = await get_search_results(query.message.chat.id, search, offset=offset, filter=True)
+    files, _, total_results = await get_search_results(query.message.chat.id, search, offset=offset, filter=True)
     if not files:
         return await query.answer("No more files found !", show_alert=True)
     
@@ -131,11 +130,14 @@ async def next_page(bot, query):
         cap += f"<b>🍿 <a href='https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}'>[{f_size}] {f_name}</a></b>\n\n"
 
     btn = []
-    if offset != 0:
-        btn.append(InlineKeyboardButton("⏪ Back", callback_data=f"next_{req}_{int(offset) - 10}_{owner_id}_{query_str}"))
-    btn.append(InlineKeyboardButton(f"📁 Pages {math.ceil(offset / 10) + 1} / {math.ceil(total_results / 10)}", callback_data="pages"))
-    if total_results > offset + len(files):
-        btn.append(InlineKeyboardButton("Next ⏩", callback_data=f"next_{req}_{int(offset) + 10}_{owner_id}_{query_str}"))
+    current_page = math.floor(offset / 10) + 1
+    total_pages = math.ceil(total_results / 10)
+
+    if offset > 0:
+        btn.append(InlineKeyboardButton("⏪ Back", callback_data=f"next_{req}_{offset - 10}_{owner_id}_{query_str}"))
+    btn.append(InlineKeyboardButton(f"📁 Pages {current_page} / {total_pages}", callback_data="pages"))
+    if offset + len(files) < total_results:
+        btn.append(InlineKeyboardButton("Next ⏩", callback_data=f"next_{req}_{offset + 10}_{owner_id}_{query_str}"))
     
     try:
         await query.message.edit_text(text=cap, disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup([btn]))
@@ -208,11 +210,14 @@ async def auto_filter(client, msg, spoll=False):
     req = message.from_user.id if message.from_user else 0
     query_str = search.replace(" ", "_")
     btn = []
-    if offset != 0:
-        btn.append(InlineKeyboardButton("⏪ Back", callback_data=f"next_{req}_{int(offset) - 10}_{req}_{query_str}"))
-    btn.append(InlineKeyboardButton(f"📁 Pages 1 / {math.ceil(total_results / 10)}", callback_data="pages"))
-    if total_results > offset + len(files):
-        btn.append(InlineKeyboardButton("Next ⏩", callback_data=f"next_{req}_{int(offset) + 10}_{req}_{query_str}"))
+    current_page = math.floor(offset / 10) + 1
+    total_pages = math.ceil(total_results / 10)
+
+    if offset > 0:
+        btn.append(InlineKeyboardButton("⏪ Back", callback_data=f"next_{req}_{offset - 10}_{req}_{query_str}"))
+    btn.append(InlineKeyboardButton(f"📁 Pages {current_page} / {total_pages}", callback_data="pages"))
+    if offset + len(files) < total_results:
+        btn.append(InlineKeyboardButton("Next ⏩", callback_data=f"next_{req}_{offset + 10}_{req}_{query_str}"))
 
     sent_msg = await message.reply_text(text=cap, disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup([btn]))
     asyncio.create_task(handle_auto_delete(sent_msg))
