@@ -289,12 +289,14 @@ async def advantage_spell_chok(client, msg):
     
     movielist = list(dict.fromkeys(filter(None, [re.sub(r'(\-|\(|\)|_)', '', i, flags=re.IGNORECASE).strip() for i in gs_parsed])))
     if not movielist:
-        k = await msg.reply(script.NO_RESULTS, disable_web_page_preview=True)
-        asyncio.create_task(handle_auto_delete(k))
-        return
+    k = await msg.reply(script.NO_RESULTS, disable_web_page_preview=True)
+    await asyncio.sleep(30)
+    await k.delete()
+    return
         
     SPELL_CHECK[msg.id] = movielist
     btn = [[InlineKeyboardButton(text=movie, callback_data=f"spolling#{reqstr1}#{idx}")] for idx, movie in enumerate(movielist)]
     btn.append([InlineKeyboardButton("×××× ⟨ Close ⟩ ××××", callback_data="close_data")])
     k = await msg.reply("<b>🎬 Select Your Pick ↡</b>", reply_markup=InlineKeyboardMarkup(btn))
-    asyncio.create_task(handle_auto_delete(k))
+    await asyncio.sleep(30)
+    await k.delete()
