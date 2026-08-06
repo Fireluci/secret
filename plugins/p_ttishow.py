@@ -4,6 +4,7 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.errors import FloodWait
 from database.users_chats_db import db
 from info import ADMINS
+from Script import script
 
 logger = logging.getLogger(__name__)
 
