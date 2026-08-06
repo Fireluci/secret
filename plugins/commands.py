@@ -32,13 +32,6 @@ async def notify_admins(client: Client, text: str):
         except Exception:
             pass
 
-async def handle_auto_delete(message_obj):
-    try:
-        await asyncio.sleep(900)  # 15 minutes auto-delete window
-        await message_obj.delete()
-    except Exception:
-        pass
-
 async def safe_kick(client: Client, chat_id, user_id):
     if not chat_id: 
         return
@@ -50,18 +43,26 @@ async def safe_kick(client: Client, chat_id, user_id):
     except Exception as e:
         if "USER_NOT_PARTICIPANT" not in str(e) and "PEER_ID_INVALID" not in str(e):
             await notify_admins(client, f"<b>⚠️ Automated Kick Failed (Attempt 1)\n\n• User ID: <code>{user_id}</code>\n• Reason: <code>{e}</code>\n\n<i>Retrying in 1 minute...</i></b>")
+            
+            # Wait 1 minute as requested
             await asyncio.sleep(60)
+            
+            # Retry second attempt
             try:
+                # Clear/refresh peer cache if method exists or fallback to clean call
                 if hasattr(client, "get_chat"):
-                    try: await client.get_chat(cid)
-                    except Exception: pass
+                    try:
+                        await client.get_chat(cid)
+                    except Exception:
+                        pass
+                
                 await client.ban_chat_member(cid, user_id)
                 await asyncio.sleep(0.3)
                 await client.unban_chat_member(cid, user_id)
+                
                 await notify_admins(client, f"<b>✅ Automated Kick Succeeded on Retry (Attempt 2)\n\n• User ID: <code>{user_id}</code></b>")
             except Exception as retry_err:
                 await notify_admins(client, f"<b>❌ Automated Kick Permanently Failed (Attempt 2)\n\n• User ID: <code>{user_id}</code>\n• Final Error: <code>{retry_err}</code></b>")
-
 async def premium_expiry_reminder_loop(client: Client):
     await asyncio.sleep(5)
     while True:
@@ -107,8 +108,7 @@ async def approve_command(client, message):
         except Exception: pass
 
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("2 Min Test", callback_data=f"selplan_{uid}_2m_40"), InlineKeyboardButton("5 Min Test", callback_data=f"selplan_{uid}_5m_80")],
-            [InlineKeyboardButton("1 Month - ₹40", callback_data=f"selplan_{uid}_30d_40"), InlineKeyboardButton("2 Months - ₹80", callback_data=f"selplan_{uid}_60d_80")],
+            [InlineKeyboardButton("2 Min Test - ₹40", callback_data=f"selplan_{uid}_2m_40"), InlineKeyboardButton("5 Min Test - ₹80", callback_data=f"selplan_{uid}_5m_80")],
             [InlineKeyboardButton("6 Months - ₹240", callback_data=f"selplan_{uid}_180d_240"), InlineKeyboardButton("1 Year - ₹480", callback_data=f"selplan_{uid}_365d_480")],
             [InlineKeyboardButton("❌ Cancel", callback_data=f"min_rej_{uid}")]
         ])
@@ -213,7 +213,7 @@ async def start(client, message):
             if f_caption is None:
                 f_caption = f"{title}"
             try:
-                sent_b = await client.send_cached_media(
+                await client.send_cached_media(
                     chat_id=message.from_user.id,
                     file_id=msg.get("file_id"),
                     caption=f_caption,
@@ -221,11 +221,10 @@ async def start(client, message):
                         [[InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}')]]
                     )
                 )
-                asyncio.create_task(handle_auto_delete(sent_b))
             except FloodWait as e:
                 await asyncio.sleep(e.x)
                 logger.warning(f"Floodwait of {e.x} sec.")
-                sent_b = await client.send_cached_media(
+                await client.send_cached_media(
                     chat_id=message.from_user.id,
                     file_id=msg.get("file_id"),
                     caption=f_caption,
@@ -233,7 +232,6 @@ async def start(client, message):
                         [[InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}')]]
                     )
                 )
-                asyncio.create_task(handle_auto_delete(sent_b))
             except Exception as e:
                 logger.warning(e, exc_info=True)
                 continue
@@ -263,12 +261,10 @@ async def start(client, message):
                     file_name = getattr(media, 'file_name', '')
                     f_caption = getattr(msg, 'caption', file_name)
                 try:
-                    cp_m = await msg.copy(message.chat.id, caption=f_caption)
-                    asyncio.create_task(handle_auto_delete(cp_m))
+                    await msg.copy(message.chat.id, caption=f_caption)
                 except FloodWait as e:
                     await asyncio.sleep(e.x)
-                    cp_m = await msg.copy(message.chat.id, caption=f_caption)
-                    asyncio.create_task(handle_auto_delete(cp_m))
+                    await msg.copy(message.chat.id, caption=f_caption)
                 except Exception as e:
                     logger.exception(e)
                     continue
@@ -276,12 +272,10 @@ async def start(client, message):
                 continue
             else:
                 try:
-                    cp_m = await msg.copy(message.chat.id)
-                    asyncio.create_task(handle_auto_delete(cp_m))
+                    await msg.copy(message.chat.id)
                 except FloodWait as e:
                     await asyncio.sleep(e.x)
-                    cp_m = await msg.copy(message.chat.id)
-                    asyncio.create_task(handle_auto_delete(cp_m))
+                    await msg.copy(message.chat.id)
                 except Exception as e:
                     logger.exception(e)
                     continue
@@ -309,7 +303,7 @@ async def start(client, message):
             if f_caption is None:
                 f_caption = f"{title}"
 
-            sent_all = await client.send_cached_media(
+            await client.send_cached_media(
                 chat_id=message.from_user.id,
                 file_id=f_id,
                 caption=f_caption,
@@ -317,7 +311,6 @@ async def start(client, message):
                     [[InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}')]]
                 )
             )
-            asyncio.create_task(handle_auto_delete(sent_all))
         return  
 
     files_ = await get_file_details(file_id)            
@@ -329,7 +322,6 @@ async def start(client, message):
                 file_id=file_id,
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}')]])
             )
-            asyncio.create_task(handle_auto_delete(msg))
             filetype = msg.media
             file = getattr(msg, filetype.value)
             title = ' '.join(filter(lambda x: not x.startswith('www.') and not x.startswith('@'), file.file_name.split()))
@@ -357,13 +349,12 @@ async def start(client, message):
     if f_caption is None:
         f_caption = title
 
-    sent_single = await client.send_cached_media(
+    await client.send_cached_media(
         chat_id=message.from_user.id,
         file_id=file_id,
         caption=f_caption,
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}')]])
     )
-    asyncio.create_task(handle_auto_delete(sent_single))
     return
 
 @Client.on_message(filters.command("myplan") & filters.private)
@@ -394,8 +385,8 @@ async def premium_menu(client, update):
     if isinstance(update, CallbackQuery): await update.answer()
     text = (
         "<b>🌟 Premium Plans:-\n\n"
-        "• ✨ 1 Month: <code>₹40</code>\n"
-        "• ✨ 2 Months: <code>₹80</code>\n"
+        "• ✨ 2 Min Test: <code>₹40</code>\n"
+        "• ✨ 5 Min Test: <code>₹80</code>\n"
         "• ✨ 6 Months: <code>₹240</code>\n"
         "• ✨ 1 Year: <code>₹480</code>\n\n"
         "1. Pay via Button below.\n"
@@ -465,8 +456,7 @@ async def admin_app_cb(client, callback: CallbackQuery):
     except Exception: pass
 
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("2 Min Test", callback_data=f"selplan_{uid}_2m_40"), InlineKeyboardButton("5 Min Test", callback_data=f"selplan_{uid}_5m_80")],
-        [InlineKeyboardButton("1 Month - ₹40", callback_data=f"selplan_{uid}_30d_40"), InlineKeyboardButton("2 Months - ₹80", callback_data=f"selplan_{uid}_60d_80")],
+        [InlineKeyboardButton("2 Min Test - ₹40", callback_data=f"selplan_{uid}_2m_40"), InlineKeyboardButton("5 Min Test - ₹80", callback_data=f"selplan_{uid}_5m_80")],
         [InlineKeyboardButton("6 Months - ₹240", callback_data=f"selplan_{uid}_180d_240"), InlineKeyboardButton("1 Year - ₹480", callback_data=f"selplan_{uid}_365d_480")],
         [InlineKeyboardButton("❌ Cancel", callback_data=f"min_rej_{uid}")]
     ])
@@ -646,12 +636,9 @@ async def admin_reject_cb(client, callback: CallbackQuery):
         if col_ses is not None: await col_ses.delete_one({"admin_id": callback.from_user.id})
     except Exception: pass
     await callback.answer("Rejected.")
-    
     try:
-        rej_kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ I Have Paid", callback_data="minimal_send_proof")]])
-        await client.send_message(uid, "<b>⚠️ Payment Verification Failed.\n\nPlease pay and send a valid screenshot.</b>", reply_markup=rej_kb, parse_mode=enums.ParseMode.HTML)
+        await client.send_message(uid, "<b>⚠️ Payment Verification Failed.\n\nPlease pay and send a valid screenshot.</b>", parse_mode=enums.ParseMode.HTML)
     except Exception: pass
-    
     rej_text = "<b>❌ Status: REJECTED</b>"
     try: 
         await callback.message.edit_caption(rej_text, reply_markup=None, parse_mode=enums.ParseMode.HTML)
@@ -662,13 +649,6 @@ async def admin_reject_cb(client, callback: CallbackQuery):
             await callback.message.edit_text(rej_text, reply_markup=None, parse_mode=enums.ParseMode.HTML)
         except MessageNotModified: 
             pass
-
-@Client.on_message(filters.group & filters.incoming)
-async def auto_delete_group_messages(client, message):
-    if PREMIUM_GROUP_ID and str(message.chat.id) == str(PREMIUM_GROUP_ID):
-        if message.from_user and message.from_user.id in ADMINS:
-            return
-        asyncio.create_task(handle_auto_delete(message))
 
 @Client.on_message(filters.private & filters.text & filters.incoming & ~filters.command(["start", "premium", "myplan", "approve", "revoke", "premiums", "channel", "logs", "delete", "deleteall", "deletefiles", "restart"]))
 async def pm_text(bot, message):
@@ -735,21 +715,13 @@ async def delete_all_index_confirm(bot, callback):
 
 @Client.on_message(filters.command("deletefiles") & filters.user(ADMINS))
 async def deletemultiplefiles(bot, message):
+    if message.chat.type != enums.ChatType.PRIVATE: return await message.reply_text("<b>Only Works in PM !</b>")
     try: kw = message.text.split(" ", 1)[1]
-    except Exception: return await message.reply_text("<b>Give me a keyword!</b>", parse_mode=enums.ParseMode.HTML)
-    
-    k = await bot.send_message(message.chat.id, "<b>Please Wait...</b>", parse_mode=enums.ParseMode.HTML)
+    except Exception: return await message.reply_text("<b>Give me a keyword!</b>")
+    k = await bot.send_message(message.chat.id, "<b>Please Wait...</b>")
     _, total = await get_bad_files(kw)
     await k.delete()
-    
-    await message.reply_text(
-        f"<b>{total} Files ➠ {kw}</b>", 
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🛃 Delete", callback_data=f"killfilesdq#{kw}")], 
-            [InlineKeyboardButton("💢 Cancel", callback_data="close_data")]
-        ]), 
-        parse_mode=enums.ParseMode.HTML
-    )
+    await message.reply_text(f"<b>{total} Files ➠ {kw}</b>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🛃 Delete", callback_data=f"killfilesdq#{kw}")], [InlineKeyboardButton("💢 Cancel", callback_data="close_data")]]), parse_mode=enums.ParseMode.HTML)
 
 @Client.on_message(filters.command("restart") & filters.user(ADMINS))
 async def restart_bot(bot, message):
