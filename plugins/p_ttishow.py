@@ -27,17 +27,13 @@ async def get_stats(bot, message):
             files = 0
             
         size = await db.get_db_size()
-        free = 536870912 - size
-        
         formatted_size = get_size(size)
-        formatted_free = get_size(free)
         
         await message.reply(
-            f"""<b>★ Tᴏᴛᴀʟ Fɪʟᴇs: <code>{files}</code>
-★ Tᴏᴛᴀʟ Usᴇʀs: <code>{total_users}</code>
-★ Tᴏᴛᴀʟ Cʜats: <code>{total_chats}</code>
-★ Usᴇᴅ Sᴛᴏʀᴀɢᴇ: <code>{formatted_size}</code>
-★ Fʀᴇᴇ Sᴛᴏʀᴀɢᴇ: <code>{formatted_free}</code></b>"""
+            f"""<b>★ Tᴏᴛᴀʟ Fɪʟᴇs: {files}
+★ Tᴏᴛᴀʟ Usᴇʀs: {total_users}
+★ Tᴏᴛᴀʟ Cʜats: {total_chats}
+★ Sᴛᴏʀᴀɢᴇ: {formatted_size} / 512 MB</b>"""
         )
     except Exception as e:
         await message.reply(f"Error: {e}")
