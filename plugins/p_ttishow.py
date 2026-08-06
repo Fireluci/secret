@@ -7,30 +7,27 @@ from info import ADMINS
 
 logger = logging.getLogger(__name__)
 
-@Client.on_message(filters.command('stats') & filters.user(ADMINS))
-async def get_stats(client, message):
-    r_msg = await message.reply_text("<b>⚡ Fetching database statistics...</b>")
+@Client.on_message(filters.command('stats') & filters.incoming)
+async def get_stats(bot, message):
+    rju = await message.reply('Fetching stats..')
+    
     total_users = await db.total_users_count()
     total_chats = await db.total_chat_count()
-    try:
-        db_size = await db.get_db_size()
-        free_space = 524288000 - db_size  # 500MB free tier standard baseline
-        if free_space < 0:
-            free_space = 0
-        db_size_mb = f"{db_size / 1024 / 1024:.2f} MB"
-        free_space_mb = f"{free_space / 1024 / 1024:.2f} MB"
-    except Exception:
-        db_size_mb = "N/A"
-        free_space_mb = "N/A"
-
-    text = (
-        f"<b>📊 Bot Statistics Status:\n\n"
-        f"• 👤 Total Users: <code>{total_users}</code>\n"
-        f"• 👥 Total Connected Chats: <code>{total_chats}</code>\n"
-        f"• 💾 Database Storage Used: <code>{db_size_mb}</code>\n"
-        f"• 🗄️ Database Free Space: <code>{free_space_mb}</code></b>"
+    files = await Media.count_documents({})
+    
+    size = await db.get_db_size()
+    free = 536870912 - size
+    
+    formatted_size = get_size(size)
+    formatted_free = get_size(free)
+    
+    await rju.edit(
+        f"""<b>★ Tᴏᴛᴀʟ Fɪʟᴇs: <code>{files}</code>
+★ Tᴏᴛᴀʟ Usᴇʀs: <code>{total_users}</code>
+★ Tᴏᴛᴀʟ Cʜats: <code>{total_chats}</code>
+★ Usᴇᴅ Sᴛᴏʀᴀɢᴇ: <code>{formatted_size}</code>
+★ Fʀᴇᴇ Sᴛᴏʀᴀɢᴇ: <code>{formatted_free}</code></b>"""
     )
-    await r_msg.edit_text(text)
 
 @Client.on_message(filters.command('ban') & filters.user(ADMINS))
 async def ban_user_handler(client, message):
