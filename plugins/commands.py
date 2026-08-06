@@ -574,19 +574,6 @@ async def admin_reject_cb(client, callback: CallbackQuery):
     rej_text = "<b>❌ Status: REJECTED</b>"
     await safe_edit_message(callback.message, rej_text, reply_markup=None)
 
-@Client.on_message(filters.private & filters.text & filters.incoming)
-async def pm_text(bot, message):
-    content = message.text
-    if content.startswith("/") or content.startswith("#") or message.from_user.id in ADMINS:
-        return
-    await message.reply_text(
-        text="<b>🌀 Unlimited Movies, Series, Anime\n🔆 New Releases Upload Same Day\n♻️ 24x7 Service 📆 Daily Updates\n🔗 No Ads or Links 📗 Direct Files</b>",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🌟 Buy Premium", callback_data="buy_premium_start")]
-        ]),
-        parse_mode=enums.ParseMode.HTML
-    )
-
 @Client.on_message(filters.command('channel') & filters.user(ADMINS))
 async def channel_info(bot, message):
     channels = [CHANNELS] if isinstance(CHANNELS, (int, str)) else CHANNELS
