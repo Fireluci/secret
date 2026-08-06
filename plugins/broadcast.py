@@ -65,3 +65,4 @@ async def cancel_broadcast_callback(bot, callback_query):
         return
     if user_id in broadcast_tasks:
         broadcast_tasks[user_id] = False
+    await callback_query.answer("Broadcast cancellation requested.")
