@@ -157,28 +157,43 @@ async def cb_handler(client: Client, query: CallbackQuery):
     elif query.data == "pages":
         return await query.answer("You are on the page navigation.", show_alert=True)
     elif query.data.startswith("killfilesdq"):
-        st = await client.get_chat_member(query.message.chat.id, user_id)
-        if st.status not in [enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER] and str(user_id) not in ADMINS:
+        user_id = query.from_user.id
+        chat_type = query.message.chat.type
+
+        # Verify admin status correctly depending on whether it's a PM or Group
+        if chat_type != enums.ChatType.PRIVATE:
+            try:
+                st = await client.get_chat_member(query.message.chat.id, user_id)
+                is_admin = st.status in [enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER]
+            except Exception:
+                is_admin = False
+        else:
+            is_admin = str(user_id) in map(str, ADMINS)
+
+        if not is_admin and str(user_id) not in map(str, ADMINS):
             return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
-        try: _, keyword = query.data.split("#")
-        except: return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
-        files, total = await get_bad_files(keyword)
-        await query.message.edit_text("<b>File deletion process will start in 5 seconds !</b>")
-        await asyncio.sleep(5)
+
+        try: 
+            _, keyword = query.data.split("#")
+        except: 
+            return await query.answer("Invalid query data.", show_alert=True)
+        
+        files, _ = await get_bad_files(keyword)
+        await query.message.edit_text("<b>Deleting files...</b>", parse_mode=enums.ParseMode.HTML)
+        
         deleted = 0
         async with lock:
             try:
                 for file in files:
                     result = await Media.collection.delete_one({'_id': file.file_id})
-                    if result.deleted_count: deleted += 1
-                    if deleted % 20 == 0:
-                        await query.message.edit_text(f"<b>Process started for deleting files from DB. Successfully deleted {deleted} files from DB for your query {keyword} !\n\nPlease wait...</b>")
+                    if result.deleted_count: 
+                        deleted += 1
             except Exception as e:
                 logger.exception(e)
-                await query.message.edit_text(f'Error: {e}')
-            else:
-                await query.message.edit_text(f"<b>Process Completed for file deletion !\n\nSuccessfully deleted {deleted} files from database for your query {keyword}.</b>")
-        return await query.answer("Deletion process completed!", show_alert=True)
+                return await query.message.edit_text(f'<b>Error: {e}</b>', parse_mode=enums.ParseMode.HTML)
+                
+        await query.message.edit_text(f"<b>Successfully deleted {deleted} files from database for your query {keyword}.</b>", parse_mode=enums.ParseMode.HTML)
+        return await query.answer("Deletion completed!", show_alert=True)
 
 async def auto_filter(client, msg, spoll=False, is_spellcheck=False):
     if not spoll:
