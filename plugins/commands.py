@@ -113,7 +113,7 @@ async def approve_command(client, message):
             [InlineKeyboardButton("6 Months - ₹240", callback_data=f"selplan_{uid}_180d_240"), InlineKeyboardButton("1 Year - ₹480", callback_data=f"selplan_{uid}_365d_480")],
             [InlineKeyboardButton("❌ Cancel", callback_data=f"min_rej_{uid}")]
         ])
-        await message.reply_text(f"<b>💎 Select Plan Package for <a href='tg://user?id={uid}'>{name}</a> <code>Expires:</code></b>", reply_markup=kb, parse_mode=enums.ParseMode.HTML)
+        await message.reply_text(f"<b>💎 Select Plan Package for <a href='tg://user?id={uid}'>{name}</a> (<code>{uid}</code>)</b>", reply_markup=kb, parse_mode=enums.ParseMode.HTML)
     except Exception as e:
         await message.reply_text(f"<b>❌ Error: {e}</b>", parse_mode=enums.ParseMode.HTML)
 
@@ -148,7 +148,7 @@ async def premiums_command(client, message):
         name = doc.get("username", "User")
         plan = doc.get("plan")
         exp = fmt_date(doc.get("expires_at"))
-        text += f"<b>{count}.</b> <a href='tg://user?id={uid}'>{name}</a> <code>Expires:</code>\n   • <b>Plan:</b> {plan}\n   • <b>Expires:</b> {exp}\n\n"
+        text += f"<b>{count}.</b> <a href='tg://user?id={uid}'>{name}</a> (<code>{uid}</code>)\n   • <b>Plan:</b> {plan}\n   • <b>Expires:</b> {exp}\n\n"
     if count == 0:
         text = "<b>❌ No active premium users found.</b>"
     if len(text) > 4096:
@@ -504,11 +504,11 @@ async def select_plan_cb(client, callback: CallbackQuery):
     ])
     text = (
         f"<b>💎 Preview Panel\n\n"
-        f"• 👤 User: <a href='tg://user?id={uid}'>{name}</a> <code>Expires:</code>\n"
+        f"• 👤 User: <a href='tg://user?id={uid}'>{name}</a> (<code>{uid}</code>)\n"
         f"• ✨ Plan: {plan_name} | ₹{price}\n"
         f"• 📆 Expiry: {fmt_date(exp)}</b>"
     )
-    await callback.answer()
+    await callback.answer() #
     try: 
         await callback.message.edit_caption(text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
     except MessageNotModified: 
@@ -579,8 +579,8 @@ async def conf_act_cb(client, callback: CallbackQuery):
     except Exception: pass
     
     log_title = "<b>🌟 Premium Renewed ✅</b>" if is_renewal else "<b>🌟 Premium Activated ✅</b>"
-    await notify_admins(client, f"{log_title}\n\n• <b>👤 User:</b> <a href='tg://user?id={uid}'>{name}</a> <code>Expires:</code>\n• <b>💰 Plan:</b> {plan} | ₹{price}\n• <b>⌛ Expiry:</b> {fmt_date(exp)}")
-    success_text = f"<b>✅ Activated Successfully\n• 👤 User:</b> <a href='tg://user?id={uid}'>{name}</a> <code>Expires:</code>"
+    await notify_admins(client, f"{log_title}\n\n• <b>👤 User:</b> <a href='tg://user?id={uid}'>{name}</a> (<code>{uid}</code>)\n• <b>💰 Plan:</b> {plan} | ₹{price}\n• <b>⌛ Expiry:</b> {fmt_date(exp)}")
+    success_text = f"<b>✅ Activated Successfully\n• 👤 User:</b> <a href='tg://user?id={uid}'>{name}</a> (<code>{uid}</code>)"
     try: 
         await callback.message.edit_caption(success_text, reply_markup=None, parse_mode=enums.ParseMode.HTML)
     except MessageNotModified: 
