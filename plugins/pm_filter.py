@@ -148,8 +148,10 @@ async def next_page(bot, query):
 
 @Client.on_callback_query()
 async def cb_handler(client: Client, query: CallbackQuery):
-    if query.data and query.data.startswith(("premium_", "buy_plan_", "prem_", "next_")): return
+    # Remove "next_" from this tuple so pagination callbacks can reach their proper handler function
+    if query.data and query.data.startswith(("premium_", "buy_plan_", "prem_")): return
     user_id = query.from_user.id
+    # ... rest of your code
 
     if query.data == "close_data":
         await query.message.delete()
