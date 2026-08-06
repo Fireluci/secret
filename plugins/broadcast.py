@@ -62,7 +62,10 @@ async def broadcast_group(bot, message):
 async def cancel_broadcast_callback(bot, callback_query):
     user_id = int(callback_query.data.split("_")[2])
     if callback_query.from_user.id != user_id:
-        return
+        return await callback_query.answer("This is not for you!", show_alert=True)
+    
     if user_id in broadcast_tasks:
         broadcast_tasks[user_id] = False
-    await callback_query.answer("Broadcast cancellation requested.")
+        await callback_query.answer("Broadcast cancellation requested successfully.", show_alert=False)
+    else:
+        await callback_query.answer("No active broadcast found.", show_alert=False)
