@@ -63,8 +63,39 @@ async def safe_kick(client: Client, chat_id, user_id):
                 await notify_admins(client, f"<b>✅ Automated Kick Succeeded on Retry (Attempt 2)\n\n👤 User: <a href='tg://user?id={uid}'>{name}</a> {user_id}</b>")
             except Exception as retry_err:
                 await notify_admins(client, f"<b>❌ Automated Kick Permanently Failed (Attempt 2)\n\n👤 User: <a href='tg://user?id={uid}'>{name}</a> {user_id}\n• Final Error: {retry_err}</b>")
+
 async def premium_expiry_reminder_loop(client: Client):
     await asyncio.sleep(5)
+    
+    # Optional: Run an immediate catch-up check right when the loop boots up
+    try:
+        now = datetime.utcnow()
+        col = get_col()
+        if col:
+            async for doc in col.find({"active": True, "expires_at": {"$lte": now}}):
+                uid = doc.get("user_id")
+                name = doc.get("username", "User")
+                exp = doc.get("expires_at")
+                user_display = f"<a href='tg://user?id={uid}'>{name}</a> (<code>{uid}</code>)"
+                
+                await col.delete_one({"user_id": uid})
+                if PREMIUM_GROUP_ID: 
+                    await safe_kick(client, PREMIUM_GROUP_ID, uid)
+                    
+                await notify_admins(client, f"<b>❌ Missed Expiry Catch-Up & Ejected\n\n• 👤 User: {user_display}\n• Plan: <code>{doc.get('plan', 'N/A')}</code>\n• Expired On: <code>{fmt_date(exp)}</code></b>")
+                try:
+                    await client.send_message(
+                        uid, 
+                        "<b>⚠️ Premium Membership Expired!</b>", 
+                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Renew Plan", callback_data="buy_premium_start")]]), 
+                        parse_mode=enums.ParseMode.HTML
+                    )
+                except Exception: 
+                    pass
+    except Exception as e:
+        logger.error(f"Startup expiry check error: {e}")
+
+    # Standard ongoing loop
     while True:
         try:
             now = datetime.utcnow()
@@ -72,6 +103,9 @@ async def premium_expiry_reminder_loop(client: Client):
             if col:
                 async for doc in col.find({"active": True}):
                     uid, exp = doc.get("user_id"), doc.get("expires_at") or doc.get("expiry_date")
+                    name = doc.get("username", "User")
+                    user_display = f"<a href='tg://user?id={uid}'>{name}</a> (<code>{uid}</code>)"
+                    
                     if not isinstance(exp, datetime): continue
                     
                     reminders = doc.get("reminders", {})
@@ -84,12 +118,18 @@ async def premium_expiry_reminder_loop(client: Client):
                     if now >= exp:
                         await col.delete_one({"user_id": uid})
                         if PREMIUM_GROUP_ID: await safe_kick(client, PREMIUM_GROUP_ID, uid)
-                        await notify_admins(client, f"<b>❌ Premium Membership Expired & Ejected\n\n👤 User: <a href='tg://user?id={uid}'>{name}</a> {uid}\n• Plan: {doc.get('plan', 'N/A')}\n• Expired On: {fmt_date(exp)}</b>")
+                        
+                        await notify_admins(client, f"<b>❌ Premium Membership Expired & Ejected\n\n• 👤 User: {user_display}\n• Plan: <code>{doc.get('plan', 'N/A')}</code>\n• Expired On: <code>{fmt_date(exp)}</code></b>")
                         try:
                             await client.send_message(uid, "<b>⚠️ Premium Membership Expired!\n\nRenew your plan to restore your premium status.</b>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Renew Plan", callback_data="buy_premium_start")]]), parse_mode=enums.ParseMode.HTML)
                         except Exception: pass
         except Exception as e:
             logger.error(f"Expiry loop error: {e}")
+            
+        # =========================================================================
+        # CONFIG: Change the loop interval here (in seconds) for future adjustments.
+        # Current setting: 30 seconds.
+        # =========================================================================
         await asyncio.sleep(30)
 
 @Client.on_message(filters.command("approve") & filters.user(ADMINS))
