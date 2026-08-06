@@ -19,6 +19,14 @@ BATCH_FILES = {}
 def fmt_date(dt: datetime) -> str:
     return (dt + timedelta(hours=5, minutes=30)).strftime('%d %b, %Y at %I:%M %p') if isinstance(dt, datetime) else "N/A"
 
+def get_plan_keyboard(uid: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("2 Min Test", callback_data=f"selplan_{uid}_2m_80"), InlineKeyboardButton("5 Min Test", callback_data=f"selplan_{uid}_5m_80")],
+        [InlineKeyboardButton("1 Month - ₹40", callback_data=f"selplan_{uid}_30d_40"), InlineKeyboardButton("2 Months - ₹80", callback_data=f"selplan_{uid}_60d_80")],
+        [InlineKeyboardButton("6 Months - ₹240", callback_data=f"selplan_{uid}_180d_240"), InlineKeyboardButton("1 Year - ₹480", callback_data=f"selplan_{uid}_365d_480")],
+        [InlineKeyboardButton("❌ Cancel", callback_data=f"min_rej_{uid}")]
+    ])
+
 def get_col():
     try:
         return db.premium_users if hasattr(db, 'premium_users') and db.premium_users is not None else (db.db.premium_users if hasattr(db, 'db') else db.get_collection('premium_users'))
@@ -147,12 +155,7 @@ async def approve_command(client, message):
                 await col_ses.update_one({"admin_id": message.from_user.id}, {"$set": {"target_user_id": uid}}, upsert=True)
         except Exception: pass
 
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("2 Min Test", callback_data=f"selplan_{uid}_2m_80"), InlineKeyboardButton("5 Min Test", callback_data=f"selplan_{uid}_5m_80")],
-            [InlineKeyboardButton("1 Month - ₹40", callback_data=f"selplan_{uid}_30d_40"), InlineKeyboardButton("2 Months - ₹80", callback_data=f"selplan_{uid}_60d_80")],
-            [InlineKeyboardButton("6 Months - ₹240", callback_data=f"selplan_{uid}_180d_240"), InlineKeyboardButton("1 Year - ₹480", callback_data=f"selplan_{uid}_365d_480")],
-            [InlineKeyboardButton("❌ Cancel", callback_data=f"min_rej_{uid}")]
-        ])
+        kb = get_plan_keyboard(uid)
         await message.reply_text(f"<b>💎 Select Plan Package for <a href='tg://user?id={uid}'>{name}</a> (<code>{uid}</code>)</b>", reply_markup=kb, parse_mode=enums.ParseMode.HTML)
     except Exception as e:
         await message.reply_text(f"<b>❌ Error: {e}</b>", parse_mode=enums.ParseMode.HTML)
@@ -384,12 +387,7 @@ async def admin_app_cb(client, callback: CallbackQuery):
             await col_ses.update_one({"admin_id": callback.from_user.id}, {"$set": {"target_user_id": uid}}, upsert=True)
     except Exception: pass
 
-    kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("2 Min Test", callback_data=f"selplan_{uid}_2m_80"), InlineKeyboardButton("5 Min Test", callback_data=f"selplan_{uid}_5m_80")],
-            [InlineKeyboardButton("1 Month - ₹40", callback_data=f"selplan_{uid}_30d_40"), InlineKeyboardButton("2 Months - ₹80", callback_data=f"selplan_{uid}_60d_80")],
-            [InlineKeyboardButton("6 Months - ₹240", callback_data=f"selplan_{uid}_180d_240"), InlineKeyboardButton("1 Year - ₹480", callback_data=f"selplan_{uid}_365d_480")],
-            [InlineKeyboardButton("❌ Cancel", callback_data=f"min_rej_{uid}")]
-        ])
+    kb = get_plan_keyboard(uid)
     await callback.answer()
     text = "<b>💎 Select Plan Package</b>"
     try: 
