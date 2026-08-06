@@ -54,16 +54,6 @@ async def handle_auto_delete(message_obj):
 async def give_filter(client, message):
     await auto_filter(client, message)
 
-@Client.on_message(filters.private & filters.text & filters.incoming)
-async def pm_text(bot, message):
-    content = message.text
-    if content.startswith("/") or content.startswith("#") or content.startswith("file") or message.from_user.id in ADMINS:
-        return
-    await message.reply_text(
-        text="<b>🌀 Unlimited Movies, Series, Anime\n🔆 New Releases Upload Same Day\n♻️ 24x7 Service 📆 Daily Updates</b>",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌟 Paid (No Ads)", url="https://telegram.me/HeroFlixx/49"), InlineKeyboardButton("🍿 Free (With Ads)", url="https://telegram.me/addlist/X5k2lnJLIGAyZjQ1")]])
-    )
-
 @Client.on_callback_query(filters.regex(r"^spolling"))
 async def advantage_spoll_choker(bot, query):
     if is_spam(query.from_user.id) or not query.from_user or not query.message:
