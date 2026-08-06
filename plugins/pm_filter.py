@@ -148,10 +148,8 @@ async def next_page(bot, query):
 
 @Client.on_callback_query()
 async def cb_handler(client: Client, query: CallbackQuery):
-    # Remove "next_" from this tuple so pagination callbacks can reach their proper handler function
-    if query.data and query.data.startswith(("premium_", "buy_plan_", "prem_")): return
+    if query.data and query.data.startswith(("premium_", "buy_plan_", "prem_", "next_")): return
     user_id = query.from_user.id
-    # ... rest of your code
 
     if query.data == "close_data":
         await query.message.delete()
@@ -159,10 +157,8 @@ async def cb_handler(client: Client, query: CallbackQuery):
     elif query.data == "pages":
         return await query.answer("You are on the page navigation.", show_alert=True)
     elif query.data.startswith("killfilesdq"):
-        st = await client.get_chat_member(query.message.chat.id, user_id) if query.message.chat.type != enums.ChatType.PRIVATE else None
-        if st and st.status not in [enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER] and str(user_id) not in ADMINS:
-            return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
-        if not st and str(user_id) not in ADMINS:
+        st = await client.get_chat_member(query.message.chat.id, user_id)
+        if st.status not in [enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER] and str(user_id) not in ADMINS:
             return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
         try: _, keyword = query.data.split("#")
         except: return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
@@ -234,12 +230,17 @@ async def auto_filter(client, msg, spoll=False, is_spellcheck=False):
     total_pages = math.ceil(total_results / 10)
 
     btn = []
+    # Show Back button only if we are past the first page (offset > 0)
     if offset > 0:
         btn.append(InlineKeyboardButton("⏪ Back", callback_data=f"next_{cache_id}_{offset - 10}_{req}"))
+        
     btn.append(InlineKeyboardButton(f"📁 Pages {current_page} / {total_pages}", callback_data="pages"))
+    
+    # Show Next button only if there are more files remaining
     if offset + len(files) < total_results:
         btn.append(InlineKeyboardButton("Next ⏩", callback_data=f"next_{cache_id}_{offset + 10}_{req}"))
 
+    # Always reply directly to the original message using message.reply_text
     sent_msg = await message.reply_text(text=cap, disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup([btn]))
     
     asyncio.create_task(handle_auto_delete(sent_msg))
