@@ -22,7 +22,7 @@ async def get_stats(bot, message):
         total_chats = await db.total_chat_count()
         
         try:
-            files = await Media.count_documents({})
+            files = await Media.collection.count_documents({})
         except Exception:
             files = 0
             
