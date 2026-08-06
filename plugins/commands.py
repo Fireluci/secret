@@ -574,15 +574,22 @@ async def admin_reject_cb(client, callback: CallbackQuery):
     rej_text = "<b>❌ Status: REJECTED</b>"
     await safe_edit_message(callback.message, rej_text, reply_markup=None)
 
-@Client.on_message(filters.private & filters.text & filters.incoming & ~filters.command(["start", "premium", "myplan", "approve", "revoke", "premiums", "channel", "logs", "delete", "deleteall", "deletefiles", "restart"]))
+@Client.on_message(filters.private & filters.text & filters.incoming)
 async def pm_text(bot, message):
     content = message.text
-    user_id = message.from_user.id
-    if content.startswith("/") or content.startswith("#"): return  
-    if str(user_id) in map(str, ADMINS): return 
+    if content.startswith("/") or content.startswith("#") or content.startswith("file") or message.from_user.id in ADMINS:
+        return
     await message.reply_text(
-        text="<b>🌀 Unlimited Movies, Series, Anime\n🔆 New Releases Upload Same Day\n♻️ 24x7 Service 📆 Daily Updates</b>",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌟 Paid (No Ads)", url="https://telegram.me/HeroFlixx/49"), InlineKeyboardButton("🍿 Free (With Ads)", url="https://telegram.me/addlist/X5k2lnJLIGAyZjQ1")]])
+        text=(
+            "<b>🌀 Unlimited Movies, Series, Anime\n"
+            "🔆 New Releases Upload Same Day\n"
+            "♻️ 24x7 Service 📆 Daily Updates\n"
+            "🔗 No Ads or Links 📗 Direct Files</b>"
+        ),
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🌟 Buy Premium", callback_data="buy_premium_start")]
+        ]),
+        parse_mode=enums.ParseMode.HTML
     )
 
 @Client.on_message(filters.command('channel') & filters.user(ADMINS))
