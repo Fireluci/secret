@@ -4,23 +4,36 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.errors import FloodWait
 from database.users_chats_db import db
 from info import ADMINS
-from Script import script
 
 logger = logging.getLogger(__name__)
 
 @Client.on_message(filters.command('stats') & filters.incoming)
-async def get_ststs(bot, message):
-    rju = await message.reply('Fetching stats..')
-    total_users = await db.total_users_count()
-    totl_chats = await db.total_chat_count()
-    files = await Media.count_documents()
-    size = await db.get_db_size()
-    free = 536870912 - size
-    size = get_size(size)
-    free = get_size(free)
-    await rju.edit(script.STATUS_TXT.format(files, total_users, totl_chats, size, free))
-
-
+async def get_stats(bot, message):
+    try:
+        total_users = await db.total_users_count()
+        total_chats = await db.total_chat_count()
+        
+        try:
+            files = await Media.count_documents({})
+        except Exception:
+            files = 0
+            
+        size = await db.get_db_size()
+        free = 536870912 - size
+        
+        formatted_size = get_size(size)
+        formatted_free = get_size(free)
+        
+        await message.reply(
+            f"""<b>★ Tᴏᴛᴀʟ Fɪʟᴇs: <code>{files}</code>
+★ Tᴏᴛᴀʟ Usᴇʀs: <code>{total_users}</code>
+★ Tᴏᴛᴀʟ Cʜats: <code>{total_chats}</code>
+★ Usᴇᴅ Sᴛᴏʀᴀɢᴇ: <code>{formatted_size}</code>
+★ Fʀᴇᴇ Sᴛᴏʀᴀɢᴇ: <code>{formatted_free}</code></b>"""
+        )
+    except Exception as e:
+        await message.reply(f"Error: {e}")
+        
 @Client.on_message(filters.command('ban') & filters.user(ADMINS))
 async def ban_user_handler(client, message):
     if len(message.command) < 2:
