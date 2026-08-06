@@ -42,9 +42,9 @@ async def safe_kick(client: Client, chat_id, user_id):
         await client.unban_chat_member(cid, user_id)
     except Exception as e:
         if "USER_NOT_PARTICIPANT" not in str(e) and "PEER_ID_INVALID" not in str(e):
-            await notify_admins(client, f"<b>⚠️ Automated Kick Failed (Attempt 1)\n\n• User ID: <code>{user_id}</code>\n• Reason: <code>{e}</code>\n\n<i>Retrying in 1 minute...</i></b>")
+            await notify_admins(client, f"<b>⚠️ Automated Kick Failed (Attempt 1)\n\n👤 User: <a href='tg://user?id={uid}'>{name}</a> {user_id}\n• Reason: {e}\n\n<i>Retrying in 1 minute...</i></b>")
             
-            # Wait 1 minute as requested
+            # Wait 1 minute as requested<b>
             await asyncio.sleep(60)
             
             # Retry second attempt
@@ -60,9 +60,9 @@ async def safe_kick(client: Client, chat_id, user_id):
                 await asyncio.sleep(0.3)
                 await client.unban_chat_member(cid, user_id)
                 
-                await notify_admins(client, f"<b>✅ Automated Kick Succeeded on Retry (Attempt 2)\n\n• User ID: <code>{user_id}</code></b>")
+                await notify_admins(client, f"<b>✅ Automated Kick Succeeded on Retry (Attempt 2)\n\n👤 User: <a href='tg://user?id={uid}'>{name}</a> {user_id}</b>")
             except Exception as retry_err:
-                await notify_admins(client, f"<b>❌ Automated Kick Permanently Failed (Attempt 2)\n\n• User ID: <code>{user_id}</code>\n• Final Error: <code>{retry_err}</code></b>")
+                await notify_admins(client, f"<b>❌ Automated Kick Permanently Failed (Attempt 2)\n\n👤 User: <a href='tg://user?id={uid}'>{name}</a> {user_id}\n• Final Error: {retry_err}</b>")
 async def premium_expiry_reminder_loop(client: Client):
     await asyncio.sleep(5)
     while True:
@@ -84,7 +84,7 @@ async def premium_expiry_reminder_loop(client: Client):
                     if now >= exp:
                         await col.delete_one({"user_id": uid})
                         if PREMIUM_GROUP_ID: await safe_kick(client, PREMIUM_GROUP_ID, uid)
-                        await notify_admins(client, f"<b>❌ Premium Membership Expired & Ejected\n\n• User ID: <code>{uid}</code>\n• Plan: <code>{doc.get('plan', 'N/A')}</code>\n• Expired On: <code>{fmt_date(exp)}</code></b>")
+                        await notify_admins(client, f"<b>❌ Premium Membership Expired & Ejected\n\n👤 User: <a href='tg://user?id={uid}'>{name}</a> {uid}\n• Plan: {doc.get('plan', 'N/A')}\n• Expired On: {fmt_date(exp)}</b>")
                         try:
                             await client.send_message(uid, "<b>⚠️ Premium Membership Expired!\n\nRenew your plan to restore your premium status.</b>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Renew Plan", callback_data="buy_premium_start")]]), parse_mode=enums.ParseMode.HTML)
                         except Exception: pass
@@ -113,9 +113,9 @@ async def approve_command(client, message):
             [InlineKeyboardButton("6 Months - ₹240", callback_data=f"selplan_{uid}_180d_240"), InlineKeyboardButton("1 Year - ₹480", callback_data=f"selplan_{uid}_365d_480")],
             [InlineKeyboardButton("❌ Cancel", callback_data=f"min_rej_{uid}")]
         ])
-        await message.reply_text(f"<b>💎 Select Plan Package for <a href='tg://user?id={uid}'>{name}</a> (<code>{uid}</code>)</b>", reply_markup=kb, parse_mode=enums.ParseMode.HTML)
+        await message.reply_text(f"<b>💎 Select Plan Package for <a href='tg://user?id={uid}'>{name}</a> <code>Expires:</code></b>", reply_markup=kb, parse_mode=enums.ParseMode.HTML)
     except Exception as e:
-        await message.reply_text(f"<b>❌ Error: <code>{e}</code></b>", parse_mode=enums.ParseMode.HTML)
+        await message.reply_text(f"<b>❌ Error: {e}</b>", parse_mode=enums.ParseMode.HTML)
 
 @Client.on_message(filters.command("revoke") & filters.user(ADMINS))
 async def revoke_command(client, message):
@@ -131,9 +131,9 @@ async def revoke_command(client, message):
         try:
             await client.send_message(uid, "<b>❌ Your Premium Membership has been revoked by administration.</b>", parse_mode=enums.ParseMode.HTML)
         except Exception: pass
-        await message.reply_text(f"<b>✅ Successfully revoked premium for user <code>{uid}</code></b>", parse_mode=enums.ParseMode.HTML)
+        await message.reply_text(f"<b>✅ Successfully revoked premium for user {uid}</b>", parse_mode=enums.ParseMode.HTML)
     except Exception as e:
-        await message.reply_text(f"<b>❌ Error: <code>{e}</code></b>", parse_mode=enums.ParseMode.HTML)
+        await message.reply_text(f"<b>❌ Error: {e}</b>", parse_mode=enums.ParseMode.HTML)
 
 @Client.on_message(filters.command("premiums") & filters.user(ADMINS))
 async def premiums_command(client, message):
@@ -148,7 +148,7 @@ async def premiums_command(client, message):
         name = doc.get("username", "User")
         plan = doc.get("plan")
         exp = fmt_date(doc.get("expires_at"))
-        text += f"<b>{count}.</b> <a href='tg://user?id={uid}'>{name}</a> (<code>{uid}</code>)\n   • <b>Plan:</b> <code>{plan}</code>\n   • <b>Expires:</b> <code>{exp}</code>\n\n"
+        text += f"<b>{count}.</b> <a href='tg://user?id={uid}'>{name}</a> <code>Expires:</code>\n   • <b>Plan:</b> {plan}\n   • <b>Expires:</b> {exp}\n\n"
     if count == 0:
         text = "<b>❌ No active premium users found.</b>"
     if len(text) > 4096:
@@ -327,7 +327,7 @@ async def start(client, message):
             file = getattr(msg, filetype.value)
             title = ' '.join(filter(lambda x: not x.startswith('www.') and not x.startswith('@'), file.file_name.split()))
             size = get_size(file.file_size)
-            f_caption = f"<code>{title}</code>"
+            f_caption = f"{title}"
             if CUSTOM_FILE_CAPTION:
                 try:
                     f_caption = CUSTOM_FILE_CAPTION.format(file_name=title, file_size=size, file_caption='')
@@ -371,10 +371,10 @@ async def check_my_plan(client, message):
     left_str = f"{rem.days} Days" if rem and rem.days > 0 else (f"{rem.seconds // 60} Minutes {rem.seconds % 60} Seconds" if rem else "Expired")
     await message.reply_text(
         f"<b>🌟 Premium Membership Active ✅\n\n"
-        f"• 👤 User: <a href='tg://user?id={user_id}'>{message.from_user.first_name}</a> (<code>{user_id}</code>)\n"
-        f"• 💰 Plan: <code>{plan} | ₹{price}</code>\n"
-        f"• ⌛ Expiry: <code>{fmt_date(expires_at)}</code>\n"
-        f"• ⏳ Remaining: <code>{left_str}</code></b>",
+        f"• 👤 User: <a href='tg://user?id={user_id}'>{message.from_user.first_name}</a> ({user_id})\n"
+        f"• 💰 Plan: {plan} | ₹{price}\n"
+        f"• ⌛ Expiry: {fmt_date(expires_at)}\n"
+        f"• ⏳ Remaining: {left_str}</b>",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Renew Plan", callback_data="buy_premium_start")]]),
         parse_mode=enums.ParseMode.HTML
     )
@@ -386,10 +386,10 @@ async def premium_menu(client, update):
     if isinstance(update, CallbackQuery): await update.answer()
     text = (
         "<b>🌟 Premium Plans:-\n\n"
-        "• ✨ 1 Month: <code>₹40</code>\n"
-        "• ✨ 2 Months: <code>₹80</code>\n"
-        "• ✨ 6 Months: <code>₹240</code>\n"
-        "• ✨ 1 Year: <code>₹480</code>\n\n"
+        "• ✨ 1 Month: ₹40\n"
+        "• ✨ 2 Months: ₹80\n"
+        "• ✨ 6 Months: ₹240\n"
+        "• ✨ 1 Year: ₹480\n\n"
         "1. Pay via Button below.\n"
         "2. Click ‘I Have Paid’</b>"
     )
@@ -435,7 +435,7 @@ async def screenshot_handler(client, message):
     kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Approve", callback_data=f"min_app_{user_id}"), InlineKeyboardButton("❌ Reject", callback_data=f"min_rej_{user_id}")]])
     text = (
         f"<b>🔔 New Payment Verification\n\n"
-        f"• 👤 User: <a href='tg://user?id={user_id}'>{message.from_user.first_name}</a> (<code>{user_id}</code>)</b>"
+        f"• 👤 User: <a href='tg://user?id={user_id}'>{message.from_user.first_name}</a> ({user_id})</b>"
     )
     
     fid = message.photo.file_id if message.photo else message.document.file_id
@@ -504,9 +504,9 @@ async def select_plan_cb(client, callback: CallbackQuery):
     ])
     text = (
         f"<b>💎 Preview Panel\n\n"
-        f"• 👤 User: <a href='tg://user?id={uid}'>{name}</a> (<code>{uid}</code>)\n"
-        f"• ✨ Plan: <code>{plan_name} | ₹{price}</code>\n"
-        f"• 📆 Expiry: <code>{fmt_date(exp)}</code></b>"
+        f"• 👤 User: <a href='tg://user?id={uid}'>{name}</a> <code>Expires:</code>\n"
+        f"• ✨ Plan: {plan_name} | ₹{price}\n"
+        f"• 📆 Expiry: {fmt_date(exp)}</b>"
     )
     await callback.answer()
     try: 
@@ -569,8 +569,8 @@ async def conf_act_cb(client, callback: CallbackQuery):
         msg = await client.send_message(
             uid, 
             f"{title_msg}\n\n"
-            f"• 💰 Plan: <code>{plan} | ₹{price}</code>\n"
-            f"• ⌛ Expiry: <code>{fmt_date(exp)}</code>\n\n"
+            f"• 💰 Plan: {plan} | ₹{price}\n"
+            f"• ⌛ Expiry: {fmt_date(exp)}\n\n"
             f"<b>✨ Join Premium Group:</b>", 
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🧤 click here to join", url=link)]]), 
             parse_mode=enums.ParseMode.HTML
@@ -579,8 +579,8 @@ async def conf_act_cb(client, callback: CallbackQuery):
     except Exception: pass
     
     log_title = "<b>🌟 Premium Renewed ✅</b>" if is_renewal else "<b>🌟 Premium Activated ✅</b>"
-    await notify_admins(client, f"{log_title}\n\n• <b>👤 User:</b> <a href='tg://user?id={uid}'>{name}</a> (<code>{uid}</code>)\n• <b>💰 Plan:</b> <code>{plan} | ₹{price}</code>\n• <b>⌛ Expiry:</b> <code>{fmt_date(exp)}</code>")
-    success_text = f"<b>✅ Activated Successfully\n• 👤 User:</b> <a href='tg://user?id={uid}'>{name}</a> (<code>{uid}</code>)"
+    await notify_admins(client, f"{log_title}\n\n• <b>👤 User:</b> <a href='tg://user?id={uid}'>{name}</a> <code>Expires:</code>\n• <b>💰 Plan:</b> {plan} | ₹{price}\n• <b>⌛ Expiry:</b> {fmt_date(exp)}")
+    success_text = f"<b>✅ Activated Successfully\n• 👤 User:</b> <a href='tg://user?id={uid}'>{name}</a> <code>Expires:</code>"
     try: 
         await callback.message.edit_caption(success_text, reply_markup=None, parse_mode=enums.ParseMode.HTML)
     except MessageNotModified: 
@@ -616,9 +616,9 @@ async def member_update(client, update: ChatMemberUpdated):
             link = PREMIUM_PERMANENT_LINK or "https://t.me/your_group_link"
             text = (
                 f"<b>🌟 Premium Activated ✅\n\n"
-                f"• 👤 User: <a href='tg://user?id={user.id}'>{user.first_name}</a> (<code>{user.id}</code>)\n"
-                f"• 💰 Plan: <code>{doc.get('plan')} | ₹{doc.get('price')}</code>\n"
-                f"• ⌛ Expiry: <code>{fmt_date(doc.get('expires_at'))}</code></b>"
+                f"• 👤 User: <a href='tg://user?id={user.id}'>{user.first_name}</a> ({user.id})\n"
+                f"• 💰 Plan: {doc.get('plan')} | ₹{doc.get('price')}\n"
+                f"• ⌛ Expiry: {fmt_date(doc.get('expires_at'))}</b>"
             )
             kb = InlineKeyboardMarkup([[InlineKeyboardButton("✨ Premium Group", url=link)]])
             if doc.get("dm_msg_id"):
@@ -670,7 +670,7 @@ async def channel_info(bot, message):
     for channel in channels:
         chat = await bot.get_chat(channel)
         text += ('\n@' + chat.username) if chat.username else ('\n' + (chat.title or chat.first_name))
-    text += f'\n\nTotal: <code>{len(channels)}</code></b>'
+    text += f'\n\nTotal: {len(channels)}</b>'
     if len(text) < 4096:
         await message.reply(text, parse_mode=enums.ParseMode.HTML)
     else:
