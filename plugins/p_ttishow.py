@@ -7,6 +7,14 @@ from info import ADMINS
 
 logger = logging.getLogger(__name__)
 
+def get_size(bytes_size):
+    units = ["B", "KB", "MB", "GB", "TB"]
+    unit_index = 0
+    while bytes_size >= 1024 and unit_index < len(units) - 1:
+        bytes_size /= 1024
+        unit_index += 1
+    return f"{bytes_size:.2f} {units[unit_index]}"
+
 @Client.on_message(filters.command('stats') & filters.incoming)
 async def get_stats(bot, message):
     try:
