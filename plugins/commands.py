@@ -32,6 +32,13 @@ async def notify_admins(client: Client, text: str):
         except Exception:
             pass
 
+async def handle_auto_delete(message_obj):
+    try:
+        await asyncio.sleep(900)  # 15 minutes auto-delete window
+        await message_obj.delete()
+    except Exception:
+        pass
+
 async def safe_kick(client: Client, chat_id, user_id):
     if not chat_id: 
         return
@@ -100,8 +107,8 @@ async def approve_command(client, message):
         except Exception: pass
 
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("2 Min Test - ₹40", callback_data=f"selplan_{uid}_2m_40"), InlineKeyboardButton("5 Min Test - ₹80", callback_data=f"selplan_{uid}_5m_80")],
-            [InlineKeyboardButton("1 Month - ₹150", callback_data=f"selplan_{uid}_30d_150"), InlineKeyboardButton("2 Months - ₹250", callback_data=f"selplan_{uid}_60d_250")],
+            [InlineKeyboardButton("2 Min Test", callback_data=f"selplan_{uid}_2m_40"), InlineKeyboardButton("5 Min Test", callback_data=f"selplan_{uid}_5m_80")],
+            [InlineKeyboardButton("1 Month - ₹40", callback_data=f"selplan_{uid}_30d_40"), InlineKeyboardButton("2 Months - ₹80", callback_data=f"selplan_{uid}_60d_80")],
             [InlineKeyboardButton("6 Months - ₹240", callback_data=f"selplan_{uid}_180d_240"), InlineKeyboardButton("1 Year - ₹480", callback_data=f"selplan_{uid}_365d_480")],
             [InlineKeyboardButton("❌ Cancel", callback_data=f"min_rej_{uid}")]
         ])
@@ -387,10 +394,8 @@ async def premium_menu(client, update):
     if isinstance(update, CallbackQuery): await update.answer()
     text = (
         "<b>🌟 Premium Plans:-\n\n"
-        "• ✨ 2 Min Test: <code>₹40</code>\n"
-        "• ✨ 5 Min Test: <code>₹80</code>\n"
-        "• ✨ 1 Month: <code>₹150</code>\n"
-        "• ✨ 2 Months: <code>₹250</code>\n"
+        "• ✨ 1 Month: <code>₹40</code>\n"
+        "• ✨ 2 Months: <code>₹80</code>\n"
         "• ✨ 6 Months: <code>₹240</code>\n"
         "• ✨ 1 Year: <code>₹480</code>\n\n"
         "1. Pay via Button below.\n"
@@ -460,8 +465,8 @@ async def admin_app_cb(client, callback: CallbackQuery):
     except Exception: pass
 
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("2 Min Test - ₹40", callback_data=f"selplan_{uid}_2m_40"), InlineKeyboardButton("5 Min Test - ₹80", callback_data=f"selplan_{uid}_5m_80")],
-        [InlineKeyboardButton("1 Month - ₹150", callback_data=f"selplan_{uid}_30d_150"), InlineKeyboardButton("2 Months - ₹250", callback_data=f"selplan_{uid}_60d_250")],
+        [InlineKeyboardButton("2 Min Test", callback_data=f"selplan_{uid}_2m_40"), InlineKeyboardButton("5 Min Test", callback_data=f"selplan_{uid}_5m_80")],
+        [InlineKeyboardButton("1 Month - ₹40", callback_data=f"selplan_{uid}_30d_40"), InlineKeyboardButton("2 Months - ₹80", callback_data=f"selplan_{uid}_60d_80")],
         [InlineKeyboardButton("6 Months - ₹240", callback_data=f"selplan_{uid}_180d_240"), InlineKeyboardButton("1 Year - ₹480", callback_data=f"selplan_{uid}_365d_480")],
         [InlineKeyboardButton("❌ Cancel", callback_data=f"min_rej_{uid}")]
     ])
