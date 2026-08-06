@@ -149,11 +149,18 @@ async def premium_expiry_reminder_loop(client: Client):
                     if not isinstance(exp, datetime): continue
                     
                     reminders = doc.get("reminders", {})
-                    if not reminders.get("30_sec") and (exp - now) <= timedelta(seconds=30) and (exp - now) > timedelta(seconds=0):
+                    # Widen window to 60 seconds to ensure the 30-second sleep catches it safely
+                    if not reminders.get("30_sec") and timedelta(seconds=0) < (exp - now) <= timedelta(seconds=60):
                         try:
-                            await client.send_message(uid, "<b>⚠️ Your Premium Membership is expiring in 30 seconds!\n\nRenew now to avoid getting ejected.</b>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Renew Now", callback_data="buy_premium_start")]]), parse_mode=enums.ParseMode.HTML)
+                            await client.send_message(
+                                uid, 
+                                "<b>⚠️ Your Premium Membership is expiring in less than a minute!\n\nRenew now to avoid getting ejected.</b>", 
+                                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Renew Now", callback_data="buy_premium_start")]]), 
+                                parse_mode=enums.ParseMode.HTML
+                            )
                             await col.update_one({"user_id": uid}, {"$set": {"reminders.30_sec": True}})
-                        except Exception: pass
+                        except Exception: 
+                            pass
 
                     if now >= exp:
                         await col.delete_one({"user_id": uid})
