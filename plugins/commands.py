@@ -16,8 +16,35 @@ import re, sys, json, base64
 logger = logging.getLogger(__name__)
 BATCH_FILES = {}
 
+# ─────────────────────────────────────────────────────────────────────────────
+# REUSABLE HELPER FUNCTIONS (DRY Principle)
+# ─────────────────────────────────────────────────────────────────────────────
+
 def fmt_date(dt: datetime) -> str:
     return (dt + timedelta(hours=5, minutes=30)).strftime('%d %b, %Y at %I:%M %p') if isinstance(dt, datetime) else "N/A"
+
+def get_col():
+    try:
+        return db.premium_users if hasattr(db, 'premium_users') and db.premium_users is not None else (db.db.premium_users if hasattr(db, 'db') else db.get_collection('premium_users'))
+    except Exception:
+        return None
+
+def get_db_collection(col_name: str):
+    try:
+        if hasattr(db, col_name) and getattr(db, col_name) is not None:
+            return getattr(db, col_name)
+        if hasattr(db, 'db') and hasattr(db.db, col_name):
+            return getattr(db.db, col_name)
+        return db.get_collection(col_name)
+    except Exception:
+        return None
+
+async def fetch_user_name(client, uid: int) -> str:
+    try:
+        user = await client.get_users(uid)
+        return user.first_name or "User"
+    except Exception:
+        return "User"
 
 def get_plan_keyboard(uid: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
@@ -27,11 +54,24 @@ def get_plan_keyboard(uid: int) -> InlineKeyboardMarkup:
         [InlineKeyboardButton("❌ Cancel", callback_data=f"min_rej_{uid}")]
     ])
 
-def get_col():
+def parse_plan_duration(duration_str: str):
+    if duration_str.endswith("m"):
+        mins = int(duration_str[:-1])
+        return timedelta(minutes=mins), f"{mins} Min Test"
+    else:
+        days = int(duration_str[:-1])
+        return timedelta(days=days), f"{days} Days Plan"
+
+async def safe_edit_message(message, text, reply_markup=None):
     try:
-        return db.premium_users if hasattr(db, 'premium_users') and db.premium_users is not None else (db.db.premium_users if hasattr(db, 'db') else db.get_collection('premium_users'))
+        await message.edit_caption(text, reply_markup=reply_markup, parse_mode=enums.ParseMode.HTML)
+    except MessageNotModified:
+        pass
     except Exception:
-        return None
+        try:
+            await message.edit_text(text, reply_markup=reply_markup, parse_mode=enums.ParseMode.HTML)
+        except MessageNotModified:
+            pass
 
 async def notify_admins(client: Client, text: str):
     for admin_id in ADMINS:
@@ -50,32 +90,25 @@ async def safe_kick(client: Client, chat_id, user_id):
         await client.unban_chat_member(cid, user_id)
     except Exception as e:
         if "USER_NOT_PARTICIPANT" not in str(e) and "PEER_ID_INVALID" not in str(e):
-            await notify_admins(client, f"<b>⚠️ Automated Kick Failed (Attempt 1)\n\n👤 User: <a href='tg://user?id={uid}'>{name}</a> {user_id}\n• Reason: {e}\n\n<i>Retrying in 1 minute...</i></b>")
-            
-            # Wait 1 minute as requested<b>
+            await notify_admins(client, f"<b>⚠️ Automated Kick Failed (Attempt 1)\n\n• User ID: {user_id}\n• Reason: {e}\n\n<i>Retrying in 1 minute...</i></b>")
             await asyncio.sleep(60)
-            
-            # Retry second attempt
             try:
-                # Clear/refresh peer cache if method exists or fallback to clean call
                 if hasattr(client, "get_chat"):
-                    try:
-                        await client.get_chat(cid)
-                    except Exception:
-                        pass
-                
+                    try: await client.get_chat(cid)
+                    except Exception: pass
                 await client.ban_chat_member(cid, user_id)
                 await asyncio.sleep(0.3)
                 await client.unban_chat_member(cid, user_id)
-                
-                await notify_admins(client, f"<b>✅ Automated Kick Succeeded on Retry (Attempt 2)\n\n👤 User: <a href='tg://user?id={uid}'>{name}</a> {user_id}</b>")
+                await notify_admins(client, f"<b>✅ Automated Kick Succeeded on Retry (Attempt 2)\n• User ID: {user_id}</b>")
             except Exception as retry_err:
-                await notify_admins(client, f"<b>❌ Automated Kick Permanently Failed (Attempt 2)\n\n👤 User: <a href='tg://user?id={uid}'>{name}</a> {user_id}\n• Final Error: {retry_err}</b>")
+                await notify_admins(client, f"<b>❌ Automated Kick Permanently Failed (Attempt 2)\n• User ID: {user_id}\n• Final Error: {retry_err}</b>")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# EXPIRY REMINDER LOOP
+# ─────────────────────────────────────────────────────────────────────────────
 
 async def premium_expiry_reminder_loop(client: Client):
     await asyncio.sleep(5)
-    
-    # Optional: Run an immediate catch-up check right when the loop boots up
     try:
         now = datetime.utcnow()
         col = get_col()
@@ -103,7 +136,6 @@ async def premium_expiry_reminder_loop(client: Client):
     except Exception as e:
         logger.error(f"Startup expiry check error: {e}")
 
-    # Standard ongoing loop
     while True:
         try:
             now = datetime.utcnow()
@@ -134,11 +166,11 @@ async def premium_expiry_reminder_loop(client: Client):
         except Exception as e:
             logger.error(f"Expiry loop error: {e}")
             
-        # =========================================================================
-        # CONFIG: Change the loop interval here (in seconds) for future adjustments.
-        # Current setting: 30 seconds.
-        # =========================================================================
         await asyncio.sleep(30)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ADMIN COMMANDS
+# ─────────────────────────────────────────────────────────────────────────────
 
 @Client.on_message(filters.command("approve") & filters.user(ADMINS))
 async def approve_command(client, message):
@@ -146,14 +178,11 @@ async def approve_command(client, message):
         return await message.reply_text("<b>⚠️ Usage: /approve [user_id]</b>", parse_mode=enums.ParseMode.HTML)
     try:
         uid = int(message.command[1])
-        try: name = (await client.get_users(uid)).first_name or "User"
-        except Exception: name = "User"
+        name = await fetch_user_name(client, uid)
         
-        try:
-            col_ses = db.admin_approval_sessions if hasattr(db, 'admin_approval_sessions') else (db.db.admin_approval_sessions if hasattr(db, 'db') else db.get_collection('admin_approval_sessions'))
-            if col_ses is not None:
-                await col_ses.update_one({"admin_id": message.from_user.id}, {"$set": {"target_user_id": uid}}, upsert=True)
-        except Exception: pass
+        col_ses = get_db_collection('admin_approval_sessions')
+        if col_ses is not None:
+            await col_ses.update_one({"admin_id": message.from_user.id}, {"$set": {"target_user_id": uid}}, upsert=True)
 
         kb = get_plan_keyboard(uid)
         await message.reply_text(f"<b>💎 Select Plan Package for <a href='tg://user?id={uid}'>{name}</a> (<code>{uid}</code>)</b>", reply_markup=kb, parse_mode=enums.ParseMode.HTML)
@@ -202,6 +231,10 @@ async def premiums_command(client, message):
     else:
         await message.reply_text(text, parse_mode=enums.ParseMode.HTML)
 
+# ─────────────────────────────────────────────────────────────────────────────
+# START & FILE DELIVERY HANDLER (WITH PREMIUM GATING)
+# ─────────────────────────────────────────────────────────────────────────────
+
 @Client.on_message(filters.command("start") & filters.incoming)
 async def start(client, message):
     if message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
@@ -220,7 +253,7 @@ async def start(client, message):
     
     if len(message.command) == 2 and message.command[1] == "i_paid":
         try:
-            col_intent = db.user_payment_intents if hasattr(db, 'user_payment_intents') else (db.db.user_payment_intents if hasattr(db, 'db') else db.get_collection('user_payment_intents'))
+            col_intent = get_db_collection('user_payment_intents')
             if col_intent is not None:
                 await col_intent.update_one({"user_id": message.from_user.id}, {"$set": {"action": "i_paid_clicked", "timestamp": datetime.utcnow()}}, upsert=True)
         except Exception: pass
@@ -289,6 +322,10 @@ async def start(client, message):
     )
     return
 
+# ─────────────────────────────────────────────────────────────────────────────
+# PLAN CHECK & PAYMENT FLOWS
+# ─────────────────────────────────────────────────────────────────────────────
+
 @Client.on_message(filters.command("myplan") & filters.private)
 async def check_my_plan(client, message):
     user_id = message.from_user.id
@@ -335,7 +372,7 @@ async def premium_menu(client, update):
 @Client.on_callback_query(filters.regex("^minimal_send_proof$"))
 async def send_proof_cb(client, callback: CallbackQuery):
     try:
-        col_intent = db.user_payment_intents if hasattr(db, 'user_payment_intents') else (db.db.user_payment_intents if hasattr(db, 'db') else db.get_collection('user_payment_intents'))
+        col_intent = get_db_collection('user_payment_intents')
         if col_intent is not None:
             await col_intent.update_one({"user_id": callback.from_user.id}, {"$set": {"action": "i_paid_clicked", "timestamp": datetime.utcnow()}}, upsert=True)
     except Exception: pass
@@ -350,7 +387,7 @@ async def screenshot_handler(client, message):
     is_valid_intent = False
     
     try:
-        col_intent = db.user_payment_intents if hasattr(db, 'user_payment_intents') else (db.db.user_payment_intents if hasattr(db, 'db') else db.get_collection('user_payment_intents'))
+        col_intent = get_db_collection('user_payment_intents')
         if col_intent is not None:
             doc = await col_intent.find_one({"user_id": user_id})
             if doc:
@@ -382,7 +419,7 @@ async def admin_app_cb(client, callback: CallbackQuery):
     uid = int(callback.data.split("_")[2])
     
     try:
-        col_ses = db.admin_approval_sessions if hasattr(db, 'admin_approval_sessions') else (db.db.admin_approval_sessions if hasattr(db, 'db') else db.get_collection('admin_approval_sessions'))
+        col_ses = get_db_collection('admin_approval_sessions')
         if col_ses is not None:
             await col_ses.update_one({"admin_id": callback.from_user.id}, {"$set": {"target_user_id": uid}}, upsert=True)
     except Exception: pass
@@ -390,15 +427,7 @@ async def admin_app_cb(client, callback: CallbackQuery):
     kb = get_plan_keyboard(uid)
     await callback.answer()
     text = "<b>💎 Select Plan Package</b>"
-    try: 
-        await callback.message.edit_caption(text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
-    except MessageNotModified: 
-        pass
-    except Exception: 
-        try: 
-            await callback.message.edit_text(text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
-        except MessageNotModified: 
-            pass
+    await safe_edit_message(callback.message, text, reply_markup=kb)
 
 @Client.on_callback_query(filters.regex("^selplan_"))
 async def select_plan_cb(client, callback: CallbackQuery):
@@ -407,22 +436,14 @@ async def select_plan_cb(client, callback: CallbackQuery):
     uid = int(uid_str)
     
     now = datetime.utcnow()
-    if duration_str.endswith("m"):
-        mins = int(duration_str[:-1])
-        delta = timedelta(minutes=mins)
-        plan_name = f"{mins} Min Test"
-    else:
-        days = int(duration_str[:-1])
-        delta = timedelta(days=days)
-        plan_name = f"{days} Days Plan"
+    delta, plan_name = parse_plan_duration(duration_str)
 
     col = get_col()
     existing = await col.find_one({"user_id": uid, "active": True}) if col else None
     start = existing.get("expires_at") or existing.get("expiry_date") if existing and isinstance(existing.get("expires_at"), datetime) and existing.get("expires_at") > now else now
     exp = start + delta
 
-    try: name = (await client.get_users(uid)).first_name or "User"
-    except Exception: name = "User"
+    name = await fetch_user_name(client, uid)
     
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("✅ Confirm", callback_data=f"confact_{uid}_{duration_str}_{price}"), InlineKeyboardButton("◀ Back", callback_data=f"min_app_{uid}")],
@@ -434,16 +455,8 @@ async def select_plan_cb(client, callback: CallbackQuery):
         f"• ✨ Plan: {plan_name} | ₹{price}\n"
         f"• 📆 Expiry: {fmt_date(exp)}</b>"
     )
-    await callback.answer() #
-    try: 
-        await callback.message.edit_caption(text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
-    except MessageNotModified: 
-        pass
-    except Exception: 
-        try: 
-            await callback.message.edit_text(text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
-        except MessageNotModified: 
-            pass
+    await callback.answer()
+    await safe_edit_message(callback.message, text, reply_markup=kb)
 
 @Client.on_callback_query(filters.regex("^confact_"))
 async def conf_act_cb(client, callback: CallbackQuery):
@@ -452,17 +465,9 @@ async def conf_act_cb(client, callback: CallbackQuery):
     uid = int(uid_str)
     
     now = datetime.utcnow()
-    if duration_str.endswith("m"):
-        mins = int(duration_str[:-1])
-        delta = timedelta(minutes=mins)
-        plan = f"{mins} Min Test"
-    else:
-        days = int(duration_str[:-1])
-        delta = timedelta(days=days)
-        plan = f"{days} Days Plan"
+    delta, plan = parse_plan_duration(duration_str)
 
-    try: name = (await client.get_users(uid)).first_name or "User"
-    except Exception: name = "User"
+    name = await fetch_user_name(client, uid)
     await callback.answer("Activating...")
     
     col = get_col()
@@ -484,7 +489,7 @@ async def conf_act_cb(client, callback: CallbackQuery):
     if col: await col.update_one({"user_id": uid}, {"$set": data}, upsert=True)
     
     try:
-        col_ses = db.admin_approval_sessions if hasattr(db, 'admin_approval_sessions') else (db.db.admin_approval_sessions if hasattr(db, 'db') else db.get_collection('admin_approval_sessions'))
+        col_ses = get_db_collection('admin_approval_sessions')
         if col_ses is not None:
             await col_ses.delete_one({"admin_id": callback.from_user.id})
     except Exception: pass
@@ -507,15 +512,7 @@ async def conf_act_cb(client, callback: CallbackQuery):
     log_title = "<b>🌟 Premium Renewed ✅</b>" if is_renewal else "<b>🌟 Premium Activated ✅</b>"
     await notify_admins(client, f"{log_title}\n\n• <b>👤 User:</b> <a href='tg://user?id={uid}'>{name}</a> (<code>{uid}</code>)\n• <b>💰 Plan:</b> {plan} | ₹{price}\n• <b>⌛ Expiry:</b> {fmt_date(exp)}")
     success_text = f"<b>✅ Activated Successfully\n• 👤 User:</b> <a href='tg://user?id={uid}'>{name}</a> (<code>{uid}</code>)"
-    try: 
-        await callback.message.edit_caption(success_text, reply_markup=None, parse_mode=enums.ParseMode.HTML)
-    except MessageNotModified: 
-        pass
-    except Exception: 
-        try: 
-            await callback.message.edit_text(success_text, reply_markup=None, parse_mode=enums.ParseMode.HTML)
-        except MessageNotModified: 
-            pass
+    await safe_edit_message(callback.message, success_text, reply_markup=None)
 
 @Client.on_chat_join_request()
 async def auto_accept(client, req: ChatJoinRequest):
@@ -558,8 +555,8 @@ async def admin_reject_cb(client, callback: CallbackQuery):
     if str(callback.from_user.id) not in map(str, ADMINS): return await callback.answer("Unauthorized.", show_alert=True)
     uid = int(callback.data.split("_")[-1])
     try:
-        col_intent = db.user_payment_intents if hasattr(db, 'user_payment_intents') else (db.db.user_payment_intents if hasattr(db, 'db') else db.get_collection('user_payment_intents'))
-        col_ses = db.admin_approval_sessions if hasattr(db, 'admin_approval_sessions') else (db.db.admin_approval_sessions if hasattr(db, 'db') else db.get_collection('admin_approval_sessions'))
+        col_intent = get_db_collection('user_payment_intents')
+        col_ses = get_db_collection('admin_approval_sessions')
         if col_intent is not None: await col_intent.delete_one({"user_id": uid})
         if col_ses is not None: await col_ses.delete_one({"admin_id": callback.from_user.id})
     except Exception: pass
@@ -568,15 +565,7 @@ async def admin_reject_cb(client, callback: CallbackQuery):
         await client.send_message(uid, "<b>⚠️ Payment Verification Failed.\n\nPlease pay and send a valid screenshot.</b>", parse_mode=enums.ParseMode.HTML)
     except Exception: pass
     rej_text = "<b>❌ Status: REJECTED</b>"
-    try: 
-        await callback.message.edit_caption(rej_text, reply_markup=None, parse_mode=enums.ParseMode.HTML)
-    except MessageNotModified: 
-        pass
-    except Exception: 
-        try: 
-            await callback.message.edit_text(rej_text, reply_markup=None, parse_mode=enums.ParseMode.HTML)
-        except MessageNotModified: 
-            pass
+    await safe_edit_message(callback.message, rej_text, reply_markup=None)
 
 @Client.on_message(filters.private & filters.text & filters.incoming & ~filters.command(["start", "premium", "myplan", "approve", "revoke", "premiums", "channel", "logs", "delete", "deleteall", "deletefiles", "restart"]))
 async def pm_text(bot, message):
