@@ -109,7 +109,8 @@ async def get_search_results(chat_id, query, file_type=None, max_results=10, off
 
     total_results = await Media.collection.count_documents(db_filter)
 
-    cursor = Media.find(db_filter).sort("$natural", -1).skip(offset).limit(max_results)
+    # 🚀 Removed .sort("$natural", -1) because MongoDB text search does not allow it
+    cursor = Media.find(db_filter).skip(offset).limit(max_results)
     files = await cursor.to_list(length=max_results)
 
     next_offset = offset + max_results
