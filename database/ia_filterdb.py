@@ -92,56 +92,25 @@ async def save_file(media):
 
 async def get_search_results(chat_id, query, file_type=None, max_results=10, offset=0, filter=False, **kwargs):
     max_results = 10
-
     query = await extract_v2(query)
     query = query.strip()
-    words = normalize(query)
 
-    if not words:
-        strict_filter = {}
-        loose_filter = {}
-    else:
-        strict_conditions = [{"file_name": {"$regex": rf"\b{re.escape(w)}\b", "$options": "i"}} for w in words]
-        strict_filter = {"$and": strict_conditions}
-
-        loose_conditions = [{"file_name": {"$regex": re.escape(w), "$options": "i"}} for w in words]
-        loose_filter = {"$and": loose_conditions}
+    db_filter = {}
+    if query:
+        db_filter["$text"] = {"$search": query}
 
     if file_type:
-        if words:
-            strict_filter["file_type"] = file_type
-            loose_filter["file_type"] = file_type
-        else:
-            strict_filter = {"file_type": file_type}
-            loose_filter = {"file_type": file_type}
-
-    strict_count = await Media.collection.count_documents(strict_filter)
-    strict_ids = await Media.collection.distinct("_id", strict_filter)
-
-    loose_filter_with_exclude = dict(loose_filter)
-    if strict_ids:
-        loose_filter_with_exclude["_id"] = {"$nin": strict_ids}
-
-    loose_count = await Media.collection.count_documents(loose_filter_with_exclude)
-    total_results = strict_count + loose_count
+        db_filter["file_type"] = file_type
 
     try:
         offset = int(offset)
     except (TypeError, ValueError):
         offset = 0
 
-    files = []
-    if offset < strict_count:
-        cursor = Media.find(strict_filter).sort("$natural", -1).skip(offset).limit(max_results)
-        files = await cursor.to_list(length=max_results)
-    else:
-        strict_pages = (strict_count + max_results - 1) // max_results if strict_count > 0 else 0
-        page_idx = offset // max_results
-        loose_page_idx = max(0, page_idx - strict_pages)
-        loose_skip = loose_page_idx * max_results
+    total_results = await Media.collection.count_documents(db_filter)
 
-        cursor = Media.find(loose_filter_with_exclude).sort("$natural", -1).skip(loose_skip).limit(max_results)
-        files = await cursor.to_list(length=max_results)
+    cursor = Media.find(db_filter).sort("$natural", -1).skip(offset).limit(max_results)
+    files = await cursor.to_list(length=max_results)
 
     next_offset = offset + max_results
     if next_offset >= total_results:
@@ -167,7 +136,6 @@ async def get_file_details(file_id):
 
 async def ensure_indexes():
     try:
-        # Creates a text index shortcut on the 'file_name' field
         await Media.collection.create_index([("file_name", "text")])
     except Exception as e:
         print(f"Index creation error: {e}")
