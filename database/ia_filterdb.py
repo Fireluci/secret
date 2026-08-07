@@ -165,6 +165,13 @@ async def get_file_details(file_id):
     cursor = Media.find({"_id": file_id})
     return await cursor.to_list(length=1)
 
+async def ensure_indexes():
+    try:
+        # Creates a text index shortcut on the 'file_name' field
+        await Media.collection.create_index([("file_name", "text")])
+    except Exception as e:
+        print(f"Index creation error: {e}")
+
 def encode_file_id(s: bytes) -> str:
     r = b""
     n = 0
