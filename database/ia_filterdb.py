@@ -98,38 +98,55 @@ async def get_search_results(chat_id, query, file_type=None, max_results=10, off
     words = normalize(query)
 
     if not words:
-        mongo_filter = {}
+        strict_filter = {}
+        loose_filter = {}
     else:
-        # stage 1: strict search (whole word matching using word boundaries)
         strict_conditions = [{"file_name": {"$regex": rf"\b{re.escape(w)}\b", "$options": "i"}} for w in words]
         strict_filter = {"$and": strict_conditions}
 
-        if file_type:
-            strict_filter["file_type"] = file_type
-
-        total_strict = await Media.count_documents(strict_filter)
-
-        if total_strict > 0:
-            next_offset = offset + max_results
-            if next_offset >= total_strict:
-                next_offset = ""
-            cursor = Media.find(strict_filter).sort("$natural", -1).skip(offset).limit(max_results)
-            files = await cursor.to_list(length=max_results)
-            return files, next_offset, total_strict
-
-        # stage 2: fallback search (loose substring matching)
-        mongo_filter = {"$and": [{"file_name": {"$regex": re.escape(w), "$options": "i"}} for w in words]}
+        loose_conditions = [{"file_name": {"$regex": re.escape(w), "$options": "i"}} for w in words]
+        loose_filter = {"$and": loose_conditions}
 
     if file_type:
-        mongo_filter["file_type"] = file_type
+        if words:
+            strict_filter["file_type"] = file_type
+            loose_filter["file_type"] = file_type
+        else:
+            strict_filter = {"file_type": file_type}
+            loose_filter = {"file_type": file_type}
 
-    total_results = await Media.count_documents(mongo_filter)
+    strict_count = await Media.collection.count_documents(strict_filter)
+    strict_ids = await Media.collection.distinct("_id", strict_filter)
+
+    loose_filter_with_exclude = dict(loose_filter)
+    if strict_ids:
+        loose_filter_with_exclude["_id"] = {"$nin": strict_ids}
+
+    loose_count = await Media.collection.count_documents(loose_filter_with_exclude)
+    total_results = strict_count + loose_count
+
+    try:
+        offset = int(offset)
+    except (TypeError, ValueError):
+        offset = 0
+
+    files = []
+    if offset < strict_count:
+        cursor = Media.find(strict_filter).sort("$natural", -1).skip(offset).limit(max_results)
+        files = await cursor.to_list(length=max_results)
+    else:
+        strict_pages = (strict_count + max_results - 1) // max_results if strict_count > 0 else 0
+        page_idx = offset // max_results
+        loose_page_idx = max(0, page_idx - strict_pages)
+        loose_skip = loose_page_idx * max_results
+
+        cursor = Media.find(loose_filter_with_exclude).sort("$natural", -1).skip(loose_skip).limit(max_results)
+        files = await cursor.to_list(length=max_results)
+
     next_offset = offset + max_results
     if next_offset >= total_results:
         next_offset = ""
 
-    cursor = Media.find(mongo_filter).sort("$natural", -1).skip(offset).limit(max_results)
-    files = await cursor.to_list(length=max_results)
     return files, next_offset, total_results
 
 async def get_bad_files(query, file_type=None, filter=False, **kwargs):
