@@ -250,6 +250,8 @@ async def auto_filter(client, msg, spoll=False, is_spellcheck=False):
         try: await msg.message.delete()
         except: pass
 
+    offset = 0
+    
     req_user_id = message.from_user.id if (message and message.from_user) else (msg.from_user.id if hasattr(msg, 'from_user') else 0)
     
     # Utilizing the unified helper function
