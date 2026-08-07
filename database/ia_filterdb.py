@@ -92,31 +92,44 @@ async def save_file(media):
 
 async def get_search_results(chat_id, query, file_type=None, max_results=10, offset=0, filter=False, **kwargs):
     max_results = 10
+
     query = await extract_v2(query)
     query = query.strip()
+    words = normalize(query)
 
-    db_filter = {}
-    if query:
-        db_filter["$text"] = {"$search": query}
+    if not words:
+        mongo_filter = {}
+    else:
+        # stage 1: strict search (whole word matching using word boundaries)
+        strict_conditions = [{"file_name": {"$regex": rf"\b{re.escape(w)}\b", "$options": "i"}} for w in words]
+        strict_filter = {"$and": strict_conditions}
+
+        if file_type:
+            strict_filter["file_type"] = file_type
+
+        total_strict = await Media.count_documents(strict_filter)
+
+        if total_strict > 0:
+            next_offset = offset + max_results
+            if next_offset >= total_strict:
+                next_offset = ""
+            cursor = Media.find(strict_filter).sort("$natural", -1).skip(offset).limit(max_results)
+            files = await cursor.to_list(length=max_results)
+            return files, next_offset, total_strict
+
+        # stage 2: fallback search (loose substring matching)
+        mongo_filter = {"$and": [{"file_name": {"$regex": re.escape(w), "$options": "i"}} for w in words]}
 
     if file_type:
-        db_filter["file_type"] = file_type
+        mongo_filter["file_type"] = file_type
 
-    try:
-        offset = int(offset)
-    except (TypeError, ValueError):
-        offset = 0
-
-    total_results = await Media.collection.count_documents(db_filter)
-
-    # 🚀 Removed .sort("$natural", -1) because MongoDB text search does not allow it
-    cursor = Media.find(db_filter).skip(offset).limit(max_results)
-    files = await cursor.to_list(length=max_results)
-
+    total_results = await Media.count_documents(mongo_filter)
     next_offset = offset + max_results
     if next_offset >= total_results:
         next_offset = ""
 
+    cursor = Media.find(mongo_filter).sort("$natural", -1).skip(offset).limit(max_results)
+    files = await cursor.to_list(length=max_results)
     return files, next_offset, total_results
 
 async def get_bad_files(query, file_type=None, filter=False, **kwargs):
@@ -134,12 +147,6 @@ async def get_bad_files(query, file_type=None, filter=False, **kwargs):
 async def get_file_details(file_id):
     cursor = Media.find({"_id": file_id})
     return await cursor.to_list(length=1)
-
-async def ensure_indexes():
-    try:
-        await Media.collection.create_index([("file_name", "text")])
-    except Exception as e:
-        print(f"Index creation error: {e}")
 
 def encode_file_id(s: bytes) -> str:
     r = b""
