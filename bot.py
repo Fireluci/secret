@@ -9,7 +9,7 @@ from plugins.commands import premium_expiry_reminder_loop
 from plugins.index import check_pending_index_on_startup
 from pyrogram import Client, __version__
 from pyrogram.raw.all import layer
-from database.ia_filterdb import Media
+from database.ia_filterdb import Media, ensure_indexes
 from database.users_chats_db import db
 from info import SESSION, API_ID, API_HASH, BOT_TOKEN, LOG_CHANNEL, PORT
 from utils import temp
@@ -42,6 +42,14 @@ class Bot(Client):
         temp.BANNED_CHATS = b_chats
 
         await super().start()
+        
+        # 🚀 TEXT INDEX SHORTCUT VERIFICATION ON STARTUP
+        try:
+            await Media.collection.create_index([("file_name", "text")])
+            logging.info("✅ Database text index shortcut verified/created successfully.")
+        except Exception as e:
+            logging.error(f"⚠️ Error creating text index shortcut: {e}")
+
         await Media.ensure_indexes()
 
         me = await self.get_me()
@@ -66,7 +74,7 @@ class Bot(Client):
         )
 
         app = web.AppRunner(await web_server())
-        await app.setup()
+        app.setup()
         await web.TCPSite(app, "0.0.0.0", PORT).start()
 
         # Start background tasks
