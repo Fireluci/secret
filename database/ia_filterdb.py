@@ -23,12 +23,11 @@ async def get_search_results(chat_id, query, file_type=None, max_results=10, off
     strict_conditions = [{"file_name": {"$regex": rf"\b{re.escape(w)}\b", "$options": "i"}} for w in words]
     strict_filter = {**base_filter, "$and": strict_conditions}
 
-    # 2. Inside-Word Fuzzy Query: Keeps ALL words (including "of", "in", "the") 
-    # but allows substring matching so truncated words like "throne" match inside "thrones"
+    # 2. Pure Inside-Word Fuzzy Query: Substring containment matching
     fuzzy_conditions = [{"file_name": {"$regex": re.escape(w), "$options": "i"}} for w in words]
     fuzzy_filter = {**base_filter, "$and": fuzzy_conditions}
 
-    # Execute both queries simultaneously
+    # Execute both simultaneously
     strict_cursor = Media.find(strict_filter).sort("$natural", -1)
     strict_files = await strict_cursor.to_list(length=100)
 
