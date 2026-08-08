@@ -16,10 +16,6 @@ import re, sys, json, base64
 logger = logging.getLogger(__name__)
 BATCH_FILES = {}
 
-# ─────────────────────────────────────────────────────────────────────────────
-# REUSABLE HELPER FUNCTIONS (DRY Principle)
-# ─────────────────────────────────────────────────────────────────────────────
-
 def fmt_date(dt: datetime) -> str:
     return (dt + timedelta(hours=5, minutes=30)).strftime('%d %b, %Y at %I:%M %p') if isinstance(dt, datetime) else "N/A"
 
@@ -103,10 +99,6 @@ async def safe_kick(client: Client, chat_id, user_id):
             except Exception as retry_err:
                 await notify_admins(client, f"<b>❌ Automated Kick Permanently Failed (Attempt 2)\n• User ID: {user_id}\n• Final Error: {retry_err}</b>")
 
-# ─────────────────────────────────────────────────────────────────────────────
-# EXPIRY REMINDER LOOP
-# ─────────────────────────────────────────────────────────────────────────────
-
 async def premium_expiry_reminder_loop(client: Client):
     await asyncio.sleep(5)
     try:
@@ -149,7 +141,6 @@ async def premium_expiry_reminder_loop(client: Client):
                     if not isinstance(exp, datetime): continue
                     
                     reminders = doc.get("reminders", {})
-                    # Widen window to 60 seconds to ensure the 30-second sleep catches it safely
                     if not reminders.get("30_sec") and timedelta(seconds=0) < (exp - now) <= timedelta(seconds=60):
                         try:
                             await client.send_message(
@@ -174,10 +165,6 @@ async def premium_expiry_reminder_loop(client: Client):
             logger.error(f"Expiry loop error: {e}")
             
         await asyncio.sleep(30)
-
-# ─────────────────────────────────────────────────────────────────────────────
-# ADMIN COMMANDS
-# ─────────────────────────────────────────────────────────────────────────────
 
 @Client.on_message(filters.command("approve") & filters.user(ADMINS))
 async def approve_command(client, message):
@@ -238,10 +225,6 @@ async def premiums_command(client, message):
     else:
         await message.reply_text(text, parse_mode=enums.ParseMode.HTML)
 
-# ─────────────────────────────────────────────────────────────────────────────
-# START & FILE DELIVERY HANDLER (WITH PREMIUM GATING)
-# ─────────────────────────────────────────────────────────────────────────────
-
 @Client.on_message(filters.command("start") & filters.incoming)
 async def start(client, message):
     if message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
@@ -249,7 +232,7 @@ async def start(client, message):
         await asyncio.sleep(2)
         if not await db.get_chat(message.chat.id):
             total = await client.get_chat_members_count(message.chat.id)
-            await client.send_message(LOG_CHANNEL, script.LOG_TEXT_G.format(message.chat.title, message.chat.id, total, "Unknown"))        
+            await client.send_message(LOG_CHANNEL, script.LOG_TEXT_G.format(message.chat.title, message.chat.id, total, "Unknown"))       
             await db.add_chat(message.chat.id, message.chat.title)
         return 
     if not await db.is_user_exist(message.from_user.id):
@@ -268,7 +251,6 @@ async def start(client, message):
 
     data = message.command[1]
 
-    # ── [START] Premium Access Protection Check ─────────────────────────────
     user_id = message.from_user.id
     is_admin = str(user_id) in map(str, ADMINS)
     col = get_col()
@@ -280,7 +262,6 @@ async def start(client, message):
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌟 Buy Premium", callback_data="buy_premium_start")]]),
             parse_mode=enums.ParseMode.HTML
         )
-    # ── [END] Premium Access Protection Check ───────────────────────────────
 
     try: pre, file_id = data.split('_', 1)
     except: file_id, pre = data, ""
@@ -329,10 +310,6 @@ async def start(client, message):
     )
     return
 
-# ─────────────────────────────────────────────────────────────────────────────
-# PLAN CHECK & PAYMENT FLOWS
-# ─────────────────────────────────────────────────────────────────────────────
-
 @Client.on_message(filters.command("myplan") & filters.private)
 async def check_my_plan(client, message):
     user_id = message.from_user.id
@@ -360,21 +337,42 @@ async def premium_menu(client, update):
     message = update.message if isinstance(update, CallbackQuery) else update
     if isinstance(update, CallbackQuery): await update.answer()
     text = (
-        "<b>🌟 Premium Plans:-\n\n"
-        "• ✨ 1 Month: ₹40\n"
+        "<b>🌟 Premium Plans:-</b>\n\n"
+        "<b>• ✨ 1 Month: ₹40\n"
         "• ✨ 2 Months: ₹80\n"
         "• ✨ 6 Months: ₹240\n"
-        "• ✨ 1 Year: ₹480\n\n"
-        "1. Pay via Button below.\n"
-        "2. Click ‘I Have Paid’</b>"
+        "• ✨ 1 Year: ₹480</b>\n\n"
+        "<b>1. Pay via Button below.\n"
+        "2. Click ‘Click Here To Pay’</b>"
     )
-    kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔗 Click Here To Buy", url="https://fireluci.github.io/pay/")], [InlineKeyboardButton("✅ I Have Paid", callback_data="minimal_send_proof")]])
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔗 Click Here To Pay", callback_data="click_here_to_pay")]
+    ])
     if isinstance(update, CallbackQuery):
         try: await message.delete()
         except Exception: pass
         await client.send_message(message.chat.id, text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
     else:
         await message.reply_text(text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
+
+@Client.on_callback_query(filters.regex("^click_here_to_pay$"))
+async def click_here_to_pay_cb(client, callback: CallbackQuery):
+    await callback.answer()
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    qr_caption = "<b>📸 Scan QR or use UPI ID below to pay:\n\nUPI ID: <code>karthik.slice@ybl</code></b>"
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ I Paid", callback_data="minimal_send_proof")]
+    ])
+    await client.send_photo(
+        chat_id=callback.message.chat.id,
+        photo="https://ibb.co/KHqPKqg",
+        caption=qr_caption,
+        reply_markup=kb,
+        parse_mode=enums.ParseMode.HTML
+    )
 
 @Client.on_callback_query(filters.regex("^minimal_send_proof$"))
 async def send_proof_cb(client, callback: CallbackQuery):
