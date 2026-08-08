@@ -658,7 +658,7 @@ INVITE_LINKS = [
 ]
 
 STATE_FILE = "cleaner_state.json"
-SAFE_DELAY = 0.8  # Slow, safe delay to completely protect against rate limits and overheating
+SAFE_DELAY = 0.8  # Slow, safe delay to protect hardware and rate limits
 
 async def run_cleaner_background(bot_client):
     async with Client("cleaner_worker", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING) as app:
@@ -769,8 +769,8 @@ async def run_cleaner_background(bot_client):
                         deleted_count += 1
                     except Exception:
                         pass
-                else:
-                    seen_file_ids.add(file_unique_id)
+                    else:
+                        seen_file_ids.add(file_unique_id)
 
                 # Save state checkpoint every 50 messages to ensure zero data loss on restarts
                 if scanned_count % 50 == 0:
@@ -787,14 +787,8 @@ async def run_cleaner_background(bot_client):
         print(f"\n✅ All Channels Cleaned Successfully!\n● Total Scanned: {scanned_count}\n● Total Deleted: {deleted_count}")
 
 # 1. Manual trigger command
-@Client.on_message(filters.command("clean") & filters.private)
+@Client.on_message(filters.command("startclean") & filters.private)
 async def trigger_cleaner_command(client, message):
     asyncio.create_task(run_cleaner_background(client))
     await message.reply("🧹 **Safe Cleaner started!** Running slowly with built-in delays to protect your hardware and rate limits.")
-
-# 2. Auto-resume on boot: Automatically starts up the background task as soon as your main bot launches/restarts
-@Client.on_start()
-async def auto_resume_cleaner(client):
-    if os.path.exists(STATE_FILE):
-        print("🔄 Detected existing cleaner state file on boot. Auto-resuming background cleaner...")
-        asyncio.create_task(run_cleaner_background(client))
+How to make it auto-resume on boot:
