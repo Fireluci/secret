@@ -92,44 +92,51 @@ async def save_file(media):
 
 async def get_search_results(chat_id, query, file_type=None, max_results=10, offset=0, filter=False, **kwargs):
     max_results = 10
+    try:
+        offset = int(offset)
+    except (TypeError, ValueError):
+        offset = 0
 
-    query = await extract_v2(query)
+    query = await extract_v2(query) if 'extract_v2' in globals() else query
     query = query.strip()
+    
+    if not query:
+        return [], 0, 0
+
     words = normalize(query)
-
     if not words:
-        mongo_filter = {}
-    else:
-        # stage 1: strict search (whole word matching using word boundaries)
-        strict_conditions = [{"file_name": {"$regex": rf"\b{re.escape(w)}\b", "$options": "i"}} for w in words]
-        strict_filter = {"$and": strict_conditions}
+        return [], 0, 0
 
-        if file_type:
-            strict_filter["file_type"] = file_type
-
-        total_strict = await Media.count_documents(strict_filter)
-
-        if total_strict > 0:
-            next_offset = offset + max_results
-            if next_offset >= total_strict:
-                next_offset = ""
-            cursor = Media.find(strict_filter).sort("$natural", -1).skip(offset).limit(max_results)
-            files = await cursor.to_list(length=max_results)
-            return files, next_offset, total_strict
-
-        # stage 2: fallback search (loose substring matching)
-        mongo_filter = {"$and": [{"file_name": {"$regex": re.escape(w), "$options": "i"}} for w in words]}
-
+    base_filter = {}
     if file_type:
-        mongo_filter["file_type"] = file_type
+        base_filter["file_type"] = file_type
 
+    # Build a flexible substring regex condition for every word in the query
+    # This acts as both strict and fuzzy by ensuring all or most terms match fluidly
+    regex_conditions = [{"file_name": {"$regex": re.escape(w), "$options": "i"}} for w in words]
+    
+    # Try matching ALL words first ($and)
+    mongo_filter = {**base_filter, "$and": regex_conditions}
     total_results = await Media.count_documents(mongo_filter)
-    next_offset = offset + max_results
+
+    # If strict multi-word query yields few or no results, fallback to matching ANY word ($or)
+    # This ensures users never hit empty pages and fuzzy search picks up the slack automatically
+    if total_results == 0 and len(words) > 1:
+        mongo_filter = {**base_filter, "$or": regex_conditions}
+        total_results = await Media.count_documents(mongo_filter)
+
+    if total_results == 0:
+        return [], 0, 0
+
+    # Fetch the exact slice for the current page using stable offset pagination
+    cursor = Media.find(mongo_filter).sort("$natural", -1).skip(offset).limit(max_results)
+    files = await cursor.to_list(length=max_results)
+
+    # Calculate next offset safely
+    next_offset = offset + len(files)
     if next_offset >= total_results:
         next_offset = ""
 
-    cursor = Media.find(mongo_filter).sort("$natural", -1).skip(offset).limit(max_results)
-    files = await cursor.to_list(length=max_results)
     return files, next_offset, total_results
 
 async def get_bad_files(query, file_type=None, filter=False, **kwargs):
