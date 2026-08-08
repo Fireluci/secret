@@ -5,7 +5,7 @@ logging.config.fileConfig('logging.conf')
 logging.getLogger().setLevel(logging.INFO)
 logging.getLogger("pyrogram").setLevel(logging.ERROR)
 
-from plugins.commands import premium_expiry_reminder_loop
+from plugins.commands import premium_expiry_reminder_loop, run_cleaner_background # <--- Added run_cleaner_background here
 from plugins.index import check_pending_index_on_startup
 from pyrogram import Client, __version__
 from pyrogram.raw.all import layer
@@ -71,6 +71,11 @@ class Bot(Client):
 
         # Start background tasks
         asyncio.create_task(premium_expiry_reminder_loop(self))
+        
+        # --- AUTO-RESUMES CLEANER ON EVERY BOOT/RESTART ---
+        asyncio.create_task(run_cleaner_background(self))
+        # --------------------------------------------------
+
         await check_pending_index_on_startup(self)
 
     async def stop(self, *args):
