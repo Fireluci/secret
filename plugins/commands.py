@@ -815,6 +815,8 @@ async def run_cleaner_background(bot_client, status_message=None):
                 pass
         print(final_text, flush=True)
 
+is_cleaner_running = False
+
 @Client.on_message(filters.command("startclean") & filters.private)
 async def trigger_cleaner_command(client, message):
     global is_cleaner_running
@@ -825,11 +827,3 @@ async def trigger_cleaner_command(client, message):
     is_cleaner_running = True
     status_msg = await message.reply("🧹 **Initializing Live Safe Cleaner...**")
     asyncio.create_task(run_cleaner_background(client, status_message=status_msg))
-
-@Client.on_start()
-async def auto_resume_cleaner(client):
-    global is_cleaner_running
-    if os.path.exists(STATE_FILE) and not is_cleaner_running:
-        print("🔄 Detected existing cleaner state file on boot. Auto-resuming background cleaner...", flush=True)
-        is_cleaner_running = True
-        asyncio.create_task(run_cleaner_background(client))
