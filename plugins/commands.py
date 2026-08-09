@@ -651,171 +651,187 @@ API_ID = 20354559
 API_HASH = "bbdf772b35141fa8b661740dddb840bf"
 SESSION_STRING = "BQE2lf8AXoh8f-aAjj_WtZ_gEeIyCP8vdcjHR47gU7__HbVbHdA_O1y0Io9Khn0Xby2Nb2030-kQGPCRZh5GUtueQPn87ARv_xE63HehbpYsOao_gULoSEzT_yrtjJYtjIORDkqDMwWLsGHDPlPa1_FtIjUIve-mpc2GS6mTIpkhVUkHttMTWqqLBJd9qTgFggit44Y5eDpZNZcAir4gy-KpcpvgDJBA-YrEmtOn_acs8c-fra37ojzOHluAqiHEGvKJsczh1FPjhc-AjNebhi2zLzGtVAPTs9zSrpg0UAXF6C7f8f_e_bmLrIl4RE8IUJfjCJGR_1jSGq07WS7_ZLQG10UCpgAAAAGF3NwSAA"
 
-# Updated channel order with Backup 2 and Backup 4 placed at the end
 INVITE_LINKS = [
     "https://t.me/+-VyxToFvkA0wNmVl", # 1. BACKUP 3
     "https://t.me/+57sOfi_NiZwxYmNl", # 2. BackUp K
     "https://t.me/+8-QJe-y5Czs2ZDNl",  # 3. New Channel 1
     "https://t.me/+2_mEqrXEQAhiOTll", # 4. New Channel 2
-    "https://t.me/+tREA7LOsFaFhY2Fl", # 5. BACKUP 2 (Moved to last)
-    "https://t.me/+7QAPG4ERY0lhZWQ1"  # 6. BACKUP 4 (Moved to last)
+    "https://t.me/+tREA7LOsFaFhY2Fl", # 5. BACKUP 2
+    "https://t.me/+7QAPG4ERY0lhZWQ1"  # 6. BACKUP 4
 ]
 
 STATE_FILE = "cleaner_state.json"
-SAFE_DELAY = 0.8  # Safe delay to protect rate limits
+SAFE_DELAY = 0.8  # Double-checked safe delay to completely protect against rate limits
 
 is_cleaner_running = False
 
 async def run_cleaner_background(bot_client, status_message=None):
     global is_cleaner_running
     
-    async with Client("cleaner_worker", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING) as app:
-        print("🤖 Safe Cleaner worker connected successfully!", flush=True)
+    try:
+        print("🤖 [STARTUP] Cleaner background task initiating...", flush=True)
+        async with Client("cleaner_worker", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING) as app:
+            print("🤖 [SUCCESS] Cleaner worker connected to Telegram successfully!", flush=True)
 
-        start_channel_index = 0
-        offset_id = 0
-        scanned_count = 0
-        deleted_count = 0
-        seen_file_ids = set()
+            start_channel_index = 0
+            offset_id = 0
+            scanned_count = 0
+            deleted_count = 0
+            seen_file_ids = set()
 
-        if os.path.exists(STATE_FILE):
-            try:
-                with open(STATE_FILE, "r") as f:
-                    data = json.load(f)
-                    start_channel_index = data.get("channel_index", 0)
-                    offset_id = data.get("offset_id", 0)
-                    scanned_count = data.get("scanned_count", 0)
-                    deleted_count = data.get("deleted_count", 0)
-                    seen_file_ids = set(data.get("seen_file_ids", []))
-                print(f"📂 Resumed state loaded: Channel index {start_channel_index}, Scanned {scanned_count}, Deleted {deleted_count}.", flush=True)
-            except Exception as e:
-                print(f"⚠️ Could not load state file, starting fresh: {e}", flush=True)
-
-        for idx in range(start_channel_index, len(INVITE_LINKS)):
-            link = INVITE_LINKS[idx]
-            print(f"\n🔗 Processing Channel {idx + 1} of {len(INVITE_LINKS)}: {link}", flush=True)
-
-            try:
-                chat = await app.join_chat(link)
-                target_chat_id = chat.id
-            except Exception:
+            if os.path.exists(STATE_FILE):
                 try:
-                    chat = await app.get_chat(link)
-                    target_chat_id = chat.id
+                    with open(STATE_FILE, "r") as f:
+                        data = json.load(f)
+                        start_channel_index = data.get("channel_index", 0)
+                        offset_id = data.get("offset_id", 0)
+                        scanned_count = data.get("scanned_count", 0)
+                        deleted_count = data.get("deleted_count", 0)
+                        seen_file_ids = set(data.get("seen_file_ids", []))
+                    print(f"📂 [RESUME] Loaded state: Channel Index {start_channel_index + 1}, Scanned: {scanned_count}, Deleted: {deleted_count}", flush=True)
                 except Exception as e:
-                    print(f"❌ Could not access channel {link}: {e}", flush=True)
-                    continue
+                    print(f"⚠️ [WARNING] Could not load state file, starting fresh: {e}", flush=True)
 
-            kwargs = {}
-            if offset_id:
-                kwargs["offset_id"] = offset_id
-                offset_id = 0  # Reset after resume usage
+            for idx in range(start_channel_index, len(INVITE_LINKS)):
+                link = INVITE_LINKS[idx]
+                print(f"\n🔗 [CHANNEL] Processing Channel {idx + 1} of {len(INVITE_LINKS)}: {link}", flush=True)
 
-            async for msg in app.get_chat_history(target_chat_id, **kwargs):
-                scanned_count += 1
+                try:
+                    chat = await app.join_chat(link)
+                    target_chat_id = chat.id
+                    print(f"✅ [JOINED] Successfully joined/accessed chat ID: {target_chat_id}", flush=True)
+                except Exception:
+                    try:
+                        chat = await app.get_chat(link)
+                        target_chat_id = chat.id
+                        print(f"✅ [ACCESSED] Successfully retrieved chat ID: {target_chat_id}", flush=True)
+                    except Exception as e:
+                        print(f"❌ [ERROR] Could not access channel {link}: {e}", flush=True)
+                        continue
+
+                kwargs = {}
+                if offset_id:
+                    kwargs["offset_id"] = offset_id
+                    offset_id = 0  # Reset after resume usage
+
+                print(f"🔍 [SCANNING] Fetching history stream for channel {idx + 1}...", flush=True)
                 
-                # Rule 1: Delete text-only or empty messages safely with a delay
-                if msg.empty or not msg.media:
-                    try:
-                        await app.delete_messages(chat_id=target_chat_id, message_ids=msg.id)
-                        deleted_count += 1
-                        await asyncio.sleep(SAFE_DELAY)
-                    except FloodWait as e:
-                        await asyncio.sleep(e.value + 2)
-                        await app.delete_messages(chat_id=target_chat_id, message_ids=msg.id)
-                        deleted_count += 1
-                    except Exception:
-                        pass
-                    continue
-                
-                # Rule 2: Keep only Video and Document. Delete photos, stickers, audio, GIFs, etc.
-                if msg.media not in [enums.MessageMediaType.VIDEO, enums.MessageMediaType.DOCUMENT]:
-                    try:
-                        await app.delete_messages(chat_id=target_chat_id, message_ids=msg.id)
-                        deleted_count += 1
-                        await asyncio.sleep(SAFE_DELAY)
-                    except FloodWait as e:
-                        await asyncio.sleep(e.value + 2)
-                        await app.delete_messages(chat_id=target_chat_id, message_ids=msg.id)
-                        deleted_count += 1
-                    except Exception:
-                        pass
-                    continue
+                async for msg in app.get_chat_history(target_chat_id, **kwargs):
+                    scanned_count += 1
                     
-                media = getattr(msg, msg.media.value, None)
-                if not media:
-                    continue
-                    
-                # Rule 3: Check document extensions (.srt, .txt, .rar, .zip) and delete them
-                file_name = getattr(media, "file_name", "") or ""
-                if file_name.lower().endswith(('.srt', '.txt', '.rar', '.zip')):
-                    try:
-                        await app.delete_messages(chat_id=target_chat_id, message_ids=msg.id)
-                        deleted_count += 1
-                        await asyncio.sleep(SAFE_DELAY)
-                    except FloodWait as e:
-                        await asyncio.sleep(e.value + 2)
-                        await app.delete_messages(chat_id=target_chat_id, message_ids=msg.id)
-                        deleted_count += 1
-                    except Exception:
-                        pass
-                    continue
-                    
-                file_unique_id = getattr(media, "file_unique_id", None)
-                if not file_unique_id:
-                    continue
-
-                # Rule 4: Handle cross-channel duplicates for valid videos/documents
-                if file_unique_id in seen_file_ids:
-                    try:
-                        await app.delete_messages(chat_id=target_chat_id, message_ids=msg.id)
-                        deleted_count += 1
-                        await asyncio.sleep(SAFE_DELAY)
-                    except FloodWait as e:
-                        await asyncio.sleep(e.value + 2)
-                        await app.delete_messages(chat_id=target_chat_id, message_ids=msg.id)
-                        deleted_count += 1
-                    except Exception:
-                        pass
-                else:
-                    seen_file_ids.add(file_unique_id)
-
-                # Save state checkpoint & update live status message every 50 messages
-                if scanned_count % 50 == 0:
-                    state_data = {
-                        "channel_index": idx,
-                        "offset_id": msg.id,
-                        "scanned_count": scanned_count,
-                        "deleted_count": deleted_count,
-                        "seen_file_ids": list(seen_file_ids)
-                    }
-                    with open(STATE_FILE, "w") as f:
-                        json.dump(state_data, f)
-                    
-                    progress_text = (
-                        f"🧹 **Live Cleaner Progress** 🧹\n\n"
-                        f"📡 **Current Channel:** {idx + 1} / {len(INVITE_LINKS)}\n"
-                        f"📦 **Total Scanned:** {scanned_count}\n"
-                        f"🗑️ **Total Deleted:** {deleted_count}\n"
-                        f"🟢 **Status:** Running smoothly..."
-                    )
-                    
-                    if status_message:
+                    # Rule 1: Empty or text-only messages
+                    if msg.empty or not msg.media:
                         try:
-                            await status_message.edit_text(progress_text)
+                            await app.delete_messages(chat_id=target_chat_id, message_ids=msg.id)
+                            deleted_count += 1
+                            print(f"🗑️ [DELETE - TEXT/EMPTY] Msg ID {msg.id} in Channel {idx + 1} | Total Deleted: {deleted_count}", flush=True)
+                            await asyncio.sleep(SAFE_DELAY)
+                        except FloodWait as e:
+                            print(f"⏳ [FLOODWAIT] Sleeping for {e.value + 2} seconds...", flush=True)
+                            await asyncio.sleep(e.value + 2)
+                            await app.delete_messages(chat_id=target_chat_id, message_ids=msg.id)
+                            deleted_count += 1
+                        except Exception as err:
+                            pass
+                        continue
+                    
+                    # Rule 2: Keep only Video and Document
+                    if msg.media not in [enums.MessageMediaType.VIDEO, enums.MessageMediaType.DOCUMENT]:
+                        try:
+                            await app.delete_messages(chat_id=target_chat_id, message_ids=msg.id)
+                            deleted_count += 1
+                            print(f"🗑️ [DELETE - NON-MEDIA] Msg ID {msg.id} ({msg.media.value}) | Total Deleted: {deleted_count}", flush=True)
+                            await asyncio.sleep(SAFE_DELAY)
+                        except FloodWait as e:
+                            await asyncio.sleep(e.value + 2)
+                            await app.delete_messages(chat_id=target_chat_id, message_ids=msg.id)
+                            deleted_count += 1
                         except Exception:
                             pass
+                        continue
+                        
+                    media = getattr(msg, msg.media.value, None)
+                    if not media:
+                        continue
+                        
+                    # Rule 3: Unwanted document extensions (.srt, .txt, .rar, .zip)
+                    file_name = getattr(media, "file_name", "") or ""
+                    if file_name.lower().endswith(('.srt', '.txt', '.rar', '.zip')):
+                        try:
+                            await app.delete_messages(chat_id=target_chat_id, message_ids=msg.id)
+                            deleted_count += 1
+                            print(f"🗑️ [DELETE - BAD EXTENSION] File '{file_name}' | Total Deleted: {deleted_count}", flush=True)
+                            await asyncio.sleep(SAFE_DELAY)
+                        except FloodWait as e:
+                            await asyncio.sleep(e.value + 2)
+                            await app.delete_messages(chat_id=target_chat_id, message_ids=msg.id)
+                            deleted_count += 1
+                        except Exception:
+                            pass
+                        continue
+                        
+                    file_unique_id = getattr(media, "file_unique_id", None)
+                    if not file_unique_id:
+                        continue
+
+                    # Rule 4: Cross-channel duplicate file check
+                    if file_unique_id in seen_file_ids:
+                        try:
+                            await app.delete_messages(chat_id=target_chat_id, message_ids=msg.id)
+                            deleted_count += 1
+                            print(f"🗑️ [DELETE - DUPLICATE] Duplicate file found | Total Deleted: {deleted_count}", flush=True)
+                            await asyncio.sleep(SAFE_DELAY)
+                        except FloodWait as e:
+                            await asyncio.sleep(e.value + 2)
+                            await app.delete_messages(chat_id=target_chat_id, message_ids=msg.id)
+                            deleted_count += 1
+                        except Exception:
+                            pass
+                    else:
+                        seen_file_ids.add(file_unique_id)
+
+                    # Save state checkpoint every 50 messages internally
+                    if scanned_count % 50 == 0:
+                        state_data = {
+                            "channel_index": idx,
+                            "offset_id": msg.id,
+                            "scanned_count": scanned_count,
+                            "deleted_count": deleted_count,
+                            "seen_file_ids": list(seen_file_ids)
+                        }
+                        with open(STATE_FILE, "w") as f:
+                            json.dump(state_data, f)
+
+                    # Telegram update ONLY every 10,000 files processed
+                    if scanned_count % 10000 == 0:
+                        print(f"📊 [MILESTONE] Processed {scanned_count} total files so far. Updating Telegram...", flush=True)
+                        progress_text = (
+                            f"🧹 **Live Cleaner Milestone Update** 🧹\n\n"
+                            f"📡 **Current Channel:** {idx + 1} / {len(INVITE_LINKS)}\n"
+                            f"📦 **Total Scanned:** {scanned_count}\n"
+                            f"🗑️ **Total Deleted:** {deleted_count}\n"
+                            f"🟢 **Status:** Running smoothly..."
+                        )
+                        if status_message:
+                            try:
+                                await status_message.edit_text(progress_text)
+                            except Exception:
+                                pass
 
         is_cleaner_running = False
-        final_text = f"✅ **All Channels Cleaned Successfully!**\n● Total Scanned: {scanned_count}\n● Total Deleted: {deleted_count}"
+        final_msg = f"✅ **All Channels Cleaned Successfully!**\n● Total Scanned: {scanned_count}\n● Total Deleted: {deleted_count}"
+        print(final_msg, flush=True)
         if status_message:
             try:
-                await status_message.edit_text(final_text)
+                await status_message.edit_text(final_msg)
             except Exception:
                 pass
-        print(final_text, flush=True)
 
-is_cleaner_running = False
+    except Exception as e:
+        print(f"❌ [FATAL ERROR] Cleaner task crashed: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        is_cleaner_running = False
 
 @Client.on_message(filters.command("startclean") & filters.private)
 async def trigger_cleaner_command(client, message):
@@ -825,5 +841,5 @@ async def trigger_cleaner_command(client, message):
         return
     
     is_cleaner_running = True
-    status_msg = await message.reply("🧹 **Initializing Live Safe Cleaner...**")
+    status_msg = await message.reply("🧹 **Detailed Safe Cleaner Started!** Detailed logs are streaming to Koyeb. Telegram updates will happen every 10,000 processed files.")
     asyncio.create_task(run_cleaner_background(client, status_message=status_msg))
