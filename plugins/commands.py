@@ -719,6 +719,9 @@ async def run_cleaner_background(bot_client, status_message=None):
                 async for msg in app.get_chat_history(target_chat_id, **kwargs):
                     scanned_count += 1
                     
+                    # 🟢 Continuous Koyeb Stream Line for every single message scanned
+                    print(f"👀 [SCAN] Channel {idx + 1} | Total Scanned: {scanned_count} | Msg ID: {msg.id}", flush=True)
+                    
                     # Rule 1: Empty or text-only messages
                     if msg.empty or not msg.media:
                         try:
