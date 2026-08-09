@@ -646,23 +646,31 @@ async def restart_bot(bot, message):
     await asyncio.sleep(1)
     os.execl(sys.executable, sys.executable, *sys.argv)
 
+# --- CONFIGURATION ---
 API_ID = 20354559
 API_HASH = "bbdf772b35141fa8b661740dddb840bf"
 SESSION_STRING = "BQE2lf8AKLqlyjLoygEnyioQKt-iyJKQi6IxqUvpSIk5FCVW259dcZoUbYnath0zqwqRvf66o1IvsOyJL7-PI8gPiGlAHijRl25aa1Verk1bdd7s1y5Am4V7QtqY1k5jL1mu4-_beBdfWt5BmvLz4uKmQ4I8ERtQuPwGzLF7xqOVY2OMdAMaYGn5hpVKIWWU1iNa4ZYcUlHfqh6Ws1SNdYM6a13SxcFRMzIRtX0f41GXYG_ISuTxbR-G8jZH0i5XnE-IYx0F2Lev9fe_MbklaP5OlyzARvbIHmPdnc-DDeFuFw_c3-pNiKTROTtYCXbHjWGG4Hr3oayjHOq3h_964mHZmwHCSQAAAAGF3NwSAA"
 
+# Updated channel order with Backup 2 and Backup 4 placed at the end
 INVITE_LINKS = [
-    "https://t.me/+7QAPG4ERY0lhZWQ1", # 1. BACKUP 4
-    "https://t.me/+-VyxToFvkA0wNmVl", # 2. BACKUP 3
-    "https://t.me/+57sOfi_NiZwxYmNl", # 3. BackUp K
-    "https://t.me/+tREA7LOsFaFhY2Fl"  # 4. BACKUP 2
+    "https://t.me/+-VyxToFvkA0wNmVl", # 1. BACKUP 3
+    "https://t.me/+57sOfi_NiZwxYmNl", # 2. BackUp K
+    "https://t.me/+8-QJe-y5Czs2ZDNl",  # 3. New Channel 1
+    "https://t.me/+2_mEqrXEQAhiOTll", # 4. New Channel 2
+    "https://t.me/+tREA7LOsFaFhY2Fl", # 5. BACKUP 2 (Moved to last)
+    "https://t.me/+7QAPG4ERY0lhZWQ1"  # 6. BACKUP 4 (Moved to last)
 ]
 
 STATE_FILE = "cleaner_state.json"
-SAFE_DELAY = 0.8  # Slow, safe delay to protect hardware and rate limits
+SAFE_DELAY = 0.8  # Safe delay to protect rate limits
 
-async def run_cleaner_background(bot_client):
+is_cleaner_running = False
+
+async def run_cleaner_background(bot_client, status_message=None):
+    global is_cleaner_running
+    
     async with Client("cleaner_worker", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING) as app:
-        print("🤖 Safe Cleaner worker connected successfully!")
+        print("🤖 Safe Cleaner worker connected successfully!", flush=True)
 
         start_channel_index = 0
         offset_id = 0
@@ -679,13 +687,13 @@ async def run_cleaner_background(bot_client):
                     scanned_count = data.get("scanned_count", 0)
                     deleted_count = data.get("deleted_count", 0)
                     seen_file_ids = set(data.get("seen_file_ids", []))
-                print(f"📂 Resumed state loaded: Channel index {start_channel_index}, Scanned {scanned_count}, Deleted {deleted_count}.")
+                print(f"📂 Resumed state loaded: Channel index {start_channel_index}, Scanned {scanned_count}, Deleted {deleted_count}.", flush=True)
             except Exception as e:
-                print(f"⚠️ Could not load state file, starting fresh: {e}")
+                print(f"⚠️ Could not load state file, starting fresh: {e}", flush=True)
 
         for idx in range(start_channel_index, len(INVITE_LINKS)):
             link = INVITE_LINKS[idx]
-            print(f"\n🔗 Processing Channel {idx + 1} of {len(INVITE_LINKS)}: {link}")
+            print(f"\n🔗 Processing Channel {idx + 1} of {len(INVITE_LINKS)}: {link}", flush=True)
 
             try:
                 chat = await app.join_chat(link)
@@ -695,7 +703,7 @@ async def run_cleaner_background(bot_client):
                     chat = await app.get_chat(link)
                     target_chat_id = chat.id
                 except Exception as e:
-                    print(f"❌ Could not access channel {link}: {e}")
+                    print(f"❌ Could not access channel {link}: {e}", flush=True)
                     continue
 
             kwargs = {}
@@ -769,10 +777,10 @@ async def run_cleaner_background(bot_client):
                         deleted_count += 1
                     except Exception:
                         pass
-                    else:
-                        seen_file_ids.add(file_unique_id)
+                else:
+                    seen_file_ids.add(file_unique_id)
 
-                # Save state checkpoint every 50 messages to ensure zero data loss on restarts
+                # Save state checkpoint & update live status message every 50 messages
                 if scanned_count % 50 == 0:
                     state_data = {
                         "channel_index": idx,
@@ -783,11 +791,45 @@ async def run_cleaner_background(bot_client):
                     }
                     with open(STATE_FILE, "w") as f:
                         json.dump(state_data, f)
+                    
+                    progress_text = (
+                        f"🧹 **Live Cleaner Progress** 🧹\n\n"
+                        f"📡 **Current Channel:** {idx + 1} / {len(INVITE_LINKS)}\n"
+                        f"📦 **Total Scanned:** {scanned_count}\n"
+                        f"🗑️ **Total Deleted:** {deleted_count}\n"
+                        f"🟢 **Status:** Running smoothly..."
+                    )
+                    
+                    if status_message:
+                        try:
+                            await status_message.edit_text(progress_text)
+                        except Exception:
+                            pass
 
-        print(f"\n✅ All Channels Cleaned Successfully!\n● Total Scanned: {scanned_count}\n● Total Deleted: {deleted_count}")
+        is_cleaner_running = False
+        final_text = f"✅ **All Channels Cleaned Successfully!**\n● Total Scanned: {scanned_count}\n● Total Deleted: {deleted_count}"
+        if status_message:
+            try:
+                await status_message.edit_text(final_text)
+            except Exception:
+                pass
+        print(final_text, flush=True)
 
-# 1. Manual trigger command
 @Client.on_message(filters.command("startclean") & filters.private)
 async def trigger_cleaner_command(client, message):
-    asyncio.create_task(run_cleaner_background(client))
-    await message.reply("🧹 **Safe Cleaner started!** Running slowly with built-in delays to protect your hardware and rate limits.")
+    global is_cleaner_running
+    if is_cleaner_running:
+        await message.reply("⚠️ Cleaner is already running in the background!")
+        return
+    
+    is_cleaner_running = True
+    status_msg = await message.reply("🧹 **Initializing Live Safe Cleaner...**")
+    asyncio.create_task(run_cleaner_background(client, status_message=status_msg))
+
+@Client.on_start()
+async def auto_resume_cleaner(client):
+    global is_cleaner_running
+    if os.path.exists(STATE_FILE) and not is_cleaner_running:
+        print("🔄 Detected existing cleaner state file on boot. Auto-resuming background cleaner...", flush=True)
+        is_cleaner_running = True
+        asyncio.create_task(run_cleaner_background(client))
