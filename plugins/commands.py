@@ -791,4 +791,3 @@ async def run_cleaner_background(bot_client):
 async def trigger_cleaner_command(client, message):
     asyncio.create_task(run_cleaner_background(client))
     await message.reply("🧹 **Safe Cleaner started!** Running slowly with built-in delays to protect your hardware and rate limits.")
-How to make it auto-resume on boot:
