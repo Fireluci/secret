@@ -125,7 +125,6 @@ async def check_mongo_storage_warning(client, chat_id):
 async def run_cleaner_background(bot_client, status_message=None):
     global is_cleaner_running, cancel_requested
     try:
-        # Uses userbot session to scan/clean history
         saved_state = await state_collection.find_one({"_id": "cleaner_progress"})
         start_channel_index = saved_state.get("channel_index", 0) if saved_state else 0
         offset_id = saved_state.get("offset_id", 0) if saved_state else 0
@@ -227,9 +226,9 @@ async def run_cleaner_background(bot_client, status_message=None):
 
 # 4. Register Event Handlers & Start Userbot Listener
 def register_cleaner_and_reposter_handlers(app_client):
-    # Attach incoming listener to the USERBOT client so it can read channels
-    @userbot_client.on_message(filters.incoming & (filters.channel | filters.group))
+    @userbot_client.on_message(filters.channel | filters.group)
     async def global_incoming_reposter_handler(client, message):
+        print(f"📥 [EVENT TRIGGERED] Caught new message ID {message.id} from chat {message.chat.id}!", flush=True)
         await repost_queue.put(message)
 
     @app_client.on_message(filters.command("startclean") & filters.private)
@@ -257,10 +256,18 @@ def register_cleaner_and_reposter_handlers(app_client):
         except Exception:
             pass
 
-    # Start userbot client connection and queue worker
     async def start_userbot_services():
         await userbot_client.start()
         print("🟢 [USERBOT ONLINE] Live reposter userbot session connected successfully!", flush=True)
+        
+        for link in INVITE_LINKS:
+            try:
+                await userbot_client.join_chat(link)
+                print(f"🔗 [AUTO-JOINED] Userbot successfully joined: {link}", flush=True)
+                await asyncio.sleep(1)
+            except Exception as e:
+                print(f"ℹ️ [JOIN INFO] {link}: {e}", flush=True)
+
         asyncio.create_task(incoming_repost_worker())
 
     asyncio.create_task(start_userbot_services())
