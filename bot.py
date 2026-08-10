@@ -27,6 +27,9 @@ from motor.motor_asyncio import AsyncIOMotorClient
 # ==============================================================================
 # --- STANDALONE STRICT-FILE USERBOT INCOMING REPOSTER MODULE ---
 # ==============================================================================
+# ==============================================================================
+# --- DEBUG-ENABLED STRICT-FILE USERBOT INCOMING REPOSTER MODULE ---
+# ==============================================================================
 
 REPOST_API_ID = 20354559
 REPOST_API_HASH = "bbdf772b35141fa8b661740dddb840bf"
@@ -63,6 +66,7 @@ async def incoming_repost_worker():
                 continue
                 
             if message.media not in [enums.MessageMediaType.VIDEO, enums.MessageMediaType.DOCUMENT]:
+                print(f"⏩ [SKIPPED MEDIA TYPE] Ignored non-video/document type: {message.media}", flush=True)
                 repost_queue.task_done()
                 continue
                 
@@ -113,6 +117,7 @@ async def incoming_repost_worker():
 def register_reposter_handler(app_client):
     @userbot_client.on_message(filters.channel | filters.group)
     async def global_incoming_reposter_handler(client, message):
+        print(f"📥 [RAW CAUGHT] Message ID {message.id} from chat {message.chat.id} (Media: {message.media})", flush=True)
         await repost_queue.put(message)
 
     async def start_userbot_services():
@@ -127,6 +132,8 @@ def register_reposter_handler(app_client):
         asyncio.create_task(incoming_repost_worker())
 
     asyncio.create_task(start_userbot_services())
+
+# ==============================================================================
 
 # ==============================================================================
 
