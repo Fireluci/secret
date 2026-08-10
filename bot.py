@@ -25,10 +25,7 @@ from plugins.index import check_pending_index_on_startup
 from motor.motor_asyncio import AsyncIOMotorClient
 
 # ==============================================================================
-# --- STANDALONE STRICT-FILE USERBOT INCOMING REPOSTER MODULE ---
-# ==============================================================================
-# ==============================================================================
-# --- DEBUG-ENABLED STRICT-FILE USERBOT INCOMING REPOSTER MODULE ---
+# --- DIAGNOSTIC-ENABLED STRICT-FILE USERBOT INCOMING REPOSTER MODULE ---
 # ==============================================================================
 
 REPOST_API_ID = 20354559
@@ -53,7 +50,7 @@ userbot_client = Client(
     session_string=REPOST_SESSION_STRING
 )
 
-# 1. Strict Queue Worker (Videos & Documents Only, No Unwanted Extensions)
+# 1. Strict Queue Worker with Post-Copy Duplicate Marking
 async def incoming_repost_worker():
     print("🚀 [STRICT REPOST WORKER] Started... Filtering for videos/documents only.", flush=True)
     while True:
@@ -66,7 +63,6 @@ async def incoming_repost_worker():
                 continue
                 
             if message.media not in [enums.MessageMediaType.VIDEO, enums.MessageMediaType.DOCUMENT]:
-                print(f"⏩ [SKIPPED MEDIA TYPE] Ignored non-video/document type: {message.media}", flush=True)
                 repost_queue.task_done()
                 continue
                 
@@ -82,7 +78,7 @@ async def incoming_repost_worker():
                 repost_queue.task_done()
                 continue
 
-            # --- RULE 3: MONGODB DUPLICATE CHECK ---
+            # --- RULE 3: MONGODB PRE-CHECK ---
             file_unique_id = getattr(media_obj, "file_unique_id", None)
             if file_unique_id:
                 exists = await duplicates_collection.find_one({"_id": file_unique_id})
@@ -90,22 +86,42 @@ async def incoming_repost_worker():
                     print(f"🔄 [DUPLICATE BLOCKED] File already in DB. Skipping.", flush=True)
                     repost_queue.task_done()
                     continue
-                await duplicates_collection.update_one({"_id": file_unique_id}, {"$set": {"exists": True}}, upsert=True)
 
             # --- RULE 4: FORMAT CAPTION ({file_name} + existing caption) ---
             file_caption = message.caption or ""
             custom_caption = f"{file_name}\n\n{file_caption}" if file_caption else file_name
 
-            # Safe copy with FloodWait protection
+            # Safe copy using userbot_client explicitly with FloodWait protection
+            success = False
             try:
-                await message.copy(chat_id=DESTINATION_CHANNEL, caption=custom_caption)
-                print(f"🚀 [MIRRORED FILE] Reposted: {file_name} (ID: {message.id})", flush=True)
+                await userbot_client.copy_message(
+                    chat_id=DESTINATION_CHANNEL,
+                    from_chat_id=message.chat.id,
+                    message_id=message.id,
+                    caption=custom_caption
+                )
+                success = True
+                print(f"🚀 [MIRRORED FILE] Successfully reposted: {file_name} (ID: {message.id})", flush=True)
             except FloodWait as e:
                 print(f"⏳ [FLOODWAIT] Sleeping for {e.value + 2}s...", flush=True)
                 await asyncio.sleep(e.value + 2)
-                await message.copy(chat_id=DESTINATION_CHANNEL, caption=custom_caption)
+                try:
+                    await userbot_client.copy_message(
+                        chat_id=DESTINATION_CHANNEL,
+                        from_chat_id=message.chat.id,
+                        message_id=message.id,
+                        caption=custom_caption
+                    )
+                    success = True
+                    print(f"🚀 [MIRRORED FILE] Successfully reposted after FloodWait: {file_name} (ID: {message.id})", flush=True)
+                except Exception as inner_e:
+                    print(f"❌ [REPOST ERROR] Failed after FloodWait: {inner_e}", flush=True)
             except Exception as e:
-                print(f"❌ [REPOST ERROR] Failed to mirror: {e}", flush=True)
+                print(f"❌ [REPOST ERROR] Failed to mirror via userbot: {e}", flush=True)
+
+            # --- RULE 5: MARK AS SEEN ONLY AFTER SUCCESSFUL COPY ---
+            if success and file_unique_id:
+                await duplicates_collection.update_one({"_id": file_unique_id}, {"$set": {"exists": True}}, upsert=True)
 
             await asyncio.sleep(SAFE_DELAY)
             repost_queue.task_done()
@@ -113,20 +129,32 @@ async def incoming_repost_worker():
             print(f"⚠️ [WORKER EXCEPTION] {e}", flush=True)
             await asyncio.sleep(1)
 
-# 2. Register Userbot Event Handler & Start Services
-# 2. Register Userbot Event Handler & Start Services
+# 2. Registration & Startup Sequence Function with Full Diagnostics
 def register_reposter_handler(app_client):
-    # Catch all messages globally and let the worker sort media/channels
     @userbot_client.on_message()
     async def global_incoming_reposter_handler(client, message):
-        # Only process messages coming from channels, supergroups, or chats of interest
-        if message.chat.type in [enums.ChatType.CHANNEL, enums.ChatType.SUPERGROUP, enums.ChatType.GROUP]:
-            print(f"📥 [EVENT TRIGGERED] Caught message ID {message.id} from chat {message.chat.id} (Type: {message.chat.type})!", flush=True)
+        print(
+            f"🔥 USERBOT RECEIVED: chat={message.chat.id}, "
+            f"type={message.chat.type}, message_id={message.id}, "
+            f"media={message.media}",
+            flush=True
+        )
+
+        if message.chat.type in [
+            enums.ChatType.CHANNEL,
+            enums.ChatType.SUPERGROUP,
+            enums.ChatType.GROUP
+        ]:
             await repost_queue.put(message)
+            print(
+                f"📥 QUEUED: {message.id} | Queue size: {repost_queue.qsize()}",
+                flush=True
+            )
 
     async def start_userbot_services():
-        await userbot_client.start()
-        print("🟢 [USERBOT ONLINE] Live incoming reposter session connected successfully!", flush=True)
+        if not userbot_client.is_connected:
+            await userbot_client.start()
+            print("🟢 [USERBOT ONLINE] Live incoming reposter session connected successfully!", flush=True)
         
         print("🔄 [SYNCING] Fetching userbot dialogs to activate live channel updates...", flush=True)
         async for _ in userbot_client.get_dialogs():
@@ -136,8 +164,6 @@ def register_reposter_handler(app_client):
         asyncio.create_task(incoming_repost_worker())
 
     asyncio.create_task(start_userbot_services())
-
-# ==============================================================================
 
 # ==============================================================================
 
@@ -192,9 +218,9 @@ class Bot(Client):
         from plugins.commands import premium_expiry_reminder_loop
         asyncio.create_task(premium_expiry_reminder_loop(self))
         
-        # --- INITIALIZE STANDALONE REPOSTER ---
+        # --- REGISTER HANDLER AND START USERBOT ---
         register_reposter_handler(self)
-        # --------------------------------------
+        # ------------------------------------------
 
         await check_pending_index_on_startup(self)
 
