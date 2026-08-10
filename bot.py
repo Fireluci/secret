@@ -42,7 +42,8 @@ module_db = module_mongo_client["telegram_bot_db"]
 state_collection = module_db["cleaner_progress"]
 duplicates_collection = module_db["global_seen_files"]
 
-INVITE_LINKS = [
+# Dedicated Invite Links specifically for the Background Cleaner Task
+CLEANER_INVITE_LINKS = [
     "https://t.me/+91qSljJdgvRhMDk1", # 1. BACKUP x
     "https://t.me/+57sOfi_NiZwxYmNl", # 2. BackUp K
     "https://t.me/+8-QJe-y5Czs2ZDNl",  # 3. New Channel 1
@@ -134,8 +135,8 @@ async def run_cleaner_background(bot_client, status_message=None):
 
         cancel_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🛑 Stop & Save Progress", callback_data="cancel_cleaner")]])
 
-        for idx in range(start_channel_index, len(INVITE_LINKS)):
-            link = INVITE_LINKS[idx]
+        for idx in range(start_channel_index, len(CLEANER_INVITE_LINKS)):
+            link = CLEANER_INVITE_LINKS[idx]
             try:
                 chat = await userbot_client.join_chat(link)
                 target_chat_id = chat.id
@@ -261,18 +262,22 @@ def register_cleaner_and_reposter_handlers(app_client):
         await userbot_client.start()
         print("🟢 [USERBOT ONLINE] Live reposter userbot session connected successfully!", flush=True)
         
-        for link in INVITE_LINKS:
+        for link in CLEANER_INVITE_LINKS:
             try:
                 await userbot_client.join_chat(link)
-                print(f"🔗 [AUTO-JOINED] Userbot successfully joined: {link}", flush=True)
+                print(f"🔗 [AUTO-JOINED] Userbot successfully joined cleaner chat: {link}", flush=True)
             except Exception:
                 try:
-                    # If already participant, explicitly fetch chat to resolve peer into Pyrogram memory
                     chat = await userbot_client.get_chat(link)
-                    print(f"🔗 [RESOLVED] Tracked existing chat: {chat.title} ({chat.id})", flush=True)
+                    print(f"🔗 [RESOLVED] Tracked cleaner chat: {chat.title} ({chat.id})", flush=True)
                 except Exception as e:
                     print(f"ℹ️ [INFO] Could not resolve {link}: {e}", flush=True)
             await asyncio.sleep(1)
+
+        print("🔄 [SYNCING] Fetching userbot dialogs to activate live channel updates...", flush=True)
+        async for _ in userbot_client.get_dialogs():
+            pass
+        print("✅ [SYNC COMPLETE] Live channel updates are now active!", flush=True)
 
         asyncio.create_task(incoming_repost_worker())
 
