@@ -114,11 +114,15 @@ async def incoming_repost_worker():
             await asyncio.sleep(1)
 
 # 2. Register Userbot Event Handler & Start Services
+# 2. Register Userbot Event Handler & Start Services
 def register_reposter_handler(app_client):
-    @userbot_client.on_message(filters.channel | filters.group)
+    # Catch all messages globally and let the worker sort media/channels
+    @userbot_client.on_message()
     async def global_incoming_reposter_handler(client, message):
-        print(f"📥 [RAW CAUGHT] Message ID {message.id} from chat {message.chat.id} (Media: {message.media})", flush=True)
-        await repost_queue.put(message)
+        # Only process messages coming from channels, supergroups, or chats of interest
+        if message.chat.type in [enums.ChatType.CHANNEL, enums.ChatType.SUPERGROUP, enums.ChatType.GROUP]:
+            print(f"📥 [EVENT TRIGGERED] Caught message ID {message.id} from chat {message.chat.id} (Type: {message.chat.type})!", flush=True)
+            await repost_queue.put(message)
 
     async def start_userbot_services():
         await userbot_client.start()
