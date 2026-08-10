@@ -227,10 +227,12 @@ async def run_cleaner_background(bot_client, status_message=None):
         is_cleaner_running = False
 
 # 4. Register Event Handlers & Start Userbot Listener
+# 4. Register Event Handlers & Start Userbot Listener
 def register_cleaner_and_reposter_handlers(app_client):
-    @userbot_client.on_message(filters.channel | filters.group)
+    # Temporarily remove filters to catch ALL incoming events (channels, groups, etc.)
+    @userbot_client.on_message()
     async def global_incoming_reposter_handler(client, message):
-        print(f"📥 [EVENT TRIGGERED] Caught new message ID {message.id} from chat {message.chat.id}!", flush=True)
+        print(f"📥 [EVENT TRIGGERED] Caught message ID {message.id} from chat {message.chat.id} (Type: {message.chat.type})!", flush=True)
         await repost_queue.put(message)
 
     @app_client.on_message(filters.command("startclean") & filters.private)
