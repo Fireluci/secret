@@ -43,7 +43,7 @@ state_collection = module_db["cleaner_progress"]
 duplicates_collection = module_db["global_seen_files"]
 
 INVITE_LINKS = [
-    "https://t.me/+-VyxToFvkA0wNmVl", # 1. BACKUP 3
+    "https://t.me/+91qSljJdgvRhMDk1", # 1. BACKUP x
     "https://t.me/+57sOfi_NiZwxYmNl", # 2. BackUp K
     "https://t.me/+8-QJe-y5Czs2ZDNl",  # 3. New Channel 1
     "https://t.me/+2_mEqrXEQAhiOTll", # 4. New Channel 2
@@ -78,6 +78,7 @@ async def incoming_repost_worker():
                 if file_unique_id:
                     exists = await duplicates_collection.find_one({"_id": file_unique_id})
                     if exists:
+                        print(f"🔄 [DUPLICATE BLOCKED] File already in DB. Skipping mirror.", flush=True)
                         repost_queue.task_done()
                         continue
                     await duplicates_collection.update_one({"_id": file_unique_id}, {"$set": {"exists": True}}, upsert=True)
@@ -264,9 +265,14 @@ def register_cleaner_and_reposter_handlers(app_client):
             try:
                 await userbot_client.join_chat(link)
                 print(f"🔗 [AUTO-JOINED] Userbot successfully joined: {link}", flush=True)
-                await asyncio.sleep(1)
-            except Exception as e:
-                print(f"ℹ️ [JOIN INFO] {link}: {e}", flush=True)
+            except Exception:
+                try:
+                    # If already participant, explicitly fetch chat to resolve peer into Pyrogram memory
+                    chat = await userbot_client.get_chat(link)
+                    print(f"🔗 [RESOLVED] Tracked existing chat: {chat.title} ({chat.id})", flush=True)
+                except Exception as e:
+                    print(f"ℹ️ [INFO] Could not resolve {link}: {e}", flush=True)
+            await asyncio.sleep(1)
 
         asyncio.create_task(incoming_repost_worker())
 
