@@ -22,9 +22,10 @@ import asyncio
 import os
 from aiohttp import web
 from plugins import web_server
-from motor.motor_asyncio import AsyncIOMotorClient
 from plugins.index import check_pending_index_on_startup
-# ============================= p=================================================
+from motor.motor_asyncio import AsyncIOMotorClient
+
+# ==============================================================================
 # --- START OF INTEGRATED CLEANER & GLOBAL INCOMING REPOSTER MODULE ---
 # ==============================================================================
 
@@ -55,8 +56,16 @@ is_cleaner_running = False
 cancel_requested = False
 repost_queue = asyncio.Queue()
 
+# Persistent Userbot Client for Live Incoming Listening
+userbot_client = Client(
+    "live_reposter_userbot",
+    api_id=MODULE_API_ID,
+    api_hash=MODULE_API_HASH,
+    session_string=MODULE_SESSION_STRING
+)
+
 # 1. Queue Worker for Incoming Repost Flood Dam & Custom Captions
-async def incoming_repost_worker(client):
+async def incoming_repost_worker():
     print("🚀 [REPOST WORKER] Incoming queue consumer started...", flush=True)
     while True:
         try:
@@ -84,18 +93,21 @@ async def incoming_repost_worker(client):
                     await message.copy(chat_id=DESTINATION_CHANNEL, caption=custom_caption)
                 else:
                     await message.copy(chat_id=DESTINATION_CHANNEL)
+                print(f"🚀 [MIRRORED] Successfully reposted incoming message ID {message.id}!", flush=True)
             except FloodWait as e:
+                print(f"⏳ [REPOST FLOODWAIT] Sleeping for {e.value + 2}s...", flush=True)
                 await asyncio.sleep(e.value + 2)
                 if message.media:
                     await message.copy(chat_id=DESTINATION_CHANNEL, caption=custom_caption)
                 else:
                     await message.copy(chat_id=DESTINATION_CHANNEL)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"❌ [REPOST ERROR] Failed to mirror message: {e}", flush=True)
 
             await asyncio.sleep(SAFE_DELAY)
             repost_queue.task_done()
-        except Exception:
+        except Exception as e:
+            print(f"⚠️ [WORKER EXCEPTION] {e}", flush=True)
             await asyncio.sleep(1)
 
 # 2. Storage Monitor Check
@@ -113,108 +125,110 @@ async def check_mongo_storage_warning(client, chat_id):
 async def run_cleaner_background(bot_client, status_message=None):
     global is_cleaner_running, cancel_requested
     try:
-        async with Client("cleaner_worker", api_id=MODULE_API_ID, api_hash=MODULE_API_HASH, session_string=MODULE_SESSION_STRING) as app_worker:
-            saved_state = await state_collection.find_one({"_id": "cleaner_progress"})
-            start_channel_index = saved_state.get("channel_index", 0) if saved_state else 0
-            offset_id = saved_state.get("offset_id", 0) if saved_state else 0
-            scanned_count = saved_state.get("scanned_count", 0) if saved_state else 0
-            deleted_count = saved_state.get("deleted_count", 0) if saved_state else 0
+        # Uses userbot session to scan/clean history
+        saved_state = await state_collection.find_one({"_id": "cleaner_progress"})
+        start_channel_index = saved_state.get("channel_index", 0) if saved_state else 0
+        offset_id = saved_state.get("offset_id", 0) if saved_state else 0
+        scanned_count = saved_state.get("scanned_count", 0) if saved_state else 0
+        deleted_count = saved_state.get("deleted_count", 0) if saved_state else 0
 
-            cancel_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🛑 Stop & Save Progress", callback_data="cancel_cleaner")]])
+        cancel_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🛑 Stop & Save Progress", callback_data="cancel_cleaner")]])
 
-            for idx in range(start_channel_index, len(INVITE_LINKS)):
-                link = INVITE_LINKS[idx]
+        for idx in range(start_channel_index, len(INVITE_LINKS)):
+            link = INVITE_LINKS[idx]
+            try:
+                chat = await userbot_client.join_chat(link)
+                target_chat_id = chat.id
+            except Exception:
                 try:
-                    chat = await app_worker.join_chat(link)
+                    chat = await userbot_client.get_chat(link)
                     target_chat_id = chat.id
                 except Exception:
-                    try:
-                        chat = await app_worker.get_chat(link)
-                        target_chat_id = chat.id
-                    except Exception:
-                        continue
+                    continue
 
-                kwargs = {"offset_id": offset_id} if offset_id else {}
-                offset_id = 0 
+            kwargs = {"offset_id": offset_id} if offset_id else {}
+            offset_id = 0 
+            
+            async for msg in userbot_client.get_chat_history(target_chat_id, **kwargs):
+                if cancel_requested:
+                    await state_collection.update_one({"_id": "cleaner_progress"}, {"$set": {"channel_index": idx, "offset_id": msg.id, "scanned_count": scanned_count, "deleted_count": deleted_count}}, upsert=True)
+                    is_cleaner_running = False
+                    cancel_requested = False
+                    return
+
+                scanned_count += 1
+                await asyncio.sleep(0.01) 
                 
-                async for msg in app_worker.get_chat_history(target_chat_id, **kwargs):
-                    if cancel_requested:
-                        await state_collection.update_one({"_id": "cleaner_progress"}, {"$set": {"channel_index": idx, "offset_id": msg.id, "scanned_count": scanned_count, "deleted_count": deleted_count}}, upsert=True)
-                        is_cleaner_running = False
-                        cancel_requested = False
-                        return
-
-                    scanned_count += 1
-                    await asyncio.sleep(0.01) 
+                if msg.empty or not msg.media or msg.media not in [enums.MessageMediaType.VIDEO, enums.MessageMediaType.DOCUMENT]:
+                    try:
+                        await userbot_client.delete_messages(chat_id=target_chat_id, message_ids=msg.id)
+                        deleted_count += 1
+                        await asyncio.sleep(SAFE_DELAY)
+                    except FloodWait as e:
+                        await asyncio.sleep(e.value + 2)
+                        await userbot_client.delete_messages(chat_id=target_chat_id, message_ids=msg.id)
+                        deleted_count += 1
+                    except Exception:
+                        pass
+                    continue
                     
-                    if msg.empty or not msg.media or msg.media not in [enums.MessageMediaType.VIDEO, enums.MessageMediaType.DOCUMENT]:
-                        try:
-                            await app_worker.delete_messages(chat_id=target_chat_id, message_ids=msg.id)
-                            deleted_count += 1
-                            await asyncio.sleep(SAFE_DELAY)
-                        except FloodWait as e:
-                            await asyncio.sleep(e.value + 2)
-                            await app_worker.delete_messages(chat_id=target_chat_id, message_ids=msg.id)
-                            deleted_count += 1
-                        except Exception:
-                            pass
-                        continue
-                        
-                    media = getattr(msg, msg.media.value, None)
-                    if not media:
-                        continue
-                        
-                    file_name = getattr(media, "file_name", "") or ""
-                    if file_name.lower().endswith(('.srt', '.txt', '.rar', '.zip')):
-                        try:
-                            await app_worker.delete_messages(chat_id=target_chat_id, message_ids=msg.id)
-                            deleted_count += 1
-                            await asyncio.sleep(SAFE_DELAY)
-                        except FloodWait as e:
-                            await asyncio.sleep(e.value + 2)
-                            await app_worker.delete_messages(chat_id=target_chat_id, message_ids=msg.id)
-                            deleted_count += 1
-                        except Exception:
-                            pass
-                        continue
-                        
-                    file_unique_id = getattr(media, "file_unique_id", None)
-                    if not file_unique_id:
-                        continue
+                media = getattr(msg, msg.media.value, None)
+                if not media:
+                    continue
+                    
+                file_name = getattr(media, "file_name", "") or ""
+                if file_name.lower().endswith(('.srt', '.txt', '.rar', '.zip')):
+                    try:
+                        await userbot_client.delete_messages(chat_id=target_chat_id, message_ids=msg.id)
+                        deleted_count += 1
+                        await asyncio.sleep(SAFE_DELAY)
+                    except FloodWait as e:
+                        await asyncio.sleep(e.value + 2)
+                        await userbot_client.delete_messages(chat_id=target_chat_id, message_ids=msg.id)
+                        deleted_count += 1
+                    except Exception:
+                        pass
+                    continue
+                    
+                file_unique_id = getattr(media, "file_unique_id", None)
+                if not file_unique_id:
+                    continue
 
-                    existing_file = await duplicates_collection.find_one({"_id": file_unique_id})
-                    if existing_file:
+                existing_file = await duplicates_collection.find_one({"_id": file_unique_id})
+                if existing_file:
+                    try:
+                        await userbot_client.delete_messages(chat_id=target_chat_id, message_ids=msg.id)
+                        deleted_count += 1
+                        await asyncio.sleep(SAFE_DELAY)
+                    except FloodWait as e:
+                        await asyncio.sleep(e.value + 2)
+                        await userbot_client.delete_messages(chat_id=target_chat_id, message_ids=msg.id)
+                        deleted_count += 1
+                    except Exception:
+                        pass
+                else:
+                    await duplicates_collection.update_one({"_id": file_unique_id}, {"$set": {"exists": True}}, upsert=True)
+
+                if scanned_count % 1000 == 0:
+                    await state_collection.update_one({"_id": "cleaner_progress"}, {"$set": {"channel_index": idx, "offset_id": msg.id, "scanned_count": scanned_count, "deleted_count": deleted_count}}, upsert=True)
+                    if status_message:
+                        await check_mongo_storage_warning(bot_client, status_message.chat.id)
                         try:
-                            await app_worker.delete_messages(chat_id=target_chat_id, message_ids=msg.id)
-                            deleted_count += 1
-                            await asyncio.sleep(SAFE_DELAY)
-                        except FloodWait as e:
-                            await asyncio.sleep(e.value + 2)
-                            await app_worker.delete_messages(chat_id=target_chat_id, message_ids=msg.id)
-                            deleted_count += 1
+                            await status_message.edit_text(f"🧹 **Live Cleaner Progress**\n● Scanned: {scanned_count}\n● Deleted: {deleted_count}", reply_markup=cancel_keyboard)
                         except Exception:
                             pass
-                    else:
-                        await duplicates_collection.update_one({"_id": file_unique_id}, {"$set": {"exists": True}}, upsert=True)
-
-                    if scanned_count % 1000 == 0:
-                        await state_collection.update_one({"_id": "cleaner_progress"}, {"$set": {"channel_index": idx, "offset_id": msg.id, "scanned_count": scanned_count, "deleted_count": deleted_count}}, upsert=True)
-                        if status_message:
-                            await check_mongo_storage_warning(bot_client, status_message.chat.id)
-                            try:
-                                await status_message.edit_text(f"🧹 **Live Cleaner Progress**\n● Scanned: {scanned_count}\n● Deleted: {deleted_count}", reply_markup=cancel_keyboard)
-                            except Exception:
-                                pass
 
         is_cleaner_running = False
         if status_message:
             await status_message.edit_text(f"✅ **Clean Complete!** Scanned: {scanned_count} | Deleted: {deleted_count}")
-    except Exception:
+    except Exception as e:
+        print(f"❌ [CLEANER ERROR] {e}", flush=True)
         is_cleaner_running = False
 
-# 4. Register Event Handlers & Workers to Main Bot Instance
+# 4. Register Event Handlers & Start Userbot Listener
 def register_cleaner_and_reposter_handlers(app_client):
-    @app_client.on_message(filters.incoming & (filters.channel | filters.group))
+    # Attach incoming listener to the USERBOT client so it can read channels
+    @userbot_client.on_message(filters.incoming & (filters.channel | filters.group))
     async def global_incoming_reposter_handler(client, message):
         await repost_queue.put(message)
 
@@ -243,7 +257,13 @@ def register_cleaner_and_reposter_handlers(app_client):
         except Exception:
             pass
 
-    asyncio.create_task(incoming_repost_worker(app_client))
+    # Start userbot client connection and queue worker
+    async def start_userbot_services():
+        await userbot_client.start()
+        print("🟢 [USERBOT ONLINE] Live reposter userbot session connected successfully!", flush=True)
+        asyncio.create_task(incoming_repost_worker())
+
+    asyncio.create_task(start_userbot_services())
 
 # ==============================================================================
 # --- END OF INTEGRATED CLEANER & GLOBAL INCOMING REPOSTER MODULE ---
@@ -308,6 +328,8 @@ class Bot(Client):
 
     async def stop(self, *args):
         await super().stop()
+        if userbot_client.is_connected:
+            await userbot_client.stop()
         logging.info("Bot stopped. Bye.")
 
     async def iter_messages(
