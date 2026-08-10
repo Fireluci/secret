@@ -23,8 +23,8 @@ import os
 from aiohttp import web
 from plugins import web_server
 from motor.motor_asyncio import AsyncIOMotorClient
-
-# ==============================================================================
+from plugins.index import check_pending_index_on_startup
+# ============================= p=================================================
 # --- START OF INTEGRATED CLEANER & GLOBAL INCOMING REPOSTER MODULE ---
 # ==============================================================================
 
