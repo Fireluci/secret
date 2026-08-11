@@ -9,6 +9,7 @@ rapidfuzz
 bs4
 shortzy
 datetime
+telethon
 pytz
 regex
 Flask==2.2.2
