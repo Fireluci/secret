@@ -24,144 +24,93 @@ from plugins import web_server
 from plugins.index import check_pending_index_on_startup
 from motor.motor_asyncio import AsyncIOMotorClient
 
+# Telethon Imports for Universal Userbot
+from telethon import TelegramClient, events
+from telethon.tl.types import Channel, Chat
+from telethon.sessions import StringSession
+
 # ==============================================================================
-# --- DIAGNOSTIC-ENABLED STRICT-FILE USERBOT INCOMING REPOSTER MODULE ---
+# --- UNIVERSAL TELETHON CROSS-CHANNEL REPOSTER MODULE ---
 # ==============================================================================
 
 REPOST_API_ID = 20354559
 REPOST_API_HASH = "bbdf772b35141fa8b661740dddb840bf"
-REPOST_SESSION_STRING = "BQE2lf8AXoh8f-aAjj_WtZ_gEeIyCP8vdcjHR47gU7__HbVbHdA_O1y0Io9Khn0Xby2Nb2030-kQGPCRZh5GUtueQPn87ARv_xE63HehbpYsOao_gULoSEzT_yrtjJYtjIORDkqDMwWLsGHDPlPa1_FtIjUIve-mpc2GS6mTIpkhVUkHttMTWqqLBJd9qTgFggit44Y5eDpZNZcAir4gy-KpcpvgDJBA-YrEmtOn_acs8c-fra37ojzOHluAqiHEGvKJsczh1FPjhc-AjNebhi2zLzGtVAPTs9zSrpg0UAXF6C7f8f_e_bmLrIl4RE8IUJfjCJGR_1jSGq07WS7_ZLQG10UCpgAAAAGF3NwSAA"
+REPOST_SESSION_STRING = "1BVtsOLIBu2bxYlR9W0usEMo5w_SC_AE4BYhPWBisHulEjSCNHEatR186oce30JEWwGmb9MRDWro1auqtSsJo6rIMRmiyk_dUW6fGjOaYlEraP0eH10vFo4K55-pqKkgYwAQy8GZgToBb9vrycsZFNHI9b8RP1sxOvBPHF3Z8grWxpxzy1-7_IuEOmqlKJsNRs24OJWR8LHpfKr5oIFBHeoa_WZTg10-I6q06RtTyktHSe3f_G89IGzF-JwuXvtUgiUL06s7-TeMKhLwkSAkadhw-0aDhvTQe73CD0JxcU-tXH8yLvQAUDA3hZ2_2D_vLYJjKQ1ZgTp3eWn7HgrwqcZ1n6kSlRpg="
 DESTINATION_CHANNEL = -1004388839544
 
-# MongoDB Setup for Duplicate Tracking
+# MongoDB Setup for Cross-Channel Duplicate Tracking
 MONGODB_URL = os.environ.get("DATABASE_URL", "mongodb+srv://test:test@test.i5mjcij.mongodb.net/?appName=test")
 mongo_db_client = AsyncIOMotorClient(MONGODB_URL)
 repost_db = mongo_db_client["telegram_bot_db"]
 duplicates_collection = repost_db["global_seen_files"]
 
-SAFE_DELAY = 0.8  
-repost_queue = asyncio.Queue()
+# Telethon Universal Userbot Client
+userbot_client = TelegramClient(StringSession(REPOST_SESSION_STRING), REPOST_API_ID, REPOST_API_HASH)
 
-# Persistent Userbot Client for Live Incoming Listening
-userbot_client = Client(
-    "strict_incoming_userbot",
-    api_id=REPOST_API_ID,
-    api_hash=REPOST_API_HASH,
-    session_string=REPOST_SESSION_STRING
-)
+@userbot_client.on(events.NewMessage())
+async def universal_repost_handler(event):
+    try:
+        chat = await event.get_chat()
+        
+        # Only process channels and groups
+        if not isinstance(chat, (Channel, Chat)):
+            return
 
-# 1. Strict Queue Worker with Post-Copy Duplicate Marking
-async def incoming_repost_worker():
-    print("🚀 [STRICT REPOST WORKER] Started... Filtering for videos/documents only.", flush=True)
-    while True:
-        try:
-            message = await repost_queue.get()
+        message = event.message
+        
+        if not message.video and not message.document:
+            return
+
+        media_obj = message.video or message.document
+        
+        fname = ""
+        for attr in getattr(message.media, "document", getattr(message.media, "video", None)).attributes if hasattr(message.media, "document") or hasattr(message.media, "video") else []:
+            if hasattr(attr, "file_name"):
+                fname = attr.file_name
+                break
+                
+        if fname and fname.lower().endswith(('.srt', '.txt', '.rar', '.zip')):
+            print(f"⏩ [SKIPPED EXTENSION] {fname}", flush=True)
+            return
+
+        # Cross-channel unique fingerprint using filename + file size
+        file_size = getattr(media_obj, "size", 0)
+        if not fname and not file_size:
+            return
             
-            # --- RULE 1: IGNORE NON-MEDIA, PHOTOS, TEXT, GIFS, STICKERS ---
-            if message.empty or not message.media:
-                repost_queue.task_done()
-                continue
-                
-            if message.media not in [enums.MessageMediaType.VIDEO, enums.MessageMediaType.DOCUMENT]:
-                repost_queue.task_done()
-                continue
-                
-            media_obj = getattr(message, message.media.value, None)
-            if not media_obj:
-                repost_queue.task_done()
-                continue
+        file_uid = f"{fname}_{file_size}"
+        
+        # MongoDB Duplicate Check across all channels
+        if await duplicates_collection.find_one({"_id": file_uid}):
+            print(f"🔄 [DUPLICATE BLOCKED] Already mirrored from another channel: {fname or file_uid}", flush=True)
+            return
 
-            # --- RULE 2: IGNORE UNWANTED EXTENSIONS (.srt, .txt, .rar, .zip) ---
-            file_name = getattr(media_obj, "file_name", "") or "N/A"
-            if file_name.lower().endswith(('.srt', '.txt', '.rar', '.zip')):
-                print(f"⏩ [SKIPPED EXTENSION] Ignored restricted file: {file_name}", flush=True)
-                repost_queue.task_done()
-                continue
+        caption = f"{fname}\n\n{message.text or ''}" if fname else (message.text or "")
 
-            # --- RULE 3: MONGODB PRE-CHECK ---
-            file_unique_id = getattr(media_obj, "file_unique_id", None)
-            if file_unique_id:
-                exists = await duplicates_collection.find_one({"_id": file_unique_id})
-                if exists:
-                    print(f"🔄 [DUPLICATE BLOCKED] File already in DB. Skipping.", flush=True)
-                    repost_queue.task_done()
-                    continue
-
-            # --- RULE 4: FORMAT CAPTION ({file_name} + existing caption) ---
-            file_caption = message.caption or ""
-            custom_caption = f"{file_name}\n\n{file_caption}" if file_caption else file_name
-
-            # Safe copy using userbot_client explicitly with FloodWait protection
-            success = False
-            try:
-                await userbot_client.copy_message(
-                    chat_id=DESTINATION_CHANNEL,
-                    from_chat_id=message.chat.id,
-                    message_id=message.id,
-                    caption=custom_caption
-                )
-                success = True
-                print(f"🚀 [MIRRORED FILE] Successfully reposted: {file_name} (ID: {message.id})", flush=True)
-            except FloodWait as e:
-                print(f"⏳ [FLOODWAIT] Sleeping for {e.value + 2}s...", flush=True)
-                await asyncio.sleep(e.value + 2)
-                try:
-                    await userbot_client.copy_message(
-                        chat_id=DESTINATION_CHANNEL,
-                        from_chat_id=message.chat.id,
-                        message_id=message.id,
-                        caption=custom_caption
-                    )
-                    success = True
-                    print(f"🚀 [MIRRORED FILE] Successfully reposted after FloodWait: {file_name} (ID: {message.id})", flush=True)
-                except Exception as inner_e:
-                    print(f"❌ [REPOST ERROR] Failed after FloodWait: {inner_e}", flush=True)
-            except Exception as e:
-                print(f"❌ [REPOST ERROR] Failed to mirror via userbot: {e}", flush=True)
-
-            # --- RULE 5: MARK AS SEEN ONLY AFTER SUCCESSFUL COPY ---
-            if success and file_unique_id:
-                await duplicates_collection.update_one({"_id": file_unique_id}, {"$set": {"exists": True}}, upsert=True)
-
-            await asyncio.sleep(SAFE_DELAY)
-            repost_queue.task_done()
-        except Exception as e:
-            print(f"⚠️ [WORKER EXCEPTION] {e}", flush=True)
-            await asyncio.sleep(1)
-
-# 2. Registration & Startup Sequence Function with Full Diagnostics
-def register_reposter_handler(app_client):
-    @userbot_client.on_message()
-    async def global_incoming_reposter_handler(client, message):
-        print(
-            f"🔥 USERBOT RECEIVED: chat={message.chat.id}, "
-            f"type={message.chat.type}, message_id={message.id}, "
-            f"media={message.media}",
-            flush=True
+        await userbot_client.send_file(
+            DESTINATION_CHANNEL,
+            message.media,
+            caption=caption
         )
+        print(f"🚀 [UNIVERSAL MIRROR] Sent '{fname or 'Media'}' from chat ID {chat.id} to destination!", flush=True)
+        
+        await duplicates_collection.update_one({"_id": file_uid}, {"$set": {"exists": True}}, upsert=True)
+        
+    except Exception as e:
+        print(f"❌ [REPOST ERROR] {e}", flush=True)
 
-        if message.chat.type in [
-            enums.ChatType.CHANNEL,
-            enums.ChatType.SUPERGROUP,
-            enums.ChatType.GROUP
-        ]:
-            await repost_queue.put(message)
-            print(
-                f"📥 QUEUED: {message.id} | Queue size: {repost_queue.qsize()}",
-                flush=True
-            )
-
+def register_reposter_handler(app_client):
     async def start_userbot_services():
-        if not userbot_client.is_connected:
+        if not userbot_client.is_connected():
             await userbot_client.start()
-            print("🟢 [USERBOT ONLINE] Live incoming reposter session connected successfully!", flush=True)
+            print("🟢 [TELETHON USERBOT ONLINE] Universal live session connected successfully!", flush=True)
         
         print("🔄 [SYNCING] Fetching userbot dialogs to activate live channel updates...", flush=True)
-        async for _ in userbot_client.get_dialogs():
-            pass
-        print("✅ [SYNC COMPLETE] Live channel updates are now active!", flush=True)
-
-        asyncio.create_task(incoming_repost_worker())
+        count = 0
+        async for dialog in userbot_client.iter_dialogs():
+            if isinstance(dialog.entity, (Channel, Chat)):
+                count += 1
+        print(f"✅ [SYNC COMPLETE] Loaded {count} chats. Universal live updates active!", flush=True)
 
     asyncio.create_task(start_userbot_services())
 
@@ -218,16 +167,16 @@ class Bot(Client):
         from plugins.commands import premium_expiry_reminder_loop
         asyncio.create_task(premium_expiry_reminder_loop(self))
         
-        # --- REGISTER HANDLER AND START USERBOT ---
+        # --- REGISTER HANDLER AND START TELETHON USERBOT ---
         register_reposter_handler(self)
-        # ------------------------------------------
+        # ----------------------------------------------------
 
         await check_pending_index_on_startup(self)
 
     async def stop(self, *args):
         await super().stop()
-        if userbot_client.is_connected:
-            await userbot_client.stop()
+        if userbot_client.is_connected():
+            await userbot_client.disconnect()
         logging.info("Bot stopped. Bye.")
 
     async def iter_messages(
