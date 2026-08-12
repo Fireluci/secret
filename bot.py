@@ -5,10 +5,10 @@ from aiohttp import web
 from motor.motor_asyncio import AsyncIOMotorClient
 from pyrogram import Client
 from info import API_ID, API_HASH, PORT
-from plugins import web_server
+from plugins.web_server import web_server
 
 # ==============================================================================
-# --- OFFICIAL PYROGRAM MULTI-CHANNEL INDEXER & CLEANER (FIXED IMPORT) ---
+# --- OFFICIAL PYROGRAM MULTI-CHANNEL INDEXER & CLEANER (FULLY FIXED) ---
 # ==============================================================================
 
 REPOST_API_ID = 20354559
@@ -16,8 +16,7 @@ REPOST_API_HASH = "bbdf772b35141fa8b661740dddb840bf"
 REPOST_SESSION_STRING = "1BVtsOLIBu1X4NYbWJrTjNsE42zEicK4wgVnZ9b29dqO3rxprIEiC3TrNFqsuVy2FrGHFbgQD10829dUudPK0XFIFNXUbKzxArUx62vTQwBsV4uOMMoWOim861mQt1O4bzoVaYB1sGtLzOW_rDgo84qdhqtukFPE_VOSNJ54HpoKy68v63B4CNHnI5G40R9PAGUVF0mNU-gLAsq80OGocJ_aTMPz6s-WcYGhv8nNnY8wMqdR8Bxx25v0cT6JMJ-m-RaH_frWMKwK_9RQomAm5Dan561L51vEsqo5-cywqA12c-mrrL6D4VYNnvVgMBg4fvHj3nwG2S7th0QNw_ySc6ZNFZRJBzmY="
 
 NEXUS_2_CHANNEL_ID = -1001725696043  # Protected Primary Source
-# Backup Channels (Resolved from your provided invite links)
-BACKUP_CHANNELS = [
+BACKUP_LINKS = [
     "https://t.me/+Tr0vLjLV1U9jNTNl",  # BACKUP 4
     "https://t.me/+luSmEVPD8w41ZTM1",  # BACKUP 3
     "https://t.me/+1hDjmUzz1gdiMTg1",  # BACKUP 2
@@ -30,9 +29,9 @@ MONGODB_URL = os.environ.get("DATABASE_URL", "mongodb+srv://test:test@test.i5mjc
 mongo_db_client = AsyncIOMotorClient(MONGODB_URL)
 duplicates_collection = mongo_db_client["telegram_bot_db"]["global_seen_files"]
 
-# Pyrogram User Session Client (using unique name and session string)
+# Pyrogram User Session Client configured correctly for StringSessions
 userbot_client = Client(
-    name="official_indexer_session_v2",
+    name="pyrogram_official_indexer",
     api_id=REPOST_API_ID,
     api_hash=REPOST_API_HASH,
     session_string=REPOST_SESSION_STRING,
@@ -66,8 +65,22 @@ async def process_nexus_2():
     print(f"✨ [STEP 1 COMPLETE] Nexus 2 fully indexed. Total protected records: {indexed_count}", flush=True)
 
 async def process_backup_channels():
-    for channel_id in BACKUP_CHANNELS:
-        print(f"🧹 [STEP 2] Processing and cleaning channel {channel_id}...", flush=True)
+    for link in BACKUP_LINKS:
+        try:
+            chat_obj = await userbot_client.join_chat(link)
+            channel_id = chat_obj.id
+            print(f"🔗 [JOINED/RESOLVED] Backup channel: {chat_obj.title} ({channel_id})", flush=True)
+        except Exception as e:
+            print(f"⚠️ [RESOLVE NOTICE] Could not auto-join {link} (might already be joined): {e}", flush=True)
+            try:
+                chat_obj = await userbot_client.get_chat(link)
+                channel_id = chat_obj.id
+                print(f"📁 [RESOLVED] Accessing existing backup channel: {chat_obj.title} ({channel_id})", flush=True)
+            except Exception as get_err:
+                print(f"❌ [SKIP ERROR] Failed to resolve link {link}: {get_err}", flush=True)
+                continue
+
+        print(f"🧹 [STEP 2] Processing and cleaning backup channel {channel_id}...", flush=True)
         deleted_junk = 0
         deleted_duplicates = 0
         new_indexed = 0
@@ -143,6 +156,8 @@ class Bot(Client):
         )
 
     async def start(self):
+        await super().start()
+
         app = web.AppRunner(await web_server())
         await app.setup()
         site = web.TCPSite(app, "0.0.0.0", PORT)
@@ -154,7 +169,9 @@ class Bot(Client):
     async def stop(self, *args):
         if userbot_client.is_connected():
             await userbot_client.stop()
-        print("🛑 Indexer stopped.", flush=True)
+
+        await super().stop()
+        print("🛑 Bot stopped.", flush=True)
 
 app = Bot()
 app.run()
