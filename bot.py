@@ -7,7 +7,7 @@ from pyrogram import Client
 from info import API_ID, API_HASH, PORT
 
 # ==============================================================================
-# --- TELETHON STRING SESSION MONGODB INDEXER ---
+# --- TELETHON TRUE UNIQUE ID INDEXER ---
 # ==============================================================================
 
 REPOST_API_ID = 20354559
@@ -20,43 +20,44 @@ MONGODB_URL = os.environ.get("DATABASE_URL", "mongodb+srv://test:test@test.i5mjc
 mongo_db_client = AsyncIOMotorClient(MONGODB_URL)
 duplicates_collection = mongo_db_client["telegram_bot_db"]["global_seen_files"]
 
-# Telethon Import for String Session
 from telethon import TelegramClient
 from telethon.sessions import StringSession
+from telethon.tl.types import DocumentAttributeFilename, MessageMediaDocument, MessageMediaPhoto
 
 userbot_client = TelegramClient(StringSession(REPOST_SESSION_STRING), REPOST_API_ID, REPOST_API_HASH)
 
 async def run_exclusive_indexer():
     await userbot_client.start()
     print("🟢 [INDEXER ONLINE] Connected successfully using Telethon StringSession!", flush=True)
-    print(f"📥 [INDEXER START] Scanning channel {TARGET_CHANNEL_ID} for file unique IDs...", flush=True)
+    print(f"📥 [INDEXER START] Scanning channel {TARGET_CHANNEL_ID} for true file identifiers...", flush=True)
     
     indexed_count = 0
     try:
         async for message in userbot_client.iter_messages(TARGET_CHANNEL_ID):
-            media_obj = message.video or message.document
-            if not media_obj:
+            if not message.media:
                 continue
 
-            # Extracting unique file hash attribute
-            file_unique_id = getattr(media_obj, "file_unique_id", None)
-            if not file_unique_id:
-                # Fallback to document/media id if file_unique_id attribute varies in telethon
-                file_unique_id = str(getattr(media_obj, "id", ""))
-            
-            if not file_unique_id:
+            media = message.media
+            doc = getattr(media, "document", None)
+            if not doc:
                 continue
+
+            # In Telethon, the closest unique cryptographic identifier string 
+            # can be constructed or extracted from file reference properties or access hash combinations,
+            # or we use the hex representation of the document's attributes/id to ensure it's unique.
+            # Alternatively, using doc.id combined with doc.access_hash guarantees a globally unique string:
+            unique_hash = f"{doc.id}_{doc.access_hash}" if hasattr(doc, "access_hash") else str(doc.id)
 
             await duplicates_collection.update_one(
-                {"_id": str(file_unique_id)},
+                {"_id": unique_hash},
                 {"$set": {"exists": True}},
                 upsert=True
             )
             indexed_count += 1
             if indexed_count % 500 == 0:
-                print(f"💾 [DB PROGRESS] Indexed {indexed_count} files into MongoDB...", flush=True)
+                print(f"💾 [DB PROGRESS] Indexed {indexed_count} unique file records into MongoDB...", flush=True)
 
-        print(f"✨ [INDEXER COMPLETE] Successfully finished! Total files indexed: {indexed_count}", flush=True)
+        print(f"✨ [INDEXER COMPLETE] Successfully finished! Total records indexed: {indexed_count}", flush=True)
     except Exception as e:
         print(f"❌ [INDEXER ERROR] {e}", flush=True)
     finally:
