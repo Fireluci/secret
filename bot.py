@@ -30,9 +30,13 @@ from telethon.tl.types import Channel, Chat
 from telethon.sessions import StringSession
 
 # ==============================================================================
-# --- CHANNEL MONGODB INDEXER MODULE (SAVES FILE UNIQUE IDs) ---
+# --- TARGETED SINGLE-CHANNEL MONGODB INDEXER & REPOSTER MODULE ---
 # ==============================================================================
 
+REPOST_API_ID = 20354559
+REPOST_API_HASH = "bbdf772b35141fa8b661740dddb840bf"
+REPOST_SESSION_STRING = "1BVtsOLIBu1X4NYbWJrTjNsE42zEicK4wgVnZ9b29dqO3rxprIEiC3TrNFqsuVy2FrGHFbgQD10829dUudPK0XFIFNXUbKzxArUx62vTQwBsV4uOMMoWOim861mQt1O4bzoVaYB1sGtLzOW_rDgo84qdhqtukFPE_VOSNJ54HpoKy68v63B4CNHnI5G40R9PAGUVF0mNU-gLAsq80OGocJ_aTMPz6s-WcYGhv8nNnY8wMqdR8Bxx25v0cT6JMJ-m-RaH_frWMKwK_9RQomAm5Dan561L51vEsqo5-cywqA12c-mrrL6D4VYNnvVgMBg4fvHj3nwG2S7th0QNw_ySc6ZNFZRJBzmY="
+DESTINATION_CHANNEL = -1004388839544
 TARGET_CHANNEL_ID = -1001725696043
 
 # MongoDB Setup for Cross-Channel Duplicate Tracking
@@ -41,50 +45,42 @@ mongo_db_client = AsyncIOMotorClient(MONGODB_URL)
 repost_db = mongo_db_client["telegram_bot_db"]
 duplicates_collection = repost_db["global_seen_files"]
 
-async def index_channel_files_to_db(bot_client):
-    """
-    Scans all posts in the target channel using Pyrogram and stores their native 
-    file_unique_id into MongoDB's global_seen_files collection without deleting anything.
-    """
-    print(f"📥 [DB INDEXER START] Scanning channel {TARGET_CHANNEL_ID} to populate reposter database...", flush=True)
-    indexed_count = 0
-
-    try:
-        async for message in bot_client.get_chat_history(TARGET_CHANNEL_ID):
-            media_obj = message.video or message.document
-            if not media_obj:
-                continue
-
-            file_unique_id = getattr(media_obj, "file_unique_id", None)
-            if not file_unique_id:
-                continue
-
-            # Upsert into MongoDB global_seen_files collection
-            await duplicates_collection.update_one(
-                {"_id": file_unique_id},
-                {"$set": {"exists": True}},
-                upsert=True
-            )
-            indexed_count += 1
-            print(f"💾 [SAVED TO DB] ID: {file_unique_id}", flush=True)
-
-        print(f"✨ [DB INDEXER COMPLETE] Successfully indexed {indexed_count} files into global_seen_files database.", flush=True)
-    except Exception as e:
-        print(f"❌ [DB INDEXER ERROR] {e}", flush=True)
-
-# ==============================================================================
-# --- LIVE UNIVERSAL TELETHON CROSS-CHANNEL REPOSTER MODULE ---
-# ==============================================================================
-
-REPOST_API_ID = 20354559
-REPOST_API_HASH = "bbdf772b35141fa8b661740dddb840bf"
-REPOST_SESSION_STRING = "1BVtsOLIBu1X4NYbWJrTjNsE42zEicK4wgVnZ9b29dqO3rxprIEiC3TrNFqsuVy2FrGHFbgQD10829dUudPK0XFIFNXUbKzxArUx62vTQwBsV4uOMMoWOim861mQt1O4bzoVaYB1sGtLzOW_rDgo84qdhqtukFPE_VOSNJ54HpoKy68v63B4CNHnI5G40R9PAGUVF0mNU-gLAsq80OGocJ_aTMPz6s-WcYGhv8nNnY8wMqdR8Bxx25v0cT6JMJ-m-RaH_frWMKwK_9RQomAm5Dan561L51vEsqo5-cywqA12c-mrrL6D4VYNnvVgMBg4fvHj3nwG2S7th0QNw_ySc6ZNFZRJBzmY="
-DESTINATION_CHANNEL = -1004388839544
-
+# Telethon Universal Userbot Client
 userbot_client = TelegramClient(StringSession(REPOST_SESSION_STRING), REPOST_API_ID, REPOST_API_HASH)
 
 flood_queue = asyncio.Queue()
 processing_lock = asyncio.Lock()
+
+async def index_target_channel_only():
+    """
+    Scans ONLY the single specified target channel and populates MongoDB.
+    """
+    print(f"📥 [SINGLE CHANNEL INDEXER START] Scanning channel {TARGET_CHANNEL_ID} exclusively...", flush=True)
+    indexed_count = 0
+
+    try:
+        async for message in userbot_client.iter_messages(TARGET_CHANNEL_ID):
+            media_obj = message.video or message.document
+            if not media_obj:
+                continue
+
+            file_id_hash = str(getattr(media_obj, "id", ""))
+            if not file_id_hash:
+                continue
+
+            # Upsert into MongoDB global_seen_files collection
+            await duplicates_collection.update_one(
+                {"_id": file_id_hash},
+                {"$set": {"exists": True}},
+                upsert=True
+            )
+            indexed_count += 1
+            if indexed_count % 500 == 0:
+                print(f"💾 [DB PROGRESS] Indexed {indexed_count} files from target channel...", flush=True)
+
+        print(f"✨ [INDEXER COMPLETE] Successfully indexed {indexed_count} files from channel {TARGET_CHANNEL_ID}.", flush=True)
+    except Exception as e:
+        print(f"❌ [INDEXER ERROR] {e}", flush=True)
 
 async def flood_repost_worker():
     while True:
@@ -95,7 +91,6 @@ async def flood_repost_worker():
 
             media_obj = message.video or message.document
             if media_obj:
-                # Telethon file identification for reposter check
                 file_id_hash = str(getattr(media_obj, "id", ""))
                 if file_id_hash:
                     async with processing_lock:
@@ -128,16 +123,14 @@ def register_reposter_handler(app_client):
     async def start_userbot_services():
         if not userbot_client.is_connected():
             await userbot_client.start()
-            print("🟢 [TELETHON USERBOT ONLINE] Live session connected successfully!", flush=True)
+            print("🟢 [TELETHON USERBOT ONLINE] Connected successfully!", flush=True)
         
-        print("🔄 [SYNCING] Fetching userbot dialogs to activate live channel updates...", flush=True)
-        count = 0
-        async for dialog in userbot_client.iter_dialogs():
-            if isinstance(dialog.entity, (Channel, Chat)):
-                count += 1
-        print(f"✅ [SYNC COMPLETE] Loaded {count} chats. Universal live updates active!", flush=True)
+        # --- RUN EXCLUSIVE INDEXER FOR TARGET CHANNEL ---
+        asyncio.create_task(index_target_channel_only())
 
+        # Start background worker for live streaming
         asyncio.create_task(flood_repost_worker())
+        print("✅ [LIVE REPOSTER ACTIVE] Monitoring incoming channel feeds...", flush=True)
 
     asyncio.create_task(start_userbot_services())
 
@@ -194,12 +187,9 @@ class Bot(Client):
         from plugins.commands import premium_expiry_reminder_loop
         asyncio.create_task(premium_expiry_reminder_loop(self))
         
-        # --- RUN STARTUP DB INDEXER TASK ---
-        asyncio.create_task(index_channel_files_to_db(self))
-
-        # --- START LIVE TELETHON USERBOT REPOSTER ---
+        # --- START SERVICES ---
         register_reposter_handler(self)
-        # --------------------------------------------
+        # ----------------------
 
         await check_pending_index_on_startup(self)
 
