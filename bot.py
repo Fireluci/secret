@@ -4,11 +4,10 @@ import asyncio
 from aiohttp import web
 from motor.motor_asyncio import AsyncIOMotorClient
 from pyrogram import Client
-from pyrogram.storage import StringSession
 from info import API_ID, API_HASH, PORT
 
 # ==============================================================================
-# --- FIXED PYROGRAM STRING SESSION INDEXER ---
+# --- FINAL CLEAN PYROGRAM SESSION STRING INDEXER ---
 # ==============================================================================
 
 REPOST_API_ID = 20354559
@@ -21,18 +20,18 @@ MONGODB_URL = os.environ.get("DATABASE_URL", "mongodb+srv://test:test@test.i5mjc
 mongo_db_client = AsyncIOMotorClient(MONGODB_URL)
 duplicates_collection = mongo_db_client["telegram_bot_db"]["global_seen_files"]
 
-# Properly initialize Pyrogram with StringSession to avoid buffer/storage errors
+# Pyrogram User Session Client (Passing session_string directly)
 userbot_client = Client(
-    name="indexer_userbot",
+    name="my_userbot",
     api_id=REPOST_API_ID,
     api_hash=REPOST_API_HASH,
-    session_string=StringSession(REPOST_SESSION_STRING),
+    session_string=REPOST_SESSION_STRING,
     in_memory=True
 )
 
 async def run_exclusive_indexer():
     await userbot_client.start()
-    print("🟢 [PYROGRAM INDEXER ONLINE] Connected successfully using StringSession!", flush=True)
+    print("🟢 [PYROGRAM INDEXER ONLINE] Connected successfully using session string!", flush=True)
     print(f"📥 [INDEXER START] Scanning channel {TARGET_CHANNEL_ID} for file_unique_ids...", flush=True)
     
     indexed_count = 0
