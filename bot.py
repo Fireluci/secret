@@ -7,7 +7,7 @@ from pyrogram import Client
 from info import API_ID, API_HASH, PORT
 
 # ==============================================================================
-# --- FINAL CLEAN PYROGRAM SESSION STRING INDEXER ---
+# --- TELETHON STRING SESSION MONGODB INDEXER ---
 # ==============================================================================
 
 REPOST_API_ID = 20354559
@@ -20,45 +20,47 @@ MONGODB_URL = os.environ.get("DATABASE_URL", "mongodb+srv://test:test@test.i5mjc
 mongo_db_client = AsyncIOMotorClient(MONGODB_URL)
 duplicates_collection = mongo_db_client["telegram_bot_db"]["global_seen_files"]
 
-# Pyrogram User Session Client (Passing session_string directly)
-userbot_client = Client(
-    name="my_userbot",
-    api_id=REPOST_API_ID,
-    api_hash=REPOST_API_HASH,
-    session_string=REPOST_SESSION_STRING,
-    in_memory=True
-)
+# Telethon Import for String Session
+from telethon import TelegramClient
+from telethon.sessions import StringSession
+
+userbot_client = TelegramClient(StringSession(REPOST_SESSION_STRING), REPOST_API_ID, REPOST_API_HASH)
 
 async def run_exclusive_indexer():
     await userbot_client.start()
-    print("🟢 [PYROGRAM INDEXER ONLINE] Connected successfully using session string!", flush=True)
-    print(f"📥 [INDEXER START] Scanning channel {TARGET_CHANNEL_ID} for file_unique_ids...", flush=True)
+    print("🟢 [INDEXER ONLINE] Connected successfully using Telethon StringSession!", flush=True)
+    print(f"📥 [INDEXER START] Scanning channel {TARGET_CHANNEL_ID} for file unique IDs...", flush=True)
     
     indexed_count = 0
     try:
-        async for message in userbot_client.get_chat_history(TARGET_CHANNEL_ID):
+        async for message in userbot_client.iter_messages(TARGET_CHANNEL_ID):
             media_obj = message.video or message.document
             if not media_obj:
                 continue
 
+            # Extracting unique file hash attribute
             file_unique_id = getattr(media_obj, "file_unique_id", None)
+            if not file_unique_id:
+                # Fallback to document/media id if file_unique_id attribute varies in telethon
+                file_unique_id = str(getattr(media_obj, "id", ""))
+            
             if not file_unique_id:
                 continue
 
             await duplicates_collection.update_one(
-                {"_id": file_unique_id},
+                {"_id": str(file_unique_id)},
                 {"$set": {"exists": True}},
                 upsert=True
             )
             indexed_count += 1
             if indexed_count % 500 == 0:
-                print(f"💾 [DB PROGRESS] Indexed {indexed_count} file_unique_ids into MongoDB...", flush=True)
+                print(f"💾 [DB PROGRESS] Indexed {indexed_count} files into MongoDB...", flush=True)
 
-        print(f"✨ [INDEXER COMPLETE] Successfully finished! Total file_unique_ids indexed: {indexed_count}", flush=True)
+        print(f"✨ [INDEXER COMPLETE] Successfully finished! Total files indexed: {indexed_count}", flush=True)
     except Exception as e:
         print(f"❌ [INDEXER ERROR] {e}", flush=True)
     finally:
-        await userbot_client.stop()
+        await userbot_client.disconnect()
 
 class Bot(Client):
     def __init__(self):
@@ -82,7 +84,7 @@ class Bot(Client):
 
     async def stop(self, *args):
         if userbot_client.is_connected():
-            await userbot_client.stop()
+            await userbot_client.disconnect()
         print("🛑 Indexer bot stopped.", flush=True)
 
 app = Bot()
