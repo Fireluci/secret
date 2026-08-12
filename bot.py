@@ -4,10 +4,11 @@ import asyncio
 from aiohttp import web
 from motor.motor_asyncio import AsyncIOMotorClient
 from pyrogram import Client
+from pyrogram.storage import StringSession
 from info import API_ID, API_HASH, PORT
 
 # ==============================================================================
-# --- ISOLATED SINGLE-CHANNEL PYROGRAM FILE_UNIQUE_ID INDEXER ---
+# --- FIXED PYROGRAM STRING SESSION INDEXER ---
 # ==============================================================================
 
 REPOST_API_ID = 20354559
@@ -20,18 +21,19 @@ MONGODB_URL = os.environ.get("DATABASE_URL", "mongodb+srv://test:test@test.i5mjc
 mongo_db_client = AsyncIOMotorClient(MONGODB_URL)
 duplicates_collection = mongo_db_client["telegram_bot_db"]["global_seen_files"]
 
-# Pyrogram User Session Client
+# Properly initialize Pyrogram with StringSession to avoid buffer/storage errors
 userbot_client = Client(
-    "pyrogram_user_indexer",
+    name="indexer_userbot",
     api_id=REPOST_API_ID,
     api_hash=REPOST_API_HASH,
-    session_string=REPOST_SESSION_STRING
+    session_string=StringSession(REPOST_SESSION_STRING),
+    in_memory=True
 )
 
 async def run_exclusive_indexer():
     await userbot_client.start()
-    print("🟢 [PYROGRAM INDEXER ONLINE] Connected successfully using session string!", flush=True)
-    print(f"📥 [INDEXER START] Scanning channel {TARGET_CHANNEL_ID} for real file_unique_ids...", flush=True)
+    print("🟢 [PYROGRAM INDEXER ONLINE] Connected successfully using StringSession!", flush=True)
+    print(f"📥 [INDEXER START] Scanning channel {TARGET_CHANNEL_ID} for file_unique_ids...", flush=True)
     
     indexed_count = 0
     try:
@@ -40,12 +42,10 @@ async def run_exclusive_indexer():
             if not media_obj:
                 continue
 
-            # This extracts the exact string format like "AgADNx8AArJdyFM"
             file_unique_id = getattr(media_obj, "file_unique_id", None)
             if not file_unique_id:
                 continue
 
-            # Save into MongoDB global_seen_files collection with string _id
             await duplicates_collection.update_one(
                 {"_id": file_unique_id},
                 {"$set": {"exists": True}},
@@ -64,7 +64,7 @@ async def run_exclusive_indexer():
 class Bot(Client):
     def __init__(self):
         super().__init__(
-            name="indexer_bot",
+            name="indexer_main_bot",
             api_id=API_ID,
             api_hash=API_HASH,
             bot_token=os.environ.get("BOT_TOKEN", "dummy_token"),
