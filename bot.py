@@ -4,16 +4,16 @@ import asyncio
 from aiohttp import web
 from motor.motor_asyncio import AsyncIOMotorClient
 from pyrogram import Client
-from info import API_ID, API_HASH, PORT
-from plugins.web_server import web_server
+from info import API_ID, API_HASH, BOT_TOKEN, PORT
+from plugins import web_server
 
 # ==============================================================================
-# --- OFFICIAL PYROGRAM MULTI-CHANNEL INDEXER & CLEANER (FULLY FIXED) ---
+# --- PRODUCTION-READY KOYEB BOT & INDEXER SCRIPT ---
 # ==============================================================================
 
 REPOST_API_ID = 20354559
 REPOST_API_HASH = "bbdf772b35141fa8b661740dddb840bf"
-REPOST_SESSION_STRING = "1BVtsOLIBu1X4NYbWJrTjNsE42zEicK4wgVnZ9b29dqO3rxprIEiC3TrNFqsuVy2FrGHFbgQD10829dUudPK0XFIFNXUbKzxArUx62vTQwBsV4uOMMoWOim861mQt1O4bzoVaYB1sGtLzOW_rDgo84qdhqtukFPE_VOSNJ54HpoKy68v63B4CNHnI5G40R9PAGUVF0mNU-gLAsq80OGocJ_aTMPz6s-WcYGhv8nNnY8wMqdR8Bxx25v0cT6JMJ-m-RaH_frWMKwK_9RQomAm5Dan561L51vEsqo5-cywqA12c-mrrL6D4VYNnvVgMBg4fvHj3nwG2S7th0QNw_ySc6ZNFZRJBzmY="
+REPOST_SESSION_STRING = "BQE2lf8Ak7aUiRRPt2LadWMCXevjN2-aTRLGCaQ-MJckmw-f4p0SkGJVd_BV41MkYv4JU7pgYJatLFOKQouj_cgCipabcHzhT7X5mr_fGGNqmhSMKkg-cN9bGEk7cIQfENls7TwEr0lJjQUl6q_Mx5zPJYVw_EzpM344UnuY5JlX95LzPMKB_cABTIp48L15YdhVnsqUS_8tfxdj6-7doepM982-6xcehN7I3lEHhARiWBcZWlLm-I8yZGDRdIDiI5gd2RIxxxnF_fcI-BTaFyy6olqq5nY5ce2QW2baUkM9FKVDgtGMSrrH0CGf-boDjxe2CPqDk5_VuxctoWwt8ccqobw6YQAAAAGF3NwSAA"
 
 NEXUS_2_CHANNEL_ID = -1001725696043  # Protected Primary Source
 BACKUP_LINKS = [
@@ -24,21 +24,21 @@ BACKUP_LINKS = [
     "https://t.me/+aOd37dxIcSM5ZDE1"   # BackUp Z
 ]
 
+JUNK_EXTENSIONS = ('.zip', '.rar', '.srt', '.txt')
+
 # MongoDB Setup
 MONGODB_URL = os.environ.get("DATABASE_URL", "mongodb+srv://test:test@test.i5mjcij.mongodb.net/?appName=test")
 mongo_db_client = AsyncIOMotorClient(MONGODB_URL)
 duplicates_collection = mongo_db_client["telegram_bot_db"]["global_seen_files"]
 
-# Pyrogram User Session Client configured correctly for StringSessions
+# Pyrogram User Session Client
 userbot_client = Client(
-    name="pyrogram_official_indexer",
+    name="koyeb_production_indexer",
     api_id=REPOST_API_ID,
     api_hash=REPOST_API_HASH,
     session_string=REPOST_SESSION_STRING,
     in_memory=True
 )
-
-JUNK_EXTENSIONS = ('.zip', '.rar', '.srt', '.txt')
 
 async def process_nexus_2():
     print(f"📥 [STEP 1] Scanning protected Nexus 2 channel ({NEXUS_2_CHANNEL_ID}) for official file_unique_ids...", flush=True)
@@ -71,7 +71,7 @@ async def process_backup_channels():
             channel_id = chat_obj.id
             print(f"🔗 [JOINED/RESOLVED] Backup channel: {chat_obj.title} ({channel_id})", flush=True)
         except Exception as e:
-            print(f"⚠️ [RESOLVE NOTICE] Could not auto-join {link} (might already be joined): {e}", flush=True)
+            print(f"⚠️ [RESOLVE NOTICE] Could not auto-join {link}: {e}", flush=True)
             try:
                 chat_obj = await userbot_client.get_chat(link)
                 channel_id = chat_obj.id
@@ -100,7 +100,7 @@ async def process_backup_channels():
                 if is_junk:
                     await userbot_client.delete_messages(channel_id, message.id)
                     deleted_junk += 1
-                    await asyncio.sleep(0.1)
+                    await asyncio.sleep(0.05)
                     continue
 
                 media_obj = message.video or message.document
@@ -126,24 +126,26 @@ async def process_backup_channels():
                     )
                     new_indexed += 1
 
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0.05)
             except Exception as msg_err:
                 print(f"⚠️ [MSG ERROR] Skipping message {message.id}: {msg_err}", flush=True)
 
         print(f"✅ [CHANNEL COMPLETE] Cleaned {deleted_junk} junk items, removed {deleted_duplicates} duplicates, added {new_indexed} new files.", flush=True)
 
 async def run_workflow():
+    print("🟢 Connecting userbot...", flush=True)
     await userbot_client.start()
-    print("🟢 [PYROGRAM USERBOT ONLINE] Connected successfully using session string!", flush=True)
-    
+    print("🟢 [ONLINE] Userbot connected successfully!", flush=True)
     try:
         await process_nexus_2()
         await process_backup_channels()
-        print("✨ [ALL TASKS FINISHED] Nexus 2 fully protected, all channels cleaned and deduplicated!", flush=True)
+        print("✨ [ALL TASKS FINISHED] Nexus 2 fully protected, all backup channels cleaned and deduplicated!")
     except Exception as e:
         print(f"❌ [WORKFLOW ERROR] {e}", flush=True)
     finally:
-        await userbot_client.stop()
+        if userbot_client.is_connected():
+            await userbot_client.stop()
+        print("🛑 Session disconnected cleanly.")
 
 class Bot(Client):
     def __init__(self):
@@ -151,7 +153,7 @@ class Bot(Client):
             name="main_runner_bot",
             api_id=API_ID,
             api_hash=API_HASH,
-            bot_token=os.environ.get("BOT_TOKEN", "dummy_token"),
+            bot_token=BOT_TOKEN,
             workers=2,
         )
 
