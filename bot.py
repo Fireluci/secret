@@ -22,6 +22,7 @@ import os
 from aiohttp import web
 from plugins import web_server
 from plugins.index import check_pending_index_on_startup
+from motor.motor_asyncio import AsyncIOMotorClient
 
 # Telethon Imports for Universal Userbot
 from telethon import TelegramClient, events
@@ -29,63 +30,116 @@ from telethon.tl.types import Channel, Chat
 from telethon.sessions import StringSession
 
 # ==============================================================================
-# --- TELETHON USERBOT PURE CHANNEL CLEANUP MODULE (NO MONGODB) ---
+# --- CHANNEL MONGODB INDEXER MODULE (SAVES FILE UNIQUE IDs) ---
+# ==============================================================================
+
+TARGET_CHANNEL_ID = -1001725696043
+
+# MongoDB Setup for Cross-Channel Duplicate Tracking
+MONGODB_URL = os.environ.get("DATABASE_URL", "mongodb+srv://test:test@test.i5mjcij.mongodb.net/?appName=test")
+mongo_db_client = AsyncIOMotorClient(MONGODB_URL)
+repost_db = mongo_db_client["telegram_bot_db"]
+duplicates_collection = repost_db["global_seen_files"]
+
+async def index_channel_files_to_db(bot_client):
+    """
+    Scans all posts in the target channel using Pyrogram and stores their native 
+    file_unique_id into MongoDB's global_seen_files collection without deleting anything.
+    """
+    print(f"📥 [DB INDEXER START] Scanning channel {TARGET_CHANNEL_ID} to populate reposter database...", flush=True)
+    indexed_count = 0
+
+    try:
+        async for message in bot_client.get_chat_history(TARGET_CHANNEL_ID):
+            media_obj = message.video or message.document
+            if not media_obj:
+                continue
+
+            file_unique_id = getattr(media_obj, "file_unique_id", None)
+            if not file_unique_id:
+                continue
+
+            # Upsert into MongoDB global_seen_files collection
+            await duplicates_collection.update_one(
+                {"_id": file_unique_id},
+                {"$set": {"exists": True}},
+                upsert=True
+            )
+            indexed_count += 1
+            print(f"💾 [SAVED TO DB] ID: {file_unique_id}", flush=True)
+
+        print(f"✨ [DB INDEXER COMPLETE] Successfully indexed {indexed_count} files into global_seen_files database.", flush=True)
+    except Exception as e:
+        print(f"❌ [DB INDEXER ERROR] {e}", flush=True)
+
+# ==============================================================================
+# --- LIVE UNIVERSAL TELETHON CROSS-CHANNEL REPOSTER MODULE ---
 # ==============================================================================
 
 REPOST_API_ID = 20354559
 REPOST_API_HASH = "bbdf772b35141fa8b661740dddb840bf"
 REPOST_SESSION_STRING = "1BVtsOLIBu1X4NYbWJrTjNsE42zEicK4wgVnZ9b29dqO3rxprIEiC3TrNFqsuVy2FrGHFbgQD10829dUudPK0XFIFNXUbKzxArUx62vTQwBsV4uOMMoWOim861mQt1O4bzoVaYB1sGtLzOW_rDgo84qdhqtukFPE_VOSNJ54HpoKy68v63B4CNHnI5G40R9PAGUVF0mNU-gLAsq80OGocJ_aTMPz6s-WcYGhv8nNnY8wMqdR8Bxx25v0cT6JMJ-m-RaH_frWMKwK_9RQomAm5Dan561L51vEsqo5-cywqA12c-mrrL6D4VYNnvVgMBg4fvHj3nwG2S7th0QNw_ySc6ZNFZRJBzmY="
-CLEANUP_CHANNEL_ID = -1001725696043
+DESTINATION_CHANNEL = -1004388839544
 
-# Telethon Userbot Client
 userbot_client = TelegramClient(StringSession(REPOST_SESSION_STRING), REPOST_API_ID, REPOST_API_HASH)
 
-async def run_telethon_channel_cleanup():
-    """
-    Scans the specified target channel using the Telethon userbot session 
-    and deletes duplicates using an in-memory set (completely MongoDB-free).
-    """
-    print(f"🧹 [USERBOT CLEANUP START] Scanning channel {CLEANUP_CHANNEL_ID} via Telethon session...", flush=True)
-    seen_files = set()
-    deleted_count = 0
-    scanned_count = 0
+flood_queue = asyncio.Queue()
+processing_lock = asyncio.Lock()
 
-    try:
-        async for message in userbot_client.iter_messages(CLEANUP_CHANNEL_ID):
+async def flood_repost_worker():
+    while True:
+        try:
+            event = await flood_queue.get()
+            chat = await event.get_chat()
+            message = event.message
+
             media_obj = message.video or message.document
-            if not media_obj:
-                continue
+            if media_obj:
+                # Telethon file identification for reposter check
+                file_id_hash = str(getattr(media_obj, "id", ""))
+                if file_id_hash:
+                    async with processing_lock:
+                        if await duplicates_collection.find_one({"_id": file_id_hash}):
+                            print(f"🔄 [DUPLICATE BLOCKED] Already in database: {file_id_hash}", flush=True)
+                        else:
+                            caption = message.text or ""
+                            await userbot_client.send_file(DESTINATION_CHANNEL, message.media, caption=caption)
+                            await duplicates_collection.update_one({"_id": file_id_hash}, {"$set": {"exists": True}}, upsert=True)
+                            print(f"🚀 [UNIVERSAL MIRROR] Sent media from chat {chat.id}", flush=True)
 
-            file_id_hash = getattr(media_obj, "id", None)
-            if not file_id_hash:
-                continue
+            flood_queue.task_done()
+            await asyncio.sleep(0.2)
+        except Exception as e:
+            print(f"❌ [WORKER ERROR] {e}", flush=True)
+            await asyncio.sleep(1)
 
-            scanned_count += 1
+@userbot_client.on(events.NewMessage())
+async def universal_repost_handler(event):
+    try:
+        chat = await event.get_chat()
+        if isinstance(chat, (Channel, Chat)):
+            message = event.message
+            if message.video or message.document:
+                await flood_queue.put(event)
+    except Exception:
+        pass
 
-            if file_id_hash in seen_files:
-                try:
-                    await userbot_client.delete_messages(CLEANUP_CHANNEL_ID, message.id)
-                    deleted_count += 1
-                    print(f"🗑️ [USERBOT DELETED DUPLICATE] Msg ID {message.id} | File ID: {file_id_hash}", flush=True)
-                except Exception as del_err:
-                    print(f"❌ [DELETE ERROR] Msg ID {message.id}: {del_err}", flush=True)
-            else:
-                seen_files.add(file_id_hash)
-
-        print(f"✨ [USERBOT CLEANUP COMPLETE] Scanned {scanned_count} files and deleted {deleted_count} duplicates from channel.", flush=True)
-    except Exception as e:
-        print(f"❌ [CLEANUP ROUTINE ERROR] {e}", flush=True)
-
-def register_cleanup_handler(app_client):
-    async def start_cleanup_services():
+def register_reposter_handler(app_client):
+    async def start_userbot_services():
         if not userbot_client.is_connected():
             await userbot_client.start()
-            print("🟢 [TELETHON USERBOT ONLINE] Cleanup session connected successfully!", flush=True)
+            print("🟢 [TELETHON USERBOT ONLINE] Live session connected successfully!", flush=True)
         
-        # Execute the pure channel cleanup immediately on startup
-        await run_telethon_channel_cleanup()
+        print("🔄 [SYNCING] Fetching userbot dialogs to activate live channel updates...", flush=True)
+        count = 0
+        async for dialog in userbot_client.iter_dialogs():
+            if isinstance(dialog.entity, (Channel, Chat)):
+                count += 1
+        print(f"✅ [SYNC COMPLETE] Loaded {count} chats. Universal live updates active!", flush=True)
 
-    asyncio.create_task(start_cleanup_services())
+        asyncio.create_task(flood_repost_worker())
+
+    asyncio.create_task(start_userbot_services())
 
 # ==============================================================================
 
@@ -140,9 +194,12 @@ class Bot(Client):
         from plugins.commands import premium_expiry_reminder_loop
         asyncio.create_task(premium_expiry_reminder_loop(self))
         
-        # --- RUN STARTUP TELETHON USERBOT CHANNEL CLEANUP ---
-        register_cleanup_handler(self)
-        # ---------------------------------------------------
+        # --- RUN STARTUP DB INDEXER TASK ---
+        asyncio.create_task(index_channel_files_to_db(self))
+
+        # --- START LIVE TELETHON USERBOT REPOSTER ---
+        register_reposter_handler(self)
+        # --------------------------------------------
 
         await check_pending_index_on_startup(self)
 
