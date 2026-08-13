@@ -29,12 +29,6 @@ REPOST_API_ID = 20354559
 REPOST_API_HASH = "bbdf772b35141fa8b661740dddb840bf"
 REPOST_SESSION_STRING = "BQE2lf8Ak7aUiRRPt2LadWMCXevjN2-aTRLGCaQ-MJckmw-f4p0SkGJVd_BV41MkYv4JU7pgYJatLFOKQouj_cgCipabcHzhT7X5mr_fGGNqmhSMKkg-cN9bGEk7cIQfENls7TwEr0lJjQUl6q_Mx5zPJYVw_EzpM344UnuY5JlX95LzPMKB_cABTIp48L15YdhVnsqUS_8tfxdj6-7doepM982-6xcehN7I3lEHhARiWBcZWlLm-I8yZGDRdIDiI5gd2RIxxxnF_fcI-BTaFyy6olqq5nY5ce2QW2baUkM9FKVDgtGMSrrH0CGf-boDjxe2CPqDk5_VuxctoWwt8ccqobw6YQAAAAGF3NwSAA"
 
-# Source channels to monitor and destination where files get reposted
-SOURCE_CHANNELS = [
-    # Add source channel IDs or usernames to monitor for live reposter
-]
-DESTINATION_CHANNEL = -1004388839544  # Destination channel for live reposting
-
 BACKUP_LINKS = [
     "https://t.me/+Tr0vLjLV1U9jNTNl",  # BACKUP 4
     "https://t.me/+luSmEVPD8w41ZTM1",  # BACKUP 3
@@ -136,6 +130,8 @@ async def process_backup_channels():
 
     print("✨ [CLEANUP FINISHED] All backup channels successfully cleaned and deduplicated against Nexus 2!", flush=True)
 
+DESTINATION_CHANNEL = -1004388839544  # Destination channel for live reposting
+
 async def flood_repost_worker():
     while True:
         try:
@@ -153,10 +149,10 @@ async def flood_repost_worker():
                             file_name = getattr(media_obj, "file_name", "Media")
                             original_caption = message.caption or message.text or ""
                             
-                            # Construct your requested custom caption format
+                            # Construct your requested custom caption format: (file_name)\n\n(filecaption)
                             custom_caption = f"{file_name}\n\n{original_caption}".strip()
 
-                            # Copy or send media with the custom caption format
+                            # Repost media with the custom caption format
                             await message.copy(
                                 chat_id=DESTINATION_CHANNEL,
                                 caption=custom_caption
@@ -175,7 +171,8 @@ async def flood_repost_worker():
             print(f"❌ [REPOST WORKER ERROR] {e}", flush=True)
             await asyncio.sleep(1)
 
-@userbot_client.on_message(filters.chat(SOURCE_CHANNELS) & (filters.video | filters.document))
+# Listens to EVERY incoming channel post globally across your userbot account
+@userbot_client.on_message(filters.channel & (filters.video | filters.document))
 async def live_destination_repost_handler(client, message):
     try:
         await flood_queue.put(message)
