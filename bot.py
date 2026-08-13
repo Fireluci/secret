@@ -5,111 +5,23 @@ logging.config.fileConfig('logging.conf')
 logging.getLogger().setLevel(logging.INFO)
 logging.getLogger("pyrogram").setLevel(logging.ERROR)
 
-from pyrogram import Client, __version__, filters
+from plugins.commands import premium_expiry_reminder_loop
+from plugins.index import check_pending_index_on_startup
+from pyrogram import Client, __version__
 from pyrogram.raw.all import layer
-from database.ia_filterdb import Media
+from database.ia_filterdb import Media, ensure_indexes
 from database.users_chats_db import db
 from info import SESSION, API_ID, API_HASH, BOT_TOKEN, LOG_CHANNEL, PORT
 from utils import temp
+from typing import Union, Optional, AsyncGenerator
+from pyrogram import types
 from Script import script
 from datetime import date, datetime
 import pytz
 import asyncio
-import os
 from aiohttp import web
 from plugins import web_server
-from plugins.index import check_pending_index_on_startup
-from motor.motor_asyncio import AsyncIOMotorClient
 
-# ==============================================================================
-# --- PRODUCTION BOT + LIVE TARGET REPOSTER ONLY ---
-# ==============================================================================
-
-REPOST_API_ID = 20354559
-REPOST_API_HASH = "bbdf772b35141fa8b661740dddb840bf"
-REPOST_SESSION_STRING = "BQE2lf8Ak7aUiRRPt2LadWMCXevjN2-aTRLGCaQ-MJckmw-f4p0SkGJVd_BV41MkYv4JU7pgYJatLFOKQouj_cgCipabcHzhT7X5mr_fGGNqmhSMKkg-cN9bGEk7cIQfENls7TwEr0lJjQUl6q_Mx5zPJYVw_EzpM344UnuY5JlX95LzPMKB_cABTIp48L15YdhVnsqUS_8tfxdj6-7doepM982-6xcehN7I3lEHhARiWBcZWlLm-I8yZGDRdIDiI5gd2RIxxxnF_fcI-BTaFyy6olqq5nY5ce2QW2baUkM9FKVDgtGMSrrH0CGf-boDjxe2CPqDk5_VuxctoWwt8ccqobw6YQAAAAGF3NwSAA"
-
-TARGET_LINK = "https://t.me/+XFb65BhR8wllNzA1"  # Direct target link
-TARGET_CHAT_ID = None                            # Resolved dynamically on startup
-
-# MongoDB Setup
-MONGODB_URL = os.environ.get("DATABASE_URL", "mongodb+srv://test:test@test.i5mjcij.mongodb.net/?appName=test")
-mongo_db_client = AsyncIOMotorClient(MONGODB_URL)
-duplicates_collection = mongo_db_client["telegram_bot_db"]["global_seen_files"]
-
-# Pyrogram User Session Client
-userbot_client = Client(
-    name="koyeb_live_reposter_only",
-    api_id=REPOST_API_ID,
-    api_hash=REPOST_API_HASH,
-    session_string=REPOST_SESSION_STRING,
-    in_memory=True
-)
-
-flood_queue = asyncio.Queue()
-processing_lock = asyncio.Lock()
-
-async def flood_repost_worker():
-    while True:
-        try:
-            message = await flood_queue.get()
-            media_obj = message.video or message.document
-            if media_obj:
-                file_unique_id = getattr(media_obj, "file_unique_id", None)
-                if file_unique_id:
-                    async with processing_lock:
-                        existing = await duplicates_collection.find_one({"_id": file_unique_id})
-                        if existing:
-                            print(f"🔄 [DUPLICATE BLOCKED] File already exists in database: {file_unique_id}", flush=True)
-                        else:
-                            file_name = getattr(media_obj, "file_name", "Media")
-                            original_caption = message.caption or message.text or ""
-                            
-                            # Custom caption format: (file_name)\n\n(filecaption)
-                            custom_caption = f"{file_name}\n\n{original_caption}".strip()
-
-                            await message.copy(
-                                chat_id=TARGET_CHAT_ID,
-                                caption=custom_caption
-                            )
-                            
-                            await duplicates_collection.update_one(
-                                {"_id": file_unique_id},
-                                {"$set": {"exists": True}},
-                                upsert=True
-                            )
-                            print(f"🚀 [LIVE REPOSTER] Reposted with custom format: {file_name}", flush=True)
-            
-            flood_queue.task_done()
-            await asyncio.sleep(0.2)
-        except Exception as e:
-            print(f"❌ [REPOST WORKER ERROR] {e}", flush=True)
-            await asyncio.sleep(1)
-
-@userbot_client.on_message(filters.channel & (filters.video | filters.document))
-async def live_target_repost_handler(client, message):
-    try:
-        await flood_queue.put(message)
-    except Exception as e:
-        print(f"⚠️ [HANDLER ERROR] {e}", flush=True)
-
-async def start_userbot_background_services():
-    global TARGET_CHAT_ID
-    await userbot_client.start()
-    print("🟢 [USERBOT ONLINE] Connected successfully via session string!", flush=True)
-    
-    # Resolve target channel link securely to obtain numeric chat ID
-    try:
-        chat = await userbot_client.get_chat(TARGET_LINK)
-        TARGET_CHAT_ID = chat.id
-        print(f"🎯 [TARGET RESOLVED] Target channel locked: {chat.title} ({TARGET_CHAT_ID})", flush=True)
-    except Exception as e:
-        print(f"❌ [CRITICAL] Failed to resolve target channel link: {e}", flush=True)
-        TARGET_CHAT_ID = TARGET_LINK
-
-    # Start live target reposter worker
-    asyncio.create_task(flood_repost_worker())
-    print("✅ [LIVE REPOSTER ACTIVE] Monitoring global incoming posts...", flush=True)
 
 class Bot(Client):
 
@@ -130,6 +42,14 @@ class Bot(Client):
         temp.BANNED_CHATS = b_chats
 
         await super().start()
+        
+        # 🚀 TEXT INDEX SHORTCUT VERIFICATION ON STARTUP
+        try:
+            await Media.collection.create_index([("file_name", "text")])
+            logging.info("✅ Database text index shortcut verified/created successfully.")
+        except Exception as e:
+            logging.error(f"⚠️ Error creating text index shortcut: {e}")
+
         await Media.ensure_indexes()
 
         me = await self.get_me()
@@ -139,7 +59,7 @@ class Bot(Client):
         self.username = '@' + me.username
 
         logging.info(
-            f"{me.first_name} with Pyrogram v{__version__} (Layer {layer}) started on {me.username}."
+            f"{me.first_name} with for Pyrogram v{__version__} (Layer {layer}) started on {me.username}."
         )
         logging.info(script.LOGO)
 
@@ -148,32 +68,44 @@ class Bot(Client):
         now = datetime.now(tz)
         time = now.strftime("%H:%M:%S %p")
 
-        try:
-            await self.send_message(
-                chat_id=LOG_CHANNEL,
-                text=script.RESTART_TXT.format(today, time)
-            )
-        except Exception:
-            pass
+        await self.send_message(
+            chat_id=LOG_CHANNEL,
+            text=script.RESTART_TXT.format(today, time)
+        )
 
         app = web.AppRunner(await web_server())
         await app.setup()
         await web.TCPSite(app, "0.0.0.0", PORT).start()
-        print(f"🌐 [WEB SERVER] Running on port {PORT}", flush=True)
 
-        from plugins.commands import premium_expiry_reminder_loop
+        # Start background tasks
         asyncio.create_task(premium_expiry_reminder_loop(self))
-        
-        # --- START USERBOT LIVE REPOSTER SERVICE ---
-        asyncio.create_task(start_userbot_background_services())
-
         await check_pending_index_on_startup(self)
 
     async def stop(self, *args):
-        if userbot_client.is_connected:
-            await userbot_client.stop()
         await super().stop()
         logging.info("Bot stopped. Bye.")
+
+    async def iter_messages(
+        self,
+        chat_id: Union[int, str],
+        limit: int,
+        offset: int = 0,
+    ) -> Optional[AsyncGenerator["types.Message", None]]:
+        current = offset
+        while True:
+            new_diff = min(500, limit - current)
+            if new_diff <= 0:
+                return
+
+            messages = await self.get_messages(
+                chat_id,
+                list(range(current, current + new_diff + 1))
+            )
+
+            for message in messages:
+                yield message
+                current += 1
+
 
 app = Bot()
 app.run()
