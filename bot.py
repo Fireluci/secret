@@ -249,7 +249,7 @@ class Bot(Client):
         await check_pending_index_on_startup(self)
 
     async def stop(self, *args):
-        if userbot_client.is_connected():
+        if userbot_client.is_connected:
             await userbot_client.stop()
         await super().stop()
         logging.info("Bot stopped. Bye.")
