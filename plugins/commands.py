@@ -369,7 +369,7 @@ async def click_here_to_pay_cb(client, callback: CallbackQuery):
         await callback.message.delete()
     except Exception:
         pass
-    qr_caption = "<b>📸 Scan QR CODE or use UPI ID to Pay:\n\nUPI ID: karthik.slice@ibl</b>"
+    qr_caption = "<b>📸 Scan QR CODE or use UPI ID to Pay:\n\nUPI ID:</b> <code>karthik.slice@ibl</code>"
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("✅ I Paid", callback_data="minimal_send_proof")]
     ])
