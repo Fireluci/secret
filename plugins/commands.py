@@ -338,13 +338,11 @@ async def premium_menu(client, update):
     message = update.message if isinstance(update, CallbackQuery) else update
     if isinstance(update, CallbackQuery): await update.answer()
     text = (
-        "<b>🌟 Premium Plans:-</b>\n\n"
-        "<b>• ✨ 1 Month: ₹40\n"
-        "• ✨ 2 Months: ₹80\n"
-        "• ✨ 6 Months: ₹240\n"
-        "• ✨ 1 Year: ₹480</b>\n\n"
-        "<b>1. Pay via Button below.\n"
-        "2. Click ‘Click Here To Pay’</b>"
+        "<b>🌟 Premium Plans:-\n\n"
+        "✨ 1 Month: ₹40\n"
+        "✨ 2 Months: ₹80\n"
+        "✨ 6 Months: ₹240\n"
+        "✨ 1 Year: ₹480</b>"
     )
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("🔗 Click Here To Pay", callback_data="click_here_to_pay")]
@@ -363,7 +361,7 @@ async def click_here_to_pay_cb(client, callback: CallbackQuery):
         await callback.message.delete()
     except Exception:
         pass
-    qr_caption = "<b>📸 Scan QR or use UPI ID below to pay:\n\nUPI ID: <code>karthik.slice@ybl</code></b>"
+    qr_caption = "<b>📸 Scan QR CODE or use UPI ID to Pay:\n\nUPI ID: <code>karthik.slice@ibl</code></b>"
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("✅ I Paid", callback_data="minimal_send_proof")]
     ])
