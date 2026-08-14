@@ -12,13 +12,13 @@ from database.users_chats_db import db
 from info import CHANNELS, ADMINS, LOG_CHANNEL, PICS, CUSTOM_FILE_CAPTION, CHNL_LNK, PREMIUM_GROUP_ID, PREMIUM_PERMANENT_LINK
 from utils import get_size, temp
 from pymongo.errors import PyMongoError
-import re, sys, json, base64
+import re, sys, base64
 
 logger = logging.getLogger(__name__)
 BATCH_FILES = {}
 
 def fmt_date(dt: datetime) -> str:
-    return (dt + timedelta(hours=5, minutes=30)).strftime('%d %b, %Y at %I:%M %p') if isinstance(dt, datetime) else "N/A"
+    return (dt + timedelta(hours=5, minutes=30)).strftime('%d %b, %Y') if isinstance(dt, datetime) else "N/A"
 
 def get_col():
     try:
@@ -43,21 +43,28 @@ async def fetch_user_name(client, uid: int) -> str:
     except Exception:
         return "User"
 
+def user_link(name: str, uid: int) -> str:
+    """Universal formatter for displaying a user's clickable name and monospace ID."""
+    return f"<b>👤 User: <a href='tg://user?id={uid}'>{name}</a></b> (<code>{uid}</code>)"
+
 def get_plan_keyboard(uid: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("2 Min Test", callback_data=f"selplan_{uid}_2m_80"), InlineKeyboardButton("5 Min Test", callback_data=f"selplan_{uid}_5m_80")],
         [InlineKeyboardButton("1 Month - ₹40", callback_data=f"selplan_{uid}_30d_40"), InlineKeyboardButton("2 Months - ₹80", callback_data=f"selplan_{uid}_60d_80")],
         [InlineKeyboardButton("6 Months - ₹240", callback_data=f"selplan_{uid}_180d_240"), InlineKeyboardButton("1 Year - ₹480", callback_data=f"selplan_{uid}_365d_480")],
         [InlineKeyboardButton("❌ Cancel", callback_data=f"min_rej_{uid}")]
     ])
 
 def parse_plan_duration(duration_str: str):
-    if duration_str.endswith("m"):
-        mins = int(duration_str[:-1])
-        return timedelta(minutes=mins), f"{mins} Min Test"
+    if duration_str == "30d":
+        return timedelta(days=30), "1 Month"
+    elif duration_str == "60d":
+        return timedelta(days=60), "2 Months"
+    elif duration_str == "180d":
+        return timedelta(days=180), "6 Months"
+    elif duration_str == "365d":
+        return timedelta(days=365), "1 Year"
     else:
-        days = int(duration_str[:-1])
-        return timedelta(days=days), f"{days} Days Plan"
+        raise ValueError("Invalid or expired plan duration selected.")
 
 async def safe_edit_message(message, text, reply_markup=None):
     try:
@@ -80,6 +87,8 @@ async def notify_admins(client: Client, text: str):
 async def safe_kick(client: Client, chat_id, user_id):
     if not chat_id: 
         return
+    name = await fetch_user_name(client, user_id)
+    u_link = user_link(name, user_id)
     try:
         cid = int(chat_id)
         await client.ban_chat_member(cid, user_id)
@@ -87,7 +96,7 @@ async def safe_kick(client: Client, chat_id, user_id):
         await client.unban_chat_member(cid, user_id)
     except Exception as e:
         if "USER_NOT_PARTICIPANT" not in str(e) and "PEER_ID_INVALID" not in str(e):
-            await notify_admins(client, f"<b>⚠️ Automated Kick Failed (Attempt 1)\n\n• User ID: {user_id}\n• Reason: {e}\n\n<i>Retrying in 1 minute...</i></b>")
+            await notify_admins(client, f"<b>⚠️ Automated Kick Failed (Attempt 1)</b>\n\n{u_link}\n<b>• Reason: {e}</b>\n\n<b><i>Retrying in 1 minute...</i></b>")
             await asyncio.sleep(60)
             try:
                 if hasattr(client, "get_chat"):
@@ -96,12 +105,12 @@ async def safe_kick(client: Client, chat_id, user_id):
                 await client.ban_chat_member(cid, user_id)
                 await asyncio.sleep(0.3)
                 await client.unban_chat_member(cid, user_id)
-                await notify_admins(client, f"<b>✅ Automated Kick Succeeded on Retry (Attempt 2)\n• User ID: {user_id}</b>")
+                await notify_admins(client, f"<b>✅ Automated Kick Succeeded on Retry (Attempt 2)</b>\n{u_link}")
             except Exception as retry_err:
-                await notify_admins(client, f"<b>❌ Automated Kick Permanently Failed (Attempt 2)\n• User ID: {user_id}\n• Final Error: {retry_err}</b>")
+                await notify_admins(client, f"<b>❌ Automated Kick Permanently Failed (Attempt 2)</b>\n{u_link}\n<b>• Final Error: {retry_err}</b>")
 
 async def premium_expiry_reminder_loop(client: Client):
-    await asyncio.sleep(5)
+    await asyncio.sleep(10)
     try:
         now = datetime.utcnow()
         col = get_col()
@@ -110,13 +119,12 @@ async def premium_expiry_reminder_loop(client: Client):
                 uid = doc.get("user_id")
                 name = doc.get("username", "User")
                 exp = doc.get("expires_at")
-                user_display = f"<a href='tg://user?id={uid}'>{name}</a> (<code>{uid}</code>)"
                 
                 await col.delete_one({"user_id": uid})
                 if PREMIUM_GROUP_ID: 
                     await safe_kick(client, PREMIUM_GROUP_ID, uid)
                     
-                await notify_admins(client, f"<b>❌ Missed Expiry Catch-Up & Ejected\n\n• 👤 User: {user_display}\n• Plan: <code>{doc.get('plan', 'N/A')}</code>\n• Expired On: <code>{fmt_date(exp)}</code></b>")
+                await notify_admins(client, f"<b>❌ Missed Expiry Catch-Up & Ejected</b>\n\n{user_link(name, uid)}\n<b>• Plan: {doc.get('plan', 'N/A')}</b>\n<b>• Expired On: {fmt_date(exp)}</b>")
                 try:
                     await client.send_message(
                         uid, 
@@ -135,22 +143,21 @@ async def premium_expiry_reminder_loop(client: Client):
             col = get_col()
             if col:
                 async for doc in col.find({"active": True}):
-                    uid, exp = doc.get("user_id"), doc.get("expires_at") or doc.get("expiry_date")
+                    uid, exp = doc.get("user_id"), doc.get("expires_at")
                     name = doc.get("username", "User")
-                    user_display = f"<a href='tg://user?id={uid}'>{name}</a> (<code>{uid}</code>)"
                     
                     if not isinstance(exp, datetime): continue
                     
                     reminders = doc.get("reminders", {})
-                    if not reminders.get("30_sec") and timedelta(seconds=0) < (exp - now) <= timedelta(seconds=60):
+                    if not reminders.get("1_day") and timedelta(seconds=0) < (exp - now) <= timedelta(days=1):
                         try:
                             await client.send_message(
                                 uid, 
-                                "<b>⚠️ Your Premium Membership is expiring in less than a minute!\n\nRenew now to avoid getting ejected.</b>", 
+                                "<b>⚠️ Your Premium Membership is expiring in 1 day!\n\nRenew now to maintain uninterrupted access.</b>", 
                                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Renew Now", callback_data="buy_premium_start")]]), 
                                 parse_mode=enums.ParseMode.HTML
                             )
-                            await col.update_one({"user_id": uid}, {"$set": {"reminders.30_sec": True}})
+                            await col.update_one({"user_id": uid}, {"$set": {"reminders.1_day": True}})
                         except Exception: 
                             pass
 
@@ -158,14 +165,14 @@ async def premium_expiry_reminder_loop(client: Client):
                         await col.delete_one({"user_id": uid})
                         if PREMIUM_GROUP_ID: await safe_kick(client, PREMIUM_GROUP_ID, uid)
                         
-                        await notify_admins(client, f"<b>❌ Premium Membership Expired & Ejected\n\n• 👤 User: {user_display}\n• Plan: <code>{doc.get('plan', 'N/A')}</code>\n• Expired On: <code>{fmt_date(exp)}</code></b>")
+                        await notify_admins(client, f"<b>❌ Premium Membership Expired & Ejected</b>\n\n{user_link(name, uid)}\n<b>• Plan: {doc.get('plan', 'N/A')}</b>\n<b>• Expired On: {fmt_date(exp)}</b>")
                         try:
                             await client.send_message(uid, "<b>⚠️ Premium Membership Expired!\n\nRenew your plan to restore your premium status.</b>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Renew Plan", callback_data="buy_premium_start")]]), parse_mode=enums.ParseMode.HTML)
                         except Exception: pass
         except Exception as e:
             logger.error(f"Expiry loop error: {e}")
             
-        await asyncio.sleep(30)
+        await asyncio.sleep(3600)
 
 @Client.on_message(filters.command("approve") & filters.user(ADMINS))
 async def approve_command(client, message):
@@ -180,7 +187,7 @@ async def approve_command(client, message):
             await col_ses.update_one({"admin_id": message.from_user.id}, {"$set": {"target_user_id": uid}}, upsert=True)
 
         kb = get_plan_keyboard(uid)
-        await message.reply_text(f"<b>💎 Select Plan Package for <a href='tg://user?id={uid}'>{name}</a> (<code>{uid}</code>)</b>", reply_markup=kb, parse_mode=enums.ParseMode.HTML)
+        await message.reply_text(f"<b>💎 Select Plan Package for</b>\n{user_link(name, uid)}", reply_markup=kb, parse_mode=enums.ParseMode.HTML)
     except Exception as e:
         await message.reply_text(f"<b>❌ Error: {e}</b>", parse_mode=enums.ParseMode.HTML)
 
@@ -190,6 +197,7 @@ async def revoke_command(client, message):
         return await message.reply_text("<b>⚠️ Usage: /revoke [user_id]</b>", parse_mode=enums.ParseMode.HTML)
     try:
         uid = int(message.command[1])
+        name = await fetch_user_name(client, uid)
         col = get_col()
         if col:
             await col.delete_one({"user_id": uid})
@@ -198,7 +206,7 @@ async def revoke_command(client, message):
         try:
             await client.send_message(uid, "<b>❌ Your Premium Membership has been revoked by administration.</b>", parse_mode=enums.ParseMode.HTML)
         except Exception: pass
-        await message.reply_text(f"<b>✅ Successfully revoked premium for user {uid}</b>", parse_mode=enums.ParseMode.HTML)
+        await message.reply_text(f"<b>✅ Successfully revoked premium for</b>\n{user_link(name, uid)}", parse_mode=enums.ParseMode.HTML)
     except Exception as e:
         await message.reply_text(f"<b>❌ Error: {e}</b>", parse_mode=enums.ParseMode.HTML)
 
@@ -215,7 +223,7 @@ async def premiums_command(client, message):
         name = doc.get("username", "User")
         plan = doc.get("plan")
         exp = fmt_date(doc.get("expires_at"))
-        text += f"<b>{count}.</b> <a href='tg://user?id={uid}'>{name}</a> (<code>{uid}</code>)\n   • <b>Plan:</b> {plan}\n   • <b>Expires:</b> {exp}\n\n"
+        text += f"<b>{count}.</b> {user_link(name, uid)}\n<b>   • Plan: {plan}</b>\n<b>   • Expires: {exp}</b>\n\n"
     if count == 0:
         text = "<b>❌ No active premium users found.</b>"
     if len(text) > 4096:
@@ -318,16 +326,16 @@ async def check_my_plan(client, message):
     doc = await col.find_one({"user_id": user_id, "active": True}) if col else None
     if not doc:
         return await message.reply_text("<b>❌ No active Premium subscription.</b>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌟 Buy Premium", callback_data="buy_premium_start")]]), parse_mode=enums.ParseMode.HTML)
-    plan, expires_at, price = doc.get("plan"), doc.get("expires_at") or doc.get("expiry_date"), doc.get("price", "40")
+    plan, expires_at, price = doc.get("plan"), doc.get("expires_at"), doc.get("price", "40")
     now = datetime.utcnow()
     rem = expires_at - now if expires_at and expires_at > now else None
-    left_str = f"{rem.days} Days" if rem and rem.days > 0 else (f"{rem.seconds // 60} Minutes {rem.seconds % 60} Seconds" if rem else "Expired")
+    left_str = f"{rem.days} Days" if rem and rem.days > 0 else (f"{rem.seconds // 3600} Hours {(rem.seconds % 3600) // 60} Minutes" if rem else "Expired")
     await message.reply_text(
-        f"<b>🌟 Premium Membership Active ✅\n\n"
-        f"• 👤 User: <a href='tg://user?id={user_id}'>{message.from_user.first_name}</a> ({user_id})\n"
-        f"• 💰 Plan: {plan} | ₹{price}\n"
-        f"• ⌛ Expiry: {fmt_date(expires_at)}\n"
-        f"• ⏳ Remaining: {left_str}</b>",
+        f"<b>🌟 Premium Membership Active ✅</b>\n\n"
+        f"{user_link(message.from_user.first_name, user_id)}\n"
+        f"<b>• 💰 Plan: {plan} | ₹{price}</b>\n"
+        f"<b>• ⌛ Expiry: {fmt_date(expires_at)}</b>\n"
+        f"<b>• ⏳ Remaining: {left_str}</b>",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Renew Plan", callback_data="buy_premium_start")]]),
         parse_mode=enums.ParseMode.HTML
     )
@@ -361,7 +369,7 @@ async def click_here_to_pay_cb(client, callback: CallbackQuery):
         await callback.message.delete()
     except Exception:
         pass
-    qr_caption = "<b>📸 Scan QR CODE or use UPI ID to Pay:\n\nUPI ID: <code>karthik.slice@ibl</code></b>"
+    qr_caption = "<b>📸 Scan QR CODE or use UPI ID to Pay:\n\nUPI ID: karthik.slice@ibl</b>"
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("✅ I Paid", callback_data="minimal_send_proof")]
     ])
@@ -406,8 +414,8 @@ async def screenshot_handler(client, message):
     
     kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Approve", callback_data=f"min_app_{user_id}"), InlineKeyboardButton("❌ Reject", callback_data=f"min_rej_{user_id}")]])
     text = (
-        f"<b>🔔 New Payment Verification\n\n"
-        f"• 👤 User: <a href='tg://user?id={user_id}'>{message.from_user.first_name}</a> ({user_id})</b>"
+        f"<b>🔔 New Payment Verification</b>\n\n"
+        f"{user_link(message.from_user.first_name, user_id)}"
     )
     
     fid = message.photo.file_id if message.photo else message.document.file_id
@@ -444,7 +452,7 @@ async def select_plan_cb(client, callback: CallbackQuery):
 
     col = get_col()
     existing = await col.find_one({"user_id": uid, "active": True}) if col else None
-    start = existing.get("expires_at") or existing.get("expiry_date") if existing and isinstance(existing.get("expires_at"), datetime) and existing.get("expires_at") > now else now
+    start = existing.get("expires_at") if existing and isinstance(existing.get("expires_at"), datetime) and existing.get("expires_at") > now else now
     exp = start + delta
 
     name = await fetch_user_name(client, uid)
@@ -454,10 +462,10 @@ async def select_plan_cb(client, callback: CallbackQuery):
         [InlineKeyboardButton("❌ Cancel", callback_data=f"min_rej_{uid}")]
     ])
     text = (
-        f"<b>💎 Preview Panel\n\n"
-        f"• 👤 User: <a href='tg://user?id={uid}'>{name}</a> (<code>{uid}</code>)\n"
-        f"• ✨ Plan: {plan_name} | ₹{price}\n"
-        f"• 📆 Expiry: {fmt_date(exp)}</b>"
+        f"<b>💎 Preview Panel</b>\n\n"
+        f"{user_link(name, uid)}\n"
+        f"<b>• ✨ Plan: {plan_name} | ₹{price}</b>\n"
+        f"<b>• 📆 Expiry: {fmt_date(exp)}</b>"
     )
     await callback.answer()
     await safe_edit_message(callback.message, text, reply_markup=kb)
@@ -477,19 +485,14 @@ async def conf_act_cb(client, callback: CallbackQuery):
     col = get_col()
     existing = await col.find_one({"user_id": uid, "active": True}) if col else None
     is_renewal = existing is not None
-    start = existing.get("expires_at") or existing.get("expiry_date") if existing and isinstance(existing.get("expires_at"), datetime) and existing.get("expires_at") > now else now
+    start = existing.get("expires_at") if existing and isinstance(existing.get("expires_at"), datetime) and existing.get("expires_at") > now else now
     exp = start + delta
     
-    joined = False
     if PREMIUM_GROUP_ID:
-        try:
-            m = await client.get_chat_member(int(PREMIUM_GROUP_ID), uid)
-            joined = m.status in [enums.ChatMemberStatus.MEMBER, enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER]
-        except Exception: pass
-        try: await client.approve_chat_join_request(chat_id=int(PREMIUM_GROUP_ID), user_id=uid); joined = True
+        try: await client.approve_chat_join_request(chat_id=int(PREMIUM_GROUP_ID), user_id=uid)
         except Exception: pass
 
-    data = {"user_id": uid, "username": name, "plan": plan, "price": price, "purchased_at": now, "expires_at": exp, "expiry_date": exp, "active": True, "welcomed": joined, "reminders": {"30_sec": False}}
+    data = {"user_id": uid, "username": name, "plan": plan, "price": price, "purchased_at": now, "expires_at": exp, "active": True, "reminders": {"1_day": False}}
     if col: await col.update_one({"user_id": uid}, {"$set": data}, upsert=True)
     
     try:
@@ -501,21 +504,21 @@ async def conf_act_cb(client, callback: CallbackQuery):
     link = PREMIUM_PERMANENT_LINK or "https://t.me/your_group_link"
     title_msg = "<b>🌟 Premium Membership Renewed ✅</b>" if is_renewal else "<b>🌟 Premium Membership Active ✅</b>"
     try:
-        msg = await client.send_message(
+        await client.send_message(
             uid, 
             f"{title_msg}\n\n"
-            f"• 💰 Plan: {plan} | ₹{price}\n"
-            f"• ⌛ Expiry: {fmt_date(exp)}\n\n"
+            f"<b>• 💰 Plan: {plan} | ₹{price}</b>\n"
+            f"<b>• ⌛ Expiry: {fmt_date(exp)}</b>\n\n"
             f"<b>✨ Join Premium Group:</b>", 
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🧤 click here to join", url=link)]]), 
             parse_mode=enums.ParseMode.HTML
         )
-        if not joined and col and msg: await col.update_one({"user_id": uid}, {"$set": {"dm_msg_id": msg.id}})
     except Exception: pass
     
     log_title = "<b>🌟 Premium Renewed ✅</b>" if is_renewal else "<b>🌟 Premium Activated ✅</b>"
-    await notify_admins(client, f"{log_title}\n\n• <b>👤 User:</b> <a href='tg://user?id={uid}'>{name}</a> (<code>{uid}</code>)\n• <b>💰 Plan:</b> {plan} | ₹{price}\n• <b>⌛ Expiry:</b> {fmt_date(exp)}")
-    success_text = f"<b>✅ Activated Successfully\n• 👤 User:</b> <a href='tg://user?id={uid}'>{name}</a> (<code>{uid}</code>)"
+    await notify_admins(client, f"{log_title}\n\n{user_link(name, uid)}\n<b>• 💰 Plan: {plan} | ₹{price}</b>\n<b>• ⌛ Expiry: {fmt_date(exp)}</b>")
+    
+    success_text = f"<b>✅ Activated Successfully</b>\n{user_link(name, uid)}"
     await safe_edit_message(callback.message, success_text, reply_markup=None)
 
 @Client.on_chat_join_request()
@@ -542,15 +545,12 @@ async def member_update(client, update: ChatMemberUpdated):
             if not doc: return
             link = PREMIUM_PERMANENT_LINK or "https://t.me/your_group_link"
             text = (
-                f"<b>🌟 Premium Activated ✅\n\n"
-                f"• 👤 User: <a href='tg://user?id={user.id}'>{user.first_name}</a> ({user.id})\n"
-                f"• 💰 Plan: {doc.get('plan')} | ₹{doc.get('price')}\n"
-                f"• ⌛ Expiry: {fmt_date(doc.get('expires_at'))}</b>"
+                f"<b>🌟 Premium Activated ✅</b>\n\n"
+                f"{user_link(user.first_name, user.id)}\n"
+                f"<b>• 💰 Plan: {doc.get('plan')} | ₹{doc.get('price')}</b>\n"
+                f"<b>• ⌛ Expiry: {fmt_date(doc.get('expires_at'))}</b>"
             )
             kb = InlineKeyboardMarkup([[InlineKeyboardButton("✨ Premium Group", url=link)]])
-            if doc.get("dm_msg_id"):
-                try: return await client.edit_message_text(user.id, doc.get("dm_msg_id"), text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
-                except Exception: pass
             try: await client.send_message(user.id, text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
             except Exception: pass
 
@@ -643,4 +643,3 @@ async def restart_bot(bot, message):
         pass
     await asyncio.sleep(1)
     os.execl(sys.executable, sys.executable, *sys.argv)
-
