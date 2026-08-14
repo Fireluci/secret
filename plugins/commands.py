@@ -84,31 +84,43 @@ async def notify_admins(client: Client, text: str):
         except Exception:
             pass
 
-async def safe_kick(client: Client, chat_id, user_id):
+async def safe_kick(client: Client, chat_id, user_id) -> bool:
     if not chat_id: 
-        return
+        return True
     name = await fetch_user_name(client, user_id)
     u_link = user_link(name, user_id)
     try:
         cid = int(chat_id)
+        try:
+            await client.get_chat(cid)
+        except Exception:
+            pass
+
         await client.ban_chat_member(cid, user_id)
         await asyncio.sleep(0.3)
         await client.unban_chat_member(cid, user_id)
+        return True
     except Exception as e:
-        if "USER_NOT_PARTICIPANT" not in str(e) and "PEER_ID_INVALID" not in str(e):
-            await notify_admins(client, f"<b>⚠️ Automated Kick Failed (Attempt 1)</b>\n\n{u_link}\n<b>• Reason: {e}</b>\n\n<b><i>Retrying in 1 minute...</i></b>")
-            await asyncio.sleep(60)
-            try:
-                if hasattr(client, "get_chat"):
-                    try: await client.get_chat(cid)
-                    except Exception: pass
-                await client.ban_chat_member(cid, user_id)
-                await asyncio.sleep(0.3)
-                await client.unban_chat_member(cid, user_id)
-                await notify_admins(client, f"<b>✅ Automated Kick Succeeded on Retry (Attempt 2)</b>\n{u_link}")
-            except Exception as retry_err:
-                await notify_admins(client, f"<b>❌ Automated Kick Permanently Failed (Attempt 2)</b>\n{u_link}\n<b>• Final Error: {retry_err}</b>")
+        err_str = str(e)
+        if "USER_NOT_PARTICIPANT" in err_str or "PEER_ID_INVALID" in err_str:
+            return True  # User isn't even in the group, treat as safe to remove from DB
 
+        await notify_admins(client, f"<b>⚠️ Automated Kick Failed (Attempt 1)</b>\n\n{u_link}\n<b>• Reason: {e}</b>\n\n<b><i>Retrying in 1 minute...</i></b>")
+        await asyncio.sleep(60)
+        try:
+            try: 
+                await client.get_chat(cid)
+            except Exception: 
+                pass
+            await client.ban_chat_member(cid, user_id)
+            await asyncio.sleep(0.3)
+            await client.unban_chat_member(cid, user_id)
+            await notify_admins(client, f"<b>✅ Automated Kick Succeeded on Retry (Attempt 2)</b>\n{u_link}")
+            return True
+        except Exception as retry_err:
+            await notify_admins(client, f"<b>❌ Automated Kick Permanently Failed (Attempt 2)</b>\n{u_link}\n<b>• Final Error: {retry_err}\n• <i>Database record retained. Will retry next loop.</i></b>")
+            return False
+            
 async def premium_expiry_reminder_loop(client: Client):
     await asyncio.sleep(10)
     try:
@@ -119,12 +131,17 @@ async def premium_expiry_reminder_loop(client: Client):
                 uid = doc.get("user_id")
                 name = doc.get("username", "User")
                 exp = doc.get("expires_at")
+                user_display = user_link(name, uid)
+                
+                # Only delete from DB if kick succeeds
+                if PREMIUM_GROUP_ID: 
+                    kicked = await safe_kick(client, PREMIUM_GROUP_ID, uid)
+                    if not kicked:
+                        continue  # Skip deletion so it retries later
                 
                 await col.delete_one({"user_id": uid})
-                if PREMIUM_GROUP_ID: 
-                    await safe_kick(client, PREMIUM_GROUP_ID, uid)
                     
-                await notify_admins(client, f"<b>❌ Missed Expiry Catch-Up & Ejected</b>\n\n{user_link(name, uid)}\n<b>• Plan: {doc.get('plan', 'N/A')}</b>\n<b>• Expired On: {fmt_date(exp)}</b>")
+                await notify_admins(client, f"<b>❌ Missed Expiry Catch-Up & Ejected</b>\n\n{user_display}\n<b>• Plan: {doc.get('plan', 'N/A')}</b>\n<b>• Expired On: {fmt_date(exp)}</b>")
                 try:
                     await client.send_message(
                         uid, 
@@ -145,6 +162,7 @@ async def premium_expiry_reminder_loop(client: Client):
                 async for doc in col.find({"active": True}):
                     uid, exp = doc.get("user_id"), doc.get("expires_at")
                     name = doc.get("username", "User")
+                    user_display = user_link(name, uid)
                     
                     if not isinstance(exp, datetime): continue
                     
@@ -162,10 +180,15 @@ async def premium_expiry_reminder_loop(client: Client):
                             pass
 
                     if now >= exp:
-                        await col.delete_one({"user_id": uid})
-                        if PREMIUM_GROUP_ID: await safe_kick(client, PREMIUM_GROUP_ID, uid)
+                        # Only delete from DB if kick succeeds
+                        if PREMIUM_GROUP_ID: 
+                            kicked = await safe_kick(client, PREMIUM_GROUP_ID, uid)
+                            if not kicked:
+                                continue  # Retain DB data and retry next loop
                         
-                        await notify_admins(client, f"<b>❌ Premium Membership Expired & Ejected</b>\n\n{user_link(name, uid)}\n<b>• Plan: {doc.get('plan', 'N/A')}</b>\n<b>• Expired On: {fmt_date(exp)}</b>")
+                        await col.delete_one({"user_id": uid})
+                        
+                        await notify_admins(client, f"<b>❌ Premium Membership Expired & Ejected</b>\n\n{user_display}\n<b>• Plan: {doc.get('plan', 'N/A')}</b>\n<b>• Expired On: {fmt_date(exp)}</b>")
                         try:
                             await client.send_message(uid, "<b>⚠️ Premium Membership Expired!\n\nRenew your plan to restore your premium status.</b>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Renew Plan", callback_data="buy_premium_start")]]), parse_mode=enums.ParseMode.HTML)
                         except Exception: pass
