@@ -87,15 +87,26 @@ async def notify_admins(client: Client, text: str):
 async def safe_kick(client: Client, chat_id, user_id) -> bool:
     if not chat_id: 
         return True
-    name = await fetch_user_name(client, user_id)
-    u_link = user_link(name, user_id)
+    
     try:
         cid = int(chat_id)
+    except ValueError:
+        return True
+
+    name = await fetch_user_name(client, user_id)
+    u_link = user_link(name, user_id)
+    
+    # Pre-cache chat peer securely
+    try:
+        await client.resolve_peer(cid)
+    except Exception:
         try:
             await client.get_chat(cid)
         except Exception:
             pass
 
+    # --- ATTEMPT 1 ---
+    try:
         await client.ban_chat_member(cid, user_id)
         await asyncio.sleep(0.3)
         await client.unban_chat_member(cid, user_id)
@@ -103,24 +114,30 @@ async def safe_kick(client: Client, chat_id, user_id) -> bool:
     except Exception as e:
         err_str = str(e)
         if "USER_NOT_PARTICIPANT" in err_str or "PEER_ID_INVALID" in err_str:
-            return True  # User isn't even in the group, treat as safe to remove from DB
+            return True  # User isn't in group or peer unreachable, safe to drop from DB
 
         await notify_admins(client, f"<b>⚠️ Automated Kick Failed (Attempt 1)</b>\n\n{u_link}\n<b>• Reason: {e}</b>\n\n<b><i>Retrying in 1 minute...</i></b>")
-        await asyncio.sleep(60)
-        try:
-            try: 
-                await client.get_chat(cid)
-            except Exception: 
-                pass
-            await client.ban_chat_member(cid, user_id)
-            await asyncio.sleep(0.3)
-            await client.unban_chat_member(cid, user_id)
-            await notify_admins(client, f"<b>✅ Automated Kick Succeeded on Retry (Attempt 2)</b>\n{u_link}")
-            return True
-        except Exception as retry_err:
-            await notify_admins(client, f"<b>❌ Automated Kick Permanently Failed (Attempt 2)</b>\n{u_link}\n<b>• Final Error: {retry_err}\n• <i>Database record retained. Will retry next loop.</i></b>")
-            return False
+
+    # --- WAIT 1 MINUTE ---
+    await asyncio.sleep(60)
+
+    # --- ATTEMPT 2 (FINAL RETRY) ---
+    try:
+        try: 
+            await client.resolve_peer(cid)
+        except Exception: 
+            try: await client.get_chat(cid)
+            except Exception: pass
             
+        await client.ban_chat_member(cid, user_id)
+        await asyncio.sleep(0.3)
+        await client.unban_chat_member(cid, user_id)
+        await notify_admins(client, f"<b>✅ Automated Kick Succeeded on Retry (Attempt 2)</b>\n{u_link}")
+        return True
+    except Exception as retry_err:
+        await notify_admins(client, f"<b>❌ Automated Kick Permanently Failed (Attempt 2)</b>\n{u_link}\n<b>• Final Error: {retry_err}\n• <i>Database record retained. Will retry next loop.</i></b>")
+        return False
+
 async def premium_expiry_reminder_loop(client: Client):
     await asyncio.sleep(10)
     try:
@@ -133,11 +150,10 @@ async def premium_expiry_reminder_loop(client: Client):
                 exp = doc.get("expires_at")
                 user_display = user_link(name, uid)
                 
-                # Only delete from DB if kick succeeds
                 if PREMIUM_GROUP_ID: 
                     kicked = await safe_kick(client, PREMIUM_GROUP_ID, uid)
                     if not kicked:
-                        continue  # Skip deletion so it retries later
+                        continue  # Retain DB data and retry next loop
                 
                 await col.delete_one({"user_id": uid})
                     
@@ -180,7 +196,6 @@ async def premium_expiry_reminder_loop(client: Client):
                             pass
 
                     if now >= exp:
-                        # Only delete from DB if kick succeeds
                         if PREMIUM_GROUP_ID: 
                             kicked = await safe_kick(client, PREMIUM_GROUP_ID, uid)
                             if not kicked:
@@ -392,7 +407,7 @@ async def click_here_to_pay_cb(client, callback: CallbackQuery):
         await callback.message.delete()
     except Exception:
         pass
-    qr_caption = "<b>📸 Scan QR CODE or use UPI ID to Pay:\n\nUPI ID:</b> <code>karthik.slice@ibl</code>"
+    qr_caption = "<b>📸 Scan QR CODE or use UPI ID to Pay:\n\nUPI ID: karthik.slice@ibl</b>"
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("✅ I Paid", callback_data="minimal_send_proof")]
     ])
