@@ -561,7 +561,7 @@ async def conf_act_cb(client, callback: CallbackQuery):
             f"<b>💰 Plan: {plan} | ₹{price}</b>\n"
             f"<b>⌛ Expiry: {fmt_date(exp)}</b>\n\n"
             f"<b>✨ Join Premium Group:</b>", 
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🧤 click here to join", url=link)]]), 
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🧤 Click Here To Join", url=link)]]), 
             parse_mode=enums.ParseMode.HTML
         )
     except Exception: pass
@@ -617,7 +617,7 @@ async def admin_reject_cb(client, callback: CallbackQuery):
     except Exception: pass
     await callback.answer("Rejected.")
     try:
-        await client.send_message(uid, "<b>⚠️ Payment Verification Failed.\n\nPlease pay and send a valid screenshot.</b>", parse_mode=enums.ParseMode.HTML)
+        await client.send_message(uid, "<b>⚠️ Payment Verification Failed.\n\nPlease Pay and Send a Valid Screenshot.</b>", parse_mode=enums.ParseMode.HTML)
     except Exception: pass
     rej_text = "<b>❌ Status: REJECTED</b>"
     await safe_edit_message(callback.message, rej_text, reply_markup=None)
