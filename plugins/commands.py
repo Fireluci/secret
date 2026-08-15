@@ -44,8 +44,15 @@ async def fetch_user_name(client, uid: int) -> str:
         return "User"
 
 def user_link(name: str, uid: int) -> str:
-    """Universal formatter for displaying a user's clickable name and monospace ID."""
+    """Universal DRY formatter for displaying a user's clickable name and monospace ID."""
     return f"<b>👤 User: <a href='tg://user?id={uid}'>{name}</a></b> (<code>{uid}</code>)"
+
+async def get_user_display(client, uid: int, fallback_name: str = "User") -> str:
+    """DRY helper to fetch and format user link in one call."""
+    name = await fetch_user_name(client, uid)
+    if name == "User" and fallback_name != "User":
+        name = fallback_name
+    return user_link(name, uid)
 
 def get_plan_keyboard(uid: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
@@ -93,8 +100,7 @@ async def safe_kick(client: Client, chat_id, user_id) -> bool:
     except ValueError:
         return True
 
-    name = await fetch_user_name(client, user_id)
-    u_link = user_link(name, user_id)
+    u_link = await get_user_display(client, user_id)
     
     # Pre-cache chat peer securely
     try:
@@ -218,14 +224,14 @@ async def approve_command(client, message):
         return await message.reply_text("<b>⚠️ Usage: /approve [user_id]</b>", parse_mode=enums.ParseMode.HTML)
     try:
         uid = int(message.command[1])
-        name = await fetch_user_name(client, uid)
+        u_link = await get_user_display(client, uid)
         
         col_ses = get_db_collection('admin_approval_sessions')
         if col_ses is not None:
             await col_ses.update_one({"admin_id": message.from_user.id}, {"$set": {"target_user_id": uid}}, upsert=True)
 
         kb = get_plan_keyboard(uid)
-        await message.reply_text(f"<b>💎 Select Plan Package for</b>\n{user_link(name, uid)}", reply_markup=kb, parse_mode=enums.ParseMode.HTML)
+        await message.reply_text(f"<b>💎 Select Plan Package for</b>\n{u_link}", reply_markup=kb, parse_mode=enums.ParseMode.HTML)
     except Exception as e:
         await message.reply_text(f"<b>❌ Error: {e}</b>", parse_mode=enums.ParseMode.HTML)
 
@@ -235,16 +241,24 @@ async def revoke_command(client, message):
         return await message.reply_text("<b>⚠️ Usage: /revoke [user_id]</b>", parse_mode=enums.ParseMode.HTML)
     try:
         uid = int(message.command[1])
-        name = await fetch_user_name(client, uid)
+        u_link = await get_user_display(client, uid)
+        
+        if PREMIUM_GROUP_ID:
+            kicked = await safe_kick(client, PREMIUM_GROUP_ID, uid)
+            if not kicked:
+                return await message.reply_text(
+                    f"<b>❌ Revocation Halted</b>\n\n{u_link}\n<b>• Automated kick failed. Database record retained for safety.</b>",
+                    parse_mode=enums.ParseMode.HTML
+                )
+        
         col = get_col()
         if col:
             await col.delete_one({"user_id": uid})
-        if PREMIUM_GROUP_ID:
-            await safe_kick(client, PREMIUM_GROUP_ID, uid)
+            
         try:
             await client.send_message(uid, "<b>❌ Your Premium Membership has been revoked by administration.</b>", parse_mode=enums.ParseMode.HTML)
         except Exception: pass
-        await message.reply_text(f"<b>✅ Successfully revoked premium for</b>\n{user_link(name, uid)}", parse_mode=enums.ParseMode.HTML)
+        await message.reply_text(f"<b>✅ Successfully revoked premium for</b>\n{u_link}", parse_mode=enums.ParseMode.HTML)
     except Exception as e:
         await message.reply_text(f"<b>❌ Error: {e}</b>", parse_mode=enums.ParseMode.HTML)
 
@@ -371,9 +385,9 @@ async def check_my_plan(client, message):
     await message.reply_text(
         f"<b>🌟 Premium Membership Active ✅</b>\n\n"
         f"{user_link(message.from_user.first_name, user_id)}\n"
-        f"<b>• 💰 Plan: {plan} | ₹{price}</b>\n"
-        f"<b>• ⌛ Expiry: {fmt_date(expires_at)}</b>\n"
-        f"<b>• ⏳ Remaining: {left_str}</b>",
+        f"<b>💰 Plan: {plan} | ₹{price}</b>\n"
+        f"<b>⌛ Expiry: {fmt_date(expires_at)}</b>\n"
+        f"<b>⏳ Remaining: {left_str}</b>",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Renew Plan", callback_data="buy_premium_start")]]),
         parse_mode=enums.ParseMode.HTML
     )
@@ -493,7 +507,7 @@ async def select_plan_cb(client, callback: CallbackQuery):
     start = existing.get("expires_at") if existing and isinstance(existing.get("expires_at"), datetime) and existing.get("expires_at") > now else now
     exp = start + delta
 
-    name = await fetch_user_name(client, uid)
+    u_link = await get_user_display(client, uid)
     
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("✅ Confirm", callback_data=f"confact_{uid}_{duration_str}_{price}"), InlineKeyboardButton("◀ Back", callback_data=f"min_app_{uid}")],
@@ -501,9 +515,9 @@ async def select_plan_cb(client, callback: CallbackQuery):
     ])
     text = (
         f"<b>💎 Preview Panel</b>\n\n"
-        f"{user_link(name, uid)}\n"
-        f"<b>• ✨ Plan: {plan_name} | ₹{price}</b>\n"
-        f"<b>• 📆 Expiry: {fmt_date(exp)}</b>"
+        f"{u_link}\n"
+        f"<b>✨ Plan: {plan_name} | ₹{price}</b>\n"
+        f"<b>📆 Expiry: {fmt_date(exp)}</b>"
     )
     await callback.answer()
     await safe_edit_message(callback.message, text, reply_markup=kb)
@@ -518,6 +532,7 @@ async def conf_act_cb(client, callback: CallbackQuery):
     delta, plan = parse_plan_duration(duration_str)
 
     name = await fetch_user_name(client, uid)
+    u_link = user_link(name, uid)
     await callback.answer("Activating...")
     
     col = get_col()
@@ -545,8 +560,8 @@ async def conf_act_cb(client, callback: CallbackQuery):
         await client.send_message(
             uid, 
             f"{title_msg}\n\n"
-            f"<b>• 💰 Plan: {plan} | ₹{price}</b>\n"
-            f"<b>• ⌛ Expiry: {fmt_date(exp)}</b>\n\n"
+            f"<b>💰 Plan: {plan} | ₹{price}</b>\n"
+            f"<b>⌛ Expiry: {fmt_date(exp)}</b>\n\n"
             f"<b>✨ Join Premium Group:</b>", 
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🧤 click here to join", url=link)]]), 
             parse_mode=enums.ParseMode.HTML
@@ -554,9 +569,9 @@ async def conf_act_cb(client, callback: CallbackQuery):
     except Exception: pass
     
     log_title = "<b>🌟 Premium Renewed ✅</b>" if is_renewal else "<b>🌟 Premium Activated ✅</b>"
-    await notify_admins(client, f"{log_title}\n\n{user_link(name, uid)}\n<b>• 💰 Plan: {plan} | ₹{price}</b>\n<b>• ⌛ Expiry: {fmt_date(exp)}</b>")
+    await notify_admins(client, f"{log_title}\n\n{u_link}\n<b>• 💰 Plan: {plan} | ₹{price}</b>\n<b>• ⌛ Expiry: {fmt_date(exp)}</b>")
     
-    success_text = f"<b>✅ Activated Successfully</b>\n{user_link(name, uid)}"
+    success_text = f"<b>✅ Activated Successfully</b>\n{u_link}"
     await safe_edit_message(callback.message, success_text, reply_markup=None)
 
 @Client.on_chat_join_request()
@@ -585,8 +600,8 @@ async def member_update(client, update: ChatMemberUpdated):
             text = (
                 f"<b>🌟 Premium Activated ✅</b>\n\n"
                 f"{user_link(user.first_name, user.id)}\n"
-                f"<b>• 💰 Plan: {doc.get('plan')} | ₹{doc.get('price')}</b>\n"
-                f"<b>• ⌛ Expiry: {fmt_date(doc.get('expires_at'))}</b>"
+                f"<b>💰 Plan: {doc.get('plan')} | ₹{doc.get('price')}</b>\n"
+                f"<b>⌛ Expiry: {fmt_date(doc.get('expires_at'))}</b>"
             )
             kb = InlineKeyboardMarkup([[InlineKeyboardButton("✨ Premium Group", url=link)]])
             try: await client.send_message(user.id, text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
