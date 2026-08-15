@@ -44,11 +44,9 @@ async def fetch_user_name(client, uid: int) -> str:
         return "User"
 
 def user_link(name: str, uid: int) -> str:
-    """Universal DRY formatter for displaying a user's clickable name and monospace ID."""
     return f"<b>👤 User: <a href='tg://user?id={uid}'>{name}</a></b> (<code>{uid}</code>)"
 
 async def get_user_display(client, uid: int, fallback_name: str = "User") -> str:
-    """DRY helper to fetch and format user link in one call."""
     name = await fetch_user_name(client, uid)
     if name == "User" and fallback_name != "User":
         name = fallback_name
@@ -102,7 +100,6 @@ async def safe_kick(client: Client, chat_id, user_id) -> bool:
 
     u_link = await get_user_display(client, user_id)
     
-    # Pre-cache chat peer securely
     try:
         await client.resolve_peer(cid)
     except Exception:
@@ -111,7 +108,6 @@ async def safe_kick(client: Client, chat_id, user_id) -> bool:
         except Exception:
             pass
 
-    # --- ATTEMPT 1 ---
     try:
         await client.ban_chat_member(cid, user_id)
         await asyncio.sleep(0.3)
@@ -122,12 +118,10 @@ async def safe_kick(client: Client, chat_id, user_id) -> bool:
         if "USER_NOT_PARTICIPANT" in err_str or "PEER_ID_INVALID" in err_str:
             return True  # User isn't in group or peer unreachable, safe to drop from DB
 
-        await notify_admins(client, f"<b>⚠️ Automated Kick Failed (Attempt 1)</b>\n\n{u_link}\n<b>• Reason: {e}</b>\n\n<b><i>Retrying in 1 minute...</i></b>")
+        await notify_admins(client, f"<b>⚠️ Expired User Kick Failed (1)</b>\n\n{u_link}\n<b>❓ Reason: {e}</b>\n\n")
 
-    # --- WAIT 1 MINUTE ---
     await asyncio.sleep(60)
 
-    # --- ATTEMPT 2 (FINAL RETRY) ---
     try:
         try: 
             await client.resolve_peer(cid)
@@ -138,10 +132,10 @@ async def safe_kick(client: Client, chat_id, user_id) -> bool:
         await client.ban_chat_member(cid, user_id)
         await asyncio.sleep(0.3)
         await client.unban_chat_member(cid, user_id)
-        await notify_admins(client, f"<b>✅ Automated Kick Succeeded on Retry (Attempt 2)</b>\n{u_link}")
+        await notify_admins(client, f"<b>✅ Expired User Kick Successful</b>\n{u_link}")
         return True
     except Exception as retry_err:
-        await notify_admins(client, f"<b>❌ Automated Kick Permanently Failed (Attempt 2)</b>\n{u_link}\n<b>• Final Error: {retry_err}\n• <i>Database record retained. Will retry next loop.</i></b>")
+        await notify_admins(client, f"<b>⚠️ Expired User Kick Failed (2)</b>\n{u_link}\n<b>❓ Reason: {retry_err}\n♻ Retrying in Next Loop</b>")
         return False
 
 async def premium_expiry_reminder_loop(client: Client):
@@ -421,7 +415,7 @@ async def click_here_to_pay_cb(client, callback: CallbackQuery):
         await callback.message.delete()
     except Exception:
         pass
-    qr_caption = "<b>📸 Scan QR CODE or use UPI ID to Pay:\n\nUPI ID: karthik.slice@ibl</b>"
+    qr_caption = "<b>📸 Scan QR CODE or use UPI ID to Pay:\n\nUPI ID:</b> <code>karthik.slice@ibl</code>"
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("✅ I Paid", callback_data="minimal_send_proof")]
     ])
@@ -542,8 +536,12 @@ async def conf_act_cb(client, callback: CallbackQuery):
     exp = start + delta
     
     if PREMIUM_GROUP_ID:
-        try: await client.approve_chat_join_request(chat_id=int(PREMIUM_GROUP_ID), user_id=uid)
-        except Exception: pass
+        try: 
+            cid = int(PREMIUM_GROUP_ID)
+            await client.unban_chat_member(cid, uid)
+            await client.approve_chat_join_request(chat_id=cid, user_id=uid)
+        except Exception: 
+            pass
 
     data = {"user_id": uid, "username": name, "plan": plan, "price": price, "purchased_at": now, "expires_at": exp, "active": True, "reminders": {"1_day": False}}
     if col: await col.update_one({"user_id": uid}, {"$set": data}, upsert=True)
