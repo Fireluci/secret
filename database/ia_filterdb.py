@@ -98,7 +98,6 @@ async def get_search_results(
     file_type=None,
     max_results=10,
     offset=0,
-    filter=False,
     **kwargs,
 ):
     max_results = 10
@@ -129,7 +128,7 @@ async def get_search_results(
     return files, next_offset, total_results
 
 
-async def get_bad_files(query, file_type=None, filter=False, **kwargs):
+async def get_bad_files(query, file_type=None, **kwargs):
     words = normalize(query)
     mongo_filter = (
         {"$and": [{"file_name": {"$regex": re.escape(word), "$options": "i"}} for word in words]}
