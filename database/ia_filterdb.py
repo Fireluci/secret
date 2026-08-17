@@ -8,7 +8,7 @@ from pymongo.errors import DuplicateKeyError
 from umongo import Instance, Document, fields
 from motor.motor_asyncio import AsyncIOMotorClient
 from marshmallow.exceptions import ValidationError
-from info import DATABASE_URI, DATABASE_NAME, COLLECTION_NAME, USE_CAPTION_FILTER, MAX_B_TN, CAPTION_INDEX_CHANNEL
+from info import DATABASE_URI, DATABASE_NAME, COLLECTION_NAME, CAPTION_INDEX_CHANNEL
 from utils import get_settings, save_group_settings, extract_v2
 
 logger = logging.getLogger(__name__)
@@ -173,13 +173,8 @@ async def get_search_results(
     filter=False,
     **kwargs
 ):
-    if chat_id is not None:
-        settings = await get_settings(int(chat_id))
-        try:
-            max_results = 10 if settings.get("max_btn") else int(MAX_B_TN)
-        except Exception:
-            await save_group_settings(int(chat_id), "max_btn", False)
-            max_results = int(MAX_B_TN)
+    # Fixed behaviour: always show a maximum of 10 results per page.
+    max_results = 10
 
     # ✅ normalize user query using extract_v2
     query = await extract_v2(query)
@@ -197,14 +192,6 @@ async def get_search_results(
         }
     else:
         mongo_filter = {}
-
-    if USE_CAPTION_FILTER:
-        mongo_filter = {
-            "$or": [
-                mongo_filter,
-                {"caption": mongo_filter.get("$and", [])}
-            ]
-        }
 
     if file_type:
         mongo_filter["file_type"] = file_type

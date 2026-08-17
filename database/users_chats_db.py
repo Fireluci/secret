@@ -1,5 +1,5 @@
 import motor.motor_asyncio
-from info import DATABASE_NAME, DATABASE_URI, MELCOW_NEW_USERS, P_TTI_SHOW_OFF, SINGLE_BUTTON, SPELL_CHECK_REPLY, PROTECT_CONTENT, AUTO_DELETE, MAX_BTN, AUTO_FFILTER, SHORT1_URL, SHORT1_API, SHORT2_URL, SHORT2_API, IS_SHORTLINK, TUTORIAL, IS_TUTORIAL
+from info import DATABASE_NAME, DATABASE_URI
 
 class Database:
     
@@ -103,40 +103,52 @@ class Database:
         await self.grp.update_one({'id': int(id)}, {'$set': {'chat_status': chat_status}})
         
     async def update_settings(self, id, settings):
+        # Only persist settings that are intentionally configurable or
+        # per-group shortener overrides. Fixed bot behaviour is never stored.
+        allowed = {
+            "spell_check", "is_shortlink",
+            "shortlink", "shortlink_api",
+            "second_shortlink", "second_shortlink_api",
+        }
+        clean = {k: v for k, v in settings.items() if k in allowed}
+        if clean:
+            await self.grp.update_one(
+                {"id": int(id)},
+                {"$set": {f"settings.{k}": v for k, v in clean.items()}},
+                upsert=True
+            )
+
+    async def update_setting(self, id, key, value):
+        allowed = {
+            "spell_check", "is_shortlink",
+            "shortlink", "shortlink_api",
+            "second_shortlink", "second_shortlink_api",
+        }
+        if key not in allowed:
+            return
         await self.grp.update_one(
-            {'id': int(id)}, 
-            {'$set': {'settings': settings}}, 
+            {"id": int(id)},
+            {"$set": {f"settings.{key}": value}},
             upsert=True
         )
-        
+
     async def get_settings(self, id):
-        default = {
-            'button': SINGLE_BUTTON,
-            'botpm': P_TTI_SHOW_OFF,
-            'file_secure': PROTECT_CONTENT,
-            'spell_check': SPELL_CHECK_REPLY,
-            'welcome': MELCOW_NEW_USERS,
-            'auto_delete': AUTO_DELETE,
-            'auto_ffilter': AUTO_FFILTER,
-            'max_btn': MAX_BTN,
-            'shortlink': SHORT1_URL,
-            'shortlink_api': SHORT1_API,
-            'second_shortlink': SHORT2_URL,
-            'second_shortlink_api': SHORT2_API,
-            'is_shortlink': IS_SHORTLINK,
-            'tutorial': TUTORIAL,
-            'is_tutorial': IS_TUTORIAL
+        chat = await self.grp.find_one(
+            {"id": int(id)},
+            {"settings": 1, "_id": 0}
+        )
+        settings = (chat or {}).get("settings") or {}
+        # Return only values that may actually vary per group.
+        return {
+            key: settings[key]
+            for key in (
+                "spell_check", "is_shortlink",
+                "shortlink", "shortlink_api",
+                "second_shortlink", "second_shortlink_api",
+            )
+            if key in settings
         }
-        chat = await self.grp.find_one({'id': int(id)})
-        if chat:
-            settings = chat.get('settings')
-            if settings:
-                return settings
-            # If group exists but has no settings field yet, initialize it
-            await self.update_settings(id, default)
-            return default
-        return default
-    
+
     async def disable_chat(self, chat, reason="No Reason"):
         chat_status=dict(
             is_disabled=True,
