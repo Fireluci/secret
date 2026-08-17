@@ -1,8 +1,9 @@
 import motor.motor_asyncio
+
 from info import DATABASE_NAME, DATABASE_URI
 
+
 class Database:
-    
     def __init__(self, uri, database_name):
         self._client = motor.motor_asyncio.AsyncIOMotorClient(uri)
         self.db = self._client[database_name]
@@ -10,160 +11,99 @@ class Database:
         self.grp = self.db.groups
 
     def new_user(self, id, name):
-        return dict(
-            id = id,
-            name = name,
-            ban_status=dict(
-                is_banned=False,
-                ban_reason="",
-            ),
+        return {
+            "id": int(id),
+            "name": name,
+            "ban_status": {"is_banned": False, "ban_reason": ""},
+        }
+
+    async def add_user(self, id, name):
+        await self.col.update_one(
+            {"id": int(id)},
+            {"$setOnInsert": self.new_user(id, name)},
+            upsert=True,
         )
 
-    def new_group(self, id, title):
-        return dict(
-            id = id,
-            title = title,
-            chat_status=dict(
-                is_disabled=False,
-                reason="",
-            ),
-        )
-    
-    async def add_user(self, id, name):
-        user = self.new_user(id, name)
-        await self.col.insert_one(user)
-    
     async def is_user_exist(self, id):
-        user = await self.col.find_one({'id':int(id)})
-        return bool(user)
-    
+        return bool(await self.col.find_one({"id": int(id)}, {"_id": 1}))
+
     async def total_users_count(self):
-        count = await self.col.count_documents({})
-        return count
-    
+        return await self.col.count_documents({})
+
     async def remove_ban(self, id):
-        ban_status = dict(
-            is_banned=False,
-            ban_reason=''
+        await self.col.update_one(
+            {"id": int(id)},
+            {"$set": {"ban_status": {"is_banned": False, "ban_reason": ""}}},
         )
-        await self.col.update_one({'id': id}, {'$set': {'ban_status': ban_status}})
-    
+
     async def ban_user(self, user_id, ban_reason="No Reason"):
-        ban_status = dict(
-            is_banned=True,
-            ban_reason=ban_reason
+        await self.col.update_one(
+            {"id": int(user_id)},
+            {"$set": {"ban_status": {"is_banned": True, "ban_reason": ban_reason}}},
         )
-        await self.col.update_one({'id': user_id}, {'$set': {'ban_status': ban_status}})
 
     async def get_ban_status(self, id):
-        default = dict(
-            is_banned=False,
-            ban_reason=''
-        )
-        user = await self.col.find_one({'id':int(id)})
-        if not user:
-            return default
-        return user.get('ban_status', default)
+        default = {"is_banned": False, "ban_reason": ""}
+        user = await self.col.find_one({"id": int(id)})
+        return user.get("ban_status", default) if user else default
 
     async def get_all_users(self):
         return self.col.find({})
-    
+
     async def delete_user(self, user_id):
-        await self.col.delete_many({'id': int(user_id)})
+        await self.col.delete_many({"id": int(user_id)})
 
-    async def get_banned(self):
-        users = self.col.find({'ban_status.is_banned': True})
-        chats = self.grp.find({'chat_status.is_disabled': True})
-        b_chats = [chat['id'] async for chat in chats]
-        b_users = [user['id'] async for user in users]
-        return b_users, b_chats
+    async def get_banned_users(self):
+        cursor = self.col.find({"ban_status.is_banned": True}, {"id": 1})
+        return [user["id"] async for user in cursor]
 
-    async def add_chat(self, chat_id, title):
-        """Adds a new chat or updates its title if it already exists."""
+    async def connect_group(self, chat_id, title):
         await self.grp.update_one(
-            {'id': int(chat_id)},
+            {"id": int(chat_id)},
             {
-                '$set': {'title': title},
-                '$setOnInsert': {
-                    'chat_status': {'is_disabled': False, 'reason': ""}
-                }
+                "$set": {"title": title, "connected": True},
+                "$setOnInsert": {"settings": {}},
             },
-            upsert=True
+            upsert=True,
         )
-    
-    async def get_chat(self, chat):
-        chat = await self.grp.find_one({'id':int(chat)})
-        return False if not chat else chat.get('chat_status')
-    
-    async def re_enable_chat(self, id):
-        chat_status=dict(
-            is_disabled=False,
-            reason="",
-            )
-        await self.grp.update_one({'id': int(id)}, {'$set': {'chat_status': chat_status}})
-        
-    async def update_settings(self, id, settings):
-        # Only persist settings that are intentionally configurable or
-        # per-group shortener overrides. Fixed bot behaviour is never stored.
-        allowed = {
-            "spell_check", "is_shortlink",
-            "shortlink", "shortlink_api",
-            "second_shortlink", "second_shortlink_api",
-        }
-        clean = {k: v for k, v in settings.items() if k in allowed}
-        if clean:
-            await self.grp.update_one(
-                {"id": int(id)},
-                {"$set": {f"settings.{k}": v for k, v in clean.items()}},
-                upsert=True
-            )
 
-    async def update_setting(self, id, key, value):
-        allowed = {
-            "spell_check", "is_shortlink",
-            "shortlink", "shortlink_api",
-            "second_shortlink", "second_shortlink_api",
-        }
-        if key not in allowed:
-            return
+    async def disconnect_group(self, chat_id):
         await self.grp.update_one(
-            {"id": int(id)},
+            {"id": int(chat_id)},
+            {"$set": {"connected": False}},
+            upsert=True,
+        )
+
+    async def is_group_connected(self, chat_id):
+        group = await self.grp.find_one({"id": int(chat_id)}, {"connected": 1})
+        return bool(group and group.get("connected") is True)
+
+    async def get_group_settings(self, chat_id):
+        group = await self.grp.find_one({"id": int(chat_id)}, {"settings": 1})
+        return group.get("settings", {}) if group else {}
+
+    async def set_group_setting(self, chat_id, key, value):
+        await self.grp.update_one(
+            {"id": int(chat_id)},
             {"$set": {f"settings.{key}": value}},
-            upsert=True
+            upsert=True,
         )
 
-    async def get_settings(self, id):
-        chat = await self.grp.find_one(
-            {"id": int(id)},
-            {"settings": 1, "_id": 0}
+    async def remove_group_setting(self, chat_id, key):
+        await self.grp.update_one(
+            {"id": int(chat_id)},
+            {"$unset": {f"settings.{key}": ""}},
+            upsert=True,
         )
-        settings = (chat or {}).get("settings") or {}
-        # Return only values that may actually vary per group.
-        return {
-            key: settings[key]
-            for key in (
-                "spell_check", "is_shortlink",
-                "shortlink", "shortlink_api",
-                "second_shortlink", "second_shortlink_api",
-            )
-            if key in settings
-        }
 
-    async def disable_chat(self, chat, reason="No Reason"):
-        chat_status=dict(
-            is_disabled=True,
-            reason=reason,
-            )
-        await self.grp.update_one({'id': int(chat)}, {'$set': {'chat_status': chat_status}})
-    
     async def total_chat_count(self):
-        count = await self.grp.count_documents({})
-        return count
-    
+        return await self.grp.count_documents({"connected": True})
+
     async def get_all_chats(self):
-        return self.grp.find({})
+        return self.grp.find({"connected": True})
 
     async def get_db_size(self):
-        return (await self.db.command("dbstats"))['dataSize']
+        return (await self.db.command("dbstats"))["dataSize"]
+
 
 db = Database(DATABASE_URI, DATABASE_NAME)
