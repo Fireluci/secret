@@ -58,20 +58,16 @@ async def handle_auto_delete(message_obj):
         pass
 
 
-@Client.on_message(filters.group & filters.text & filters.incoming & connected_group)
+@Client.on_message(filters.group & filters.text & filters.incoming)
 async def give_filter(client, message):
-    await auto_filter(client, message)
-
-
-@Client.on_message(filters.private & filters.text & filters.incoming)
-async def pm_text(bot, message):
-    content = message.text
-    if content.startswith("/") or content.startswith("#") or content.startswith("file") or content.startswith("short") or message.from_user.id in ADMINS:
+    if message.text.startswith("/"):
         return
-    await message.reply_text(
-        text="<b>🌀 Unlimited Movies, Series, Anime\n🔆 New Releases Upload Same Day\n♻️ 24x7 Service 📆 Daily Updates</b>",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌟 Paid (No Ads)", url="https://telegram.me/HeroFlixx/49"), InlineKeyboardButton("🍿 Free (With Ads)", url="https://telegram.me/addlist/X5k2lnJLIGAyZjQ1")]])
-    )
+    try:
+        if not await db.is_group_connected(message.chat.id):
+            return
+    except Exception:
+        return
+    await auto_filter(client, message)
 
 @Client.on_callback_query(filters.regex(r"^next"))
 async def next_page(bot, query):
