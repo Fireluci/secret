@@ -1,6 +1,6 @@
 import logging
 from pyrogram.errors import InputUserDeactivated, UserNotParticipant, FloodWait, UserIsBlocked, PeerIdInvalid
-from info import AUTH_CHANNEL, IS_SHORTLINK, TUTORIAL, GRP_LNK, CHNL_LNK, CUSTOM_FILE_CAPTION, SHORT1_URL, SHORT1_API, SHORT2_URL, SHORT2_API, LOG_CHANNEL
+from info import AUTH_CHANNEL, IS_SHORTLINK, SPELL_CHECK_REPLY, TUTORIAL, GRP_LNK, CHNL_LNK, CUSTOM_FILE_CAPTION, SHORT1_URL, SHORT1_API, SHORT2_URL, SHORT2_API, LOG_CHANNEL
 import asyncio
 from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
 from pyrogram.errors import FloodWait, UserIsBlocked, MessageNotModified, PeerIdInvalid
@@ -157,18 +157,52 @@ async def search_gagala(text):
     except Exception:
         return []
 
+# Only Spell Check and ShortLink are per-group settings.
+# All other bot behaviour is hardcoded in the feature that uses it.
+
+def _setting_bool(value, default):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        value = value.strip().lower()
+        if value in {"true", "yes", "1", "enable", "enabled", "on", "y"}:
+            return True
+        if value in {"false", "no", "0", "disable", "disabled", "off", "n"}:
+            return False
+    return default
+
 async def get_settings(group_id):
-    settings = temp.SETTINGS.get(group_id)
-    if not settings:
-        settings = await db.get_settings(group_id)
-        temp.SETTINGS[group_id] = settings
+    # Cached per group. MongoDB is read only once per group after bot startup.
+    if group_id in temp.SETTINGS:
+        return temp.SETTINGS[group_id]
+
+    stored = await db.get_settings(group_id)
+    settings = {
+        "spell_check": _setting_bool(stored.get("spell_check"), SPELL_CHECK_REPLY),
+        "is_shortlink": _setting_bool(stored.get("is_shortlink"), IS_SHORTLINK),
+        "shortlink": stored.get("shortlink") or SHORT1_URL,
+        "shortlink_api": stored.get("shortlink_api") or SHORT1_API,
+        "second_shortlink": stored.get("second_shortlink") or SHORT2_URL,
+        "second_shortlink_api": stored.get("second_shortlink_api") or SHORT2_API,
+    }
+    temp.SETTINGS[group_id] = settings
     return settings
-    
+
 async def save_group_settings(group_id, key, value):
+    # Only these values may be changed through settings/shortener commands.
+    allowed = {
+        "spell_check", "is_shortlink",
+        "shortlink", "shortlink_api",
+        "second_shortlink", "second_shortlink_api",
+    }
+    if key not in allowed:
+        return
     current = await get_settings(group_id)
+    if key in {"spell_check", "is_shortlink"}:
+        value = _setting_bool(value, False)
     current[key] = value
     temp.SETTINGS[group_id] = current
-    await db.update_settings(group_id, current)
+    await db.update_setting(group_id, key, value)
     
 def get_size(size):
     """Get size in readable format"""
@@ -475,20 +509,11 @@ async def get_shortlink(chat_id, link, client=None):
             raise Exception("All shorteners are down.")
     
 async def get_tutorial(chat_id):
-    settings = await get_settings(chat_id)  
-    if 'tutorial' in settings.keys():
-        TUTORIAL_URL = settings['tutorial']
-    else:
-        TUTORIAL_URL = TUTORIAL
-    return TUTORIAL_URL
+    return TUTORIAL
     
 async def send_all(bot, userid, files, ident, chat_id, user_name, query):
     settings = await get_settings(chat_id)
-    if 'is_shortlink' in settings.keys():
-        ENABLE_SHORTLINK = settings['is_shortlink']
-    else:
-        await save_group_settings(message.chat.id, 'is_shortlink', False)
-        ENABLE_SHORTLINK = False
+    ENABLE_SHORTLINK = settings.get('is_shortlink', IS_SHORTLINK)
     try:
         if ENABLE_SHORTLINK:
             for file in files:
