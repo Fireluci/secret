@@ -12,7 +12,7 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database.ia_filterdb import Media, get_file_details, unpack_new_file_id, get_bad_files
 from database.users_chats_db import db
 from info import *
-from utils import get_settings, get_size, is_subscribed, save_group_settings, temp, get_shortlink
+from utils import get_settings, get_size, is_subscribed, save_group_settings, temp, get_shortlink, is_group_connected
 
 logger = logging.getLogger(__name__)
 
@@ -22,17 +22,6 @@ def tutorial_url():
         return None
     return TUTORIAL if str(TUTORIAL).startswith("http") else f"https://telegram.me/{TUTORIAL}"
 
-
-async def group_is_connected(chat_id):
-    try:
-        status = await db.get_chat(chat_id)
-    except Exception:
-        return False
-    if not status:
-        return False
-    if isinstance(status, dict):
-        return bool(status.get("connected", False))
-    return False
 
 
 async def send_file_to_user(client, user_id, file_id):
@@ -102,7 +91,7 @@ async def delete_later(message, seconds=900):
 @Client.on_message(filters.command("start") & filters.incoming)
 async def start(client, message):
     if message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
-        if not await group_is_connected(message.chat.id):
+        if not await is_group_connected(message.chat.id):
             return
         buttons = []
         tut = tutorial_url()
@@ -121,6 +110,12 @@ async def start(client, message):
 
     if not message.from_user:
         return
+
+    ban_status = await db.get_ban_status(message.from_user.id)
+    if ban_status.get("is_banned"):
+        return await message.reply_text(
+            f'Sorry Dude, You are Banned to use Me.\nBan Reason: {ban_status.get("ban_reason", "No Reason")}'
+        )
 
     if not await db.is_user_exist(message.from_user.id):
         await db.add_user(message.from_user.id, message.from_user.first_name)
@@ -176,7 +171,7 @@ async def start(client, message):
         return
 
     if pre == "short":
-        chat_id = temp.SHORT.get(message.from_user.id)
+        chat_id = temp.SHORT.get((message.from_user.id, file_id)) or temp.SHORT.get(message.from_user.id)
         if chat_id is None:
             return await message.reply("Invalid or expired link.")
         result = await send_shortlink_page(client, message.from_user.id, file_id, chat_id)
@@ -187,7 +182,7 @@ async def start(client, message):
         return
 
     if pre == "files":
-        chat_id = temp.SHORT.get(message.from_user.id)
+        chat_id = temp.SHORT.get((message.from_user.id, file_id)) or temp.SHORT.get(message.from_user.id)
         if chat_id is None:
             return await message.reply_text("<b>Link Expired, Search Again in Group!</b>")
 
@@ -268,7 +263,7 @@ async def delete_all_index(bot, message):
 
 @Client.on_callback_query(filters.regex(r'^autofilter_delete$'))
 async def delete_all_index_confirm(bot, callback):
-    if str(callback.from_user.id) not in ADMINS:
+    if callback.from_user.id not in ADMINS:
         return await callback.answer("Unauthorized!", show_alert=True)
     await Media.collection.drop()
     await callback.answer('Done')
@@ -286,17 +281,21 @@ def get_settings_keyboard(settings: dict):
 
 @Client.on_callback_query(filters.regex(r'^setgs#'))
 async def settings_callback(client, callback):
-    if str(callback.from_user.id) not in ADMINS:
+    if callback.from_user.id not in ADMINS:
         return await callback.answer("Only bot admins can change settings.", show_alert=True)
     try:
-        _, setting, current = callback.data.split("#")
-        current = current == "True"
+        _, setting, _ = callback.data.split("#")
     except Exception:
         return await callback.answer("Invalid setting.", show_alert=True)
     if setting not in {"spell_check", "is_shortlink"}:
         return await callback.answer("Invalid setting.", show_alert=True)
 
     chat_id = callback.message.chat.id
+    if chat_id and callback.message.chat.type in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP):
+        if not await is_group_connected(chat_id):
+            return await callback.answer("This group is disconnected.", show_alert=True)
+    settings = await get_settings(chat_id)
+    current = bool(settings.get(setting))
     await save_group_settings(chat_id, setting, not current)
     settings = await get_settings(chat_id)
     try:
@@ -310,7 +309,7 @@ async def settings_callback(client, callback):
 async def settings(client, message):
     if message.chat.type not in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
         return await message.reply_text("Use /settings inside a connected group.")
-    if not await group_is_connected(message.chat.id):
+    if not await is_group_connected(message.chat.id):
         return
     settings = await get_settings(message.chat.id)
     await message.reply_text(
@@ -346,6 +345,8 @@ async def deletemultiplefiles(bot, message):
 async def update_shortlink1(bot, message):
     if message.chat.type == enums.ChatType.PRIVATE:
         return await message.reply_text("<b>Only works in groups !</b>")
+    if not await is_group_connected(message.chat.id):
+        return await message.reply_text("Connect this group first with /connect.")
     try:
         _, shortlink_url, api = message.text.split(" ", 2)
     except Exception:
@@ -365,6 +366,8 @@ async def update_shortlink1(bot, message):
 async def update_shortlink2(bot, message):
     if message.chat.type == enums.ChatType.PRIVATE:
         return await message.reply_text("<b>Only works in groups !</b>")
+    if not await is_group_connected(message.chat.id):
+        return await message.reply_text("Connect this group first with /connect.")
     try:
         _, shortlink_url, api = message.text.split(" ", 2)
     except Exception:
@@ -374,6 +377,7 @@ async def update_shortlink2(bot, message):
     shortlink_url = re.sub(r"[:/]", "", re.sub(r"https?://?", "", shortlink_url))
     await save_group_settings(message.chat.id, 'second_shortlink', shortlink_url)
     await save_group_settings(message.chat.id, 'second_shortlink_api', api)
+    await save_group_settings(message.chat.id, 'is_shortlink', True)
     await reply.edit_text(f"<b>Successfully updated Secondary Shortener (Short2)!\n\nWebsite: <code>{shortlink_url}</code>\nAPI: <code>{api}</code></b>")
     await asyncio.sleep(10)
     await reply.delete()
@@ -383,6 +387,8 @@ async def update_shortlink2(bot, message):
 async def view_shorteners(bot, message):
     if message.chat.type == enums.ChatType.PRIVATE:
         return await message.reply_text("<b>Only works in groups !</b>")
+    if not await is_group_connected(message.chat.id):
+        return await message.reply_text("Connect this group first with /connect.")
     settings = await get_settings(message.chat.id)
     s1_url = settings.get('shortlink') or SHORT1_URL
     s1_api = settings.get('shortlink_api') or SHORT1_API

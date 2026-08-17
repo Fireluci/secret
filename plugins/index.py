@@ -2,7 +2,7 @@ import asyncio
 import logging
 import re
 from pyrogram import Client, filters, enums
-from pyrogram.errors import FloodWait
+from pyrogram.errors import FloodWait, PeerIdInvalid
 from pyrogram.errors.exceptions.bad_request_400 import ChannelInvalid, ChatAdminRequired, UsernameInvalid, UsernameNotModified
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from info import ADMINS
@@ -40,6 +40,8 @@ async def clear_index_state():
 
 @Client.on_callback_query(filters.regex(r'^index'))
 async def index_files(bot, query):
+    if not query.from_user or query.from_user.id not in ADMINS:
+        return await query.answer("Unauthorized!", show_alert=True)
     if query.data.startswith('index_cancel'):
         temp.CANCEL = True
         await clear_index_state()
@@ -59,7 +61,10 @@ async def index_files(bot, query):
             show_alert=True
         )
 
-    _, raju, chat, lst_msg_id = query.data.split("#")
+    try:
+        _, raju, chat, lst_msg_id = query.data.split("#")
+    except (ValueError, AttributeError):
+        return await query.answer("Invalid index request.", show_alert=True)
     if raju == 'reject':
         await query.message.delete()
         return
@@ -173,6 +178,17 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, resume_current=None, res
 
     async with lock:
         try:
+            try:
+                await bot.get_chat(chat)
+            except (PeerIdInvalid, ChannelInvalid, UsernameInvalid, UsernameNotModified) as e:
+                await clear_index_state()
+                logger.error("Unable to resolve indexing chat %s: %s", chat, e)
+                try:
+                    await msg.edit("❌ Indexing stopped: the source channel is no longer accessible to this session.")
+                except Exception:
+                    pass
+                return
+
             current = temp.CURRENT
             last_edit = current
             temp.CANCEL = False
@@ -272,7 +288,17 @@ async def check_pending_index_on_startup(client):
         deleted = state.get("deleted", 0)
         
         logger.info(f"Found pending indexing task! Resuming from message count: {current}")
-        
+
+        try:
+            await client.get_chat(chat_id)
+        except (PeerIdInvalid, ChannelInvalid, UsernameInvalid, UsernameNotModified) as e:
+            logger.error("Discarding stale pending index for %s: %s", chat_id, e)
+            await clear_index_state()
+            return
+        except Exception:
+            logger.exception("Could not verify pending indexing chat %s; leaving state intact", chat_id)
+            return
+
         for admin_id in ADMINS:
             try:
                 msg = await client.send_message(

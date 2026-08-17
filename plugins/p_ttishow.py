@@ -10,7 +10,7 @@ from utils import connected_group, get_size
 from Script import script
 
 
-@Client.on_message(filters.command("stats") & filters.incoming & connected_group)
+@Client.on_message(filters.command("stats") & filters.incoming & filters.user(ADMINS) & connected_group)
 async def get_stats(bot, message):
     reply = await message.reply("Fetching stats...")
     total_users = await db.total_users_count()
