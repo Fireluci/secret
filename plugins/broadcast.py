@@ -4,10 +4,10 @@ import datetime
 import time
 from database.users_chats_db import db
 from info import ADMINS
-from utils import broadcast_messages, broadcast_messages_group
+from utils import broadcast_messages, broadcast_messages_group, connected_group
 import asyncio
         
-@Client.on_message(filters.command("broadcast") & filters.user(ADMINS) & filters.reply)
+@Client.on_message(filters.command("broadcast") & filters.user(ADMINS) & filters.reply & connected_group)
 # https://t.me/GetTGLink/4178
 async def verupikkals(bot, message):
     users = await db.get_all_users()
@@ -40,7 +40,7 @@ async def verupikkals(bot, message):
     time_taken = datetime.timedelta(seconds=int(time.time()-start_time))
     await sts.edit(f"Broadcast Completed:\nCompleted in {time_taken} seconds.\n\nTotal Users {total_users}\nCompleted: {done} / {total_users}\nSuccess: {success}\nBlocked: {blocked}\nDeleted: {deleted}")
 
-@Client.on_message(filters.command("grp_broadcast") & filters.user(ADMINS) & filters.reply)
+@Client.on_message(filters.command("grp_broadcast") & filters.user(ADMINS) & filters.reply & connected_group)
 async def broadcast_group(bot, message):
     groups = await db.get_all_chats()
     b_msg = message.reply_to_message
