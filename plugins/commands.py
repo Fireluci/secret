@@ -8,7 +8,7 @@ from pyrogram.errors import ChatAdminRequired, FloodWait
 from pyrogram.types import *
 from database.ia_filterdb import Media, get_file_details, unpack_new_file_id, get_bad_files
 from database.users_chats_db import db
-from info import CHANNELS, ADMINS, AUTH_CHANNEL, LOG_CHANNEL, PICS, BATCH_FILE_CAPTION, CUSTOM_FILE_CAPTION, PROTECT_CONTENT, CHNL_LNK, FORCE, GRP_LNK, REQST_CHANNEL, SUPPORT_CHAT_ID, SUPPORT_CHAT, MAX_B_TN, SHORT1_URL, SHORT1_API, SHORT2_URL, SHORT2_API, TUTORIAL, IS_TUTORIAL, PREMIUM_USER
+from info import CHANNELS, ADMINS, AUTH_CHANNEL, LOG_CHANNEL, PICS, BATCH_FILE_CAPTION, CUSTOM_FILE_CAPTION, CHNL_LNK, FORCE, GRP_LNK, REQST_CHANNEL, SUPPORT_CHAT_ID, SUPPORT_CHAT, SHORT1_URL, SHORT1_API, SHORT2_URL, SHORT2_API, TUTORIAL, PREMIUM_USER
 from utils import get_settings, get_size, is_subscribed, save_group_settings, temp, get_shortlink, get_tutorial
 from database.connections_mdb import active_connection
 import re, asyncio, os, sys
@@ -162,7 +162,7 @@ async def start(client, message):
             f_msg_id, l_msg_id, f_chat_id, protect = decoded.split("_", 3)
         except:
             f_msg_id, l_msg_id, f_chat_id = decoded.split("_", 2)
-            protect = "/pbatch" if PROTECT_CONTENT else "batch"
+            protect = "batch"
         diff = int(l_msg_id) - int(f_msg_id)
         async for msg in client.iter_messages(int(f_chat_id), int(l_msg_id), int(f_msg_id)):
             if msg.media:
@@ -288,7 +288,7 @@ async def start(client, message):
                 chat_id=message.from_user.id,
                 file_id=file_id,
                 caption=f_caption,
-                protect_content=True if pre == 'filep' else False,
+                protect_content=False,
                 reply_markup=InlineKeyboardMarkup(
                     [
                      [
@@ -354,7 +354,7 @@ async def start(client, message):
             msg = await client.send_cached_media(
                 chat_id=message.from_user.id,
                 file_id=file_id,
-                protect_content=True if pre == 'filep' else False,
+                protect_content=False,
                 reply_markup=InlineKeyboardMarkup(
                     [
                      [
@@ -399,7 +399,7 @@ async def start(client, message):
         chat_id=message.from_user.id,
         file_id=file_id,
         caption=f_caption,
-        protect_content=True if pre == 'filep' else False,
+        protect_content=False,
         reply_markup=InlineKeyboardMarkup(
             [
              [
@@ -524,29 +524,46 @@ async def delete_all_index_confirm(bot, message):
 
 def get_settings_keyboard(settings: dict, grp_id: int):
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton('Rᴇsᴜʟᴛ Pᴀɢᴇ', callback_data=f'setgs#button#{settings.get("button", False)}#{grp_id}'), InlineKeyboardButton('Bᴜᴛᴛᴏɴ' if settings.get("button", False) else 'Tᴇxᴛ', callback_data=f'setgs#button#{settings.get("button", False)}#{grp_id}')],
-        [InlineKeyboardButton('Fɪʟᴇ Sᴇɴᴅ Mᴏᴅᴇ', callback_data=f'setgs#botpm#{settings.get("botpm", False)}#{grp_id}'), InlineKeyboardButton('Mᴀɴᴜᴀʟ Sᴛᴀʀᴛ' if settings.get("botpm", False) else 'Aᴜᴛᴏ Sᴇɴᴅ', callback_data=f'setgs#botpm#{settings.get("botpm", False)}#{grp_id}')],
-        [InlineKeyboardButton('Pʀᴏᴛᴇᴄᴛ Cᴏɴᴛᴇɴᴛ', callback_data=f'setgs#file_secure#{settings.get("file_secure", False)}#{grp_id}'), InlineKeyboardButton('✔ Oɴ' if settings.get("file_secure", False) else '✘ Oғғ', callback_data=f'setgs#file_secure#{settings.get("file_secure", False)}#{grp_id}')],
-        [InlineKeyboardButton('Sᴘᴇʟʟ Cʜᴇᴄᴋ', callback_data=f'setgs#spell_check#{settings.get("spell_check", True)}#{grp_id}'), InlineKeyboardButton('✔ Oɴ' if settings.get("spell_check", True) else '✘ Oғғ', callback_data=f'setgs#spell_check#{settings.get("spell_check", True)}#{grp_id}')],
-        [InlineKeyboardButton('Wᴇʟᴄᴏᴍᴇ Msɢ', callback_data=f'setgs#welcome#{settings.get("welcome", True)}#{grp_id}'), InlineKeyboardButton('✔ Oɴ' if settings.get("welcome", True) else '✘ Oғғ', callback_data=f'setgs#welcome#{settings.get("welcome", True)}#{grp_id}')],
-        [InlineKeyboardButton('Aᴜᴛᴏ-Dᴇʟᴇᴛᴇ', callback_data=f'setgs#auto_delete#{settings.get("auto_delete", False)}#{grp_id}'), InlineKeyboardButton('10 Mɪns' if settings.get("auto_delete", False) else '✘ Oғғ', callback_data=f'setgs#auto_delete#{settings.get("auto_delete", False)}#{grp_id}')],
-        [InlineKeyboardButton('Aᴜᴛᴏ-Fɪʟᴛᴇʀ', callback_data=f'setgs#auto_ffilter#{settings.get("auto_ffilter", True)}#{grp_id}'), InlineKeyboardButton('✔ Oɴ' if settings.get("auto_ffilter", True) else '✘ Oғғ', callback_data=f'setgs#auto_ffilter#{settings.get("auto_ffilter", True)}#{grp_id}')],
-        [InlineKeyboardButton('Mᴀx Bᴜᴛᴛᴏns', callback_data=f'setgs#max_btn#{settings.get("max_btn", False)}#{grp_id}'), InlineKeyboardButton('10' if settings.get("max_btn", False) else f'{MAX_B_TN}', callback_data=f'setgs#max_btn#{settings.get("max_btn", False)}#{grp_id}')],
-        [InlineKeyboardButton('ShortLink', callback_data=f'setgs#is_shortlink#{settings.get("is_shortlink", False)}#{grp_id}'), InlineKeyboardButton('✔ Oɴ' if settings.get("is_shortlink", False) else '✘ Oғғ', callback_data=f'setgs#is_shortlink#{settings.get("is_shortlink", False)}#{grp_id}')],
+        [
+            InlineKeyboardButton('Sᴘᴇʟʟ Cʜᴇᴄᴋ', callback_data='settings_fixed'),
+            InlineKeyboardButton(
+                '✔ Oɴ' if settings.get('spell_check', True) else '✘ Oғғ',
+                callback_data=f'setgs#spell_check#{grp_id}'
+            )
+        ],
+        [
+            InlineKeyboardButton('ShortLink', callback_data='settings_fixed'),
+            InlineKeyboardButton(
+                '✔ Oɴ' if settings.get('is_shortlink', True) else '✘ Oғғ',
+                callback_data=f'setgs#is_shortlink#{grp_id}'
+            )
+        ],
     ])
 
 @Client.on_callback_query(filters.regex(r'^setgs'))
 async def settings_callback(client, callback):
     dat = callback.data.split('#')
-    setting, current, chat_id = dat[1], dat[2] == 'True', int(dat[3])
+    if len(dat) != 3 or dat[1] not in {'spell_check', 'is_shortlink'}:
+        return await callback.answer("This setting is fixed.", show_alert=True)
+
+    setting, chat_id = dat[1], int(dat[2])
     st = await client.get_chat_member(chat_id, callback.from_user.id)
     if st.status not in [enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER] and str(callback.from_user.id) not in ADMINS:
         return await callback.answer("Unauthorized!", show_alert=True)
-    
+
+    settings = await get_settings(chat_id)
+    current = settings.get(setting, True)
     await save_group_settings(chat_id, setting, not current)
     settings = await get_settings(chat_id)
-    try: await callback.message.edit_reply_markup(reply_markup=get_settings_keyboard(settings, chat_id))
-    except Exception: pass
+    try:
+        await callback.message.edit_reply_markup(reply_markup=get_settings_keyboard(settings, chat_id))
+    except Exception:
+        pass
+    await callback.answer(f"{setting.replace('_', ' ').title()}: {'On' if not current else 'Off'}")
+
+@Client.on_callback_query(filters.regex(r'^settings_fixed$'))
+async def fixed_settings_callback(client, callback):
+    await callback.answer("Only Spell Check and ShortLink can be changed.", show_alert=True)
 
 @Client.on_message(filters.command('settings'))
 async def settings(client, message):
@@ -562,9 +579,14 @@ async def settings(client, message):
 
     st = await client.get_chat_member(grp_id, userid)
     if st.status not in [enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER] and str(userid) not in ADMINS: return
-    
+
     settings = await get_settings(grp_id)
-    await message.reply_text(f"<b>⚙️ <code>Settings For {title}</code></b>", reply_markup=get_settings_keyboard(settings, grp_id), parse_mode=enums.ParseMode.HTML, reply_to_message_id=message.id)
+    await message.reply_text(
+        f"<b>⚙️ <code>Settings For {title}</code></b>",
+        reply_markup=get_settings_keyboard(settings, grp_id),
+        parse_mode=enums.ParseMode.HTML,
+        reply_to_message_id=message.id
+    )
 
 @Client.on_message(filters.command("deletefiles") & filters.user(ADMINS))
 async def deletemultiplefiles(bot, message):

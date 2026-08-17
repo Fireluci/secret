@@ -8,7 +8,7 @@ from pyrogram.errors.exceptions.bad_request_400 import MediaEmpty, PhotoInvalidD
 from html import escape
 from Script import script
 from info import *
-from utils import get_size, is_subscribed, search_gagala, temp, get_settings, save_group_settings, get_shortlink, get_tutorial, send_all
+from utils import get_size, is_subscribed, search_gagala, temp, get_settings, get_shortlink, get_tutorial, send_all
 from database.users_chats_db import db
 from database.connections_mdb import active_connection, all_connections, delete_connection, if_active, make_active, make_inactive
 from database.ia_filterdb import Media, get_file_details, get_search_results, get_bad_files
@@ -51,11 +51,10 @@ def is_spam(uid, cooldown=2):
     USER_COOLDOWN[uid] = now
     return False
 
-async def handle_auto_delete(message_obj, settings):
+async def handle_auto_delete(message_obj, settings=None):
     try:
-        if settings.get('auto_delete', True):
-            await asyncio.sleep(900)
-            await message_obj.delete()
+        await asyncio.sleep(600)
+        await message_obj.delete()
     except Exception:
         pass
 
@@ -110,13 +109,12 @@ async def next_page(bot, query):
 
         temp.GETALL[key] = files
         temp.SHORT[query.from_user.id] = query.message.chat.id
-        settings = await get_settings(query.message.chat.id)
-        pre = 'filep' if settings.get('file_secure') else 'file'
+        pre = 'file'
 
-        btn = [[InlineKeyboardButton(text=f"[{get_size(file.file_size)}] {file.file_name}", callback_data=f'{pre}#{file.file_id}')] for file in files] if settings.get('button') else []
+        btn = [[InlineKeyboardButton(text=f"[{get_size(file.file_size)}] {file.file_name}", callback_data=f'{pre}#{file.file_id}')] for file in files]
 
         try:
-            max_limit = 10 if settings.get('max_btn') else int(MAX_B_TN)
+            max_limit = 10
             if 0 < offset <= max_limit:
                 off_set = 0
             elif offset == 0:
@@ -141,7 +139,7 @@ async def next_page(bot, query):
             btn.append([InlineKeyboardButton("🌟 How To Download ❓", url=tut_url)])
 
         cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n<i>🗨 Choose Link - Press Start ↷</i>\n\n</b>"
-        if not settings.get('button'):
+        if True:
             for file in files:
                 cap += f"<b>🍿 <a href='https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}'>[{get_size(file.file_size)}] {' '.join(filter(lambda x: not x.startswith('@') and not x.startswith('www.'), file.file_name.split()))}\n\n</a></b>"
 
@@ -334,7 +332,6 @@ async def cb_handler(client: Client, query: CallbackQuery):
         files = files_[0]
         f_caption = CUSTOM_FILE_CAPTION.format(file_name=files.file_name or '', file_size=get_size(files.file_size) or '', file_caption=files.caption or '') if CUSTOM_FILE_CAPTION else (files.caption or files.file_name)
         
-        # 🔑 Dynamically fetch fresh settings from MongoDB for this chat ID
         chat_id = query.message.chat.id
         settings = await get_settings(chat_id)
 
@@ -344,20 +341,8 @@ async def cb_handler(client: Client, query: CallbackQuery):
             elif settings.get('is_shortlink') and clicked not in PREMIUM_USER:
                 temp.SHORT[clicked] = chat_id
                 return await query.answer(url=f"https://telegram.me/{temp.U_NAME}?start=short_{file_id}")
-            elif settings.get('botpm') or clicked in PREMIUM_USER:
-                return await query.answer(url=f"https://telegram.me/{temp.U_NAME}?start={ident}_{file_id}")
             else:
-                # Dynamically evaluate protect_content from MongoDB settings
-                is_protected = settings.get('file_secure', False)
-                
-                await client.send_cached_media(
-                    chat_id=query.from_user.id, 
-                    file_id=file_id, 
-                    caption=f_caption, 
-                    protect_content=is_protected,  # ✅ Respects live MongoDB setting
-                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🔆彡[ HEROFLiX ]彡🔆', url=f'https://telegram.me/{CHNL_LNK}')]])
-                )
-                return await query.answer('Cʜᴇᴄᴋ PM, I ʜᴀᴠᴇ sᴇɴᴛ ғɪʟᴇs ɪɴ PM', show_alert=True)
+                return await query.answer(url=f"https://telegram.me/{temp.U_NAME}?start={ident}_{file_id}")
         except UserIsBlocked:
             return await query.answer('Uɴʙʟᴏᴄᴋ ᴛʜᴇ ʙᴏᴛ ᴍᴀʜɴ !', show_alert=True)
         except PeerIdInvalid:
@@ -370,9 +355,9 @@ async def cb_handler(client: Client, query: CallbackQuery):
         except: return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
         settings = await get_settings(query.message.chat.id)
         try:
-            if settings.get('botpm') and settings.get('is_shortlink') and clicked not in PREMIUM_USER:
+            if settings.get('is_shortlink') and clicked not in PREMIUM_USER:
                 return await query.answer(url=f"https://telegram.me/{temp.U_NAME}?start=sendfiles1_{key}")
-            elif settings.get('is_shortlink') and not settings.get('botpm') and clicked not in PREMIUM_USER:
+            elif settings.get('is_shortlink') and clicked not in PREMIUM_USER:
                 return await query.answer(url=f"https://telegram.me/{temp.U_NAME}?start=sendfiles2_{key}")
             else:
                 return await query.answer(url=f"https://telegram.me/{temp.U_NAME}?start=allfiles_{key}")
@@ -397,7 +382,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
             return await query.answer('Nᴏ sᴜᴄʜ ғɪʟᴇ ᴇxɪsᴛ.', show_alert=True)
         files = files_[0]
         f_caption = CUSTOM_FILE_CAPTION.format(file_name=files.file_name or '', file_size=get_size(files.file_size) or '', file_caption=files.caption or '') if CUSTOM_FILE_CAPTION else (files.caption or files.file_name)
-        await client.send_cached_media(chat_id=query.from_user.id, file_id=file_id, caption=f_caption, protect_content=(ident == 'checksubp'), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🔆彡[ HEROFLiX ]彡🔆', url=f'https://telegram.me/{CHNL_LNK}')]]))
+        await client.send_cached_media(chat_id=query.from_user.id, file_id=file_id, caption=f_caption, protect_content=False, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🔆彡[ HEROFLiX ]彡🔆', url=f'https://telegram.me/{CHNL_LNK}')]]))
         return await query.answer("File sent to PM successfully!", show_alert=True)
     elif query.data == "pages":
         return await query.answer("You are on the page navigation.", show_alert=True)
@@ -448,34 +433,32 @@ async def auto_filter(client, msg, spoll=False):
         for lang, code in [("english", "eng"), ("hindi", "hin"), ("tamil", "tam"), ("telugu", "tel"), ("kannada", "kan"), ("malayalam", "mal")]:
             search = search.replace(lang, code)
         files, offset, total_results = await get_search_results(message.chat.id, search, offset=0, filter=True)
-        settings = await get_settings(message.chat.id)
         if not files:
+            settings = await get_settings(message.chat.id)
             if settings.get("spell_check"):
                 return await advantage_spell_chok(client, msg)
             return
     else:
         message = msg.message.reply_to_message
         search, files, offset, total_results = spoll
-        settings = await get_settings(message.chat.id)
         await msg.message.delete()
 
-    pre = 'filep' if settings.get('file_secure') else 'file'
+    pre = 'file'
     key = f"{message.chat.id}-{message.id}"
     FRESH[key] = search
     temp.GETALL[key] = files
     if not hasattr(temp, "SHORT"): temp.SHORT = {}
     temp.SHORT[message.from_user.id] = message.chat.id
 
-    btn = [[InlineKeyboardButton(text=f"[{get_size(file.file_size)}] {file.file_name}", callback_data=f'{pre}#{file.file_id}')] for file in files] if settings.get('button') else []
+    btn = [[InlineKeyboardButton(text=f"[{get_size(file.file_size)}] {file.file_name}", callback_data=f'{pre}#{file.file_id}')] for file in files]
 
     if offset != "":
         req = message.from_user.id if message.from_user else 0
         try:
-            max_limit = 10 if settings.get('max_btn') else int(MAX_B_TN)
+            max_limit = 10
             total_pages = math.ceil(int(total_results) / max_limit)
             btn.append([InlineKeyboardButton("🔅 Page", callback_data="pages"), InlineKeyboardButton(text=f"1/{total_pages}", callback_data="pages"), InlineKeyboardButton(text=" NEXT ⏩", callback_data=f"next_{req}_{key}_{offset}")])
-        except KeyError:
-            await save_group_settings(message.chat.id, 'max_btn', True)
+        except Exception:
             btn.append([InlineKeyboardButton("🔅 Page", callback_data="pages"), InlineKeyboardButton(text=f"1/{math.ceil(int(total_results)/10)}", callback_data="pages"), InlineKeyboardButton(text=" NEXT ⏩", callback_data=f"next_{req}_{key}_{offset}")])
     else:
         btn.append([InlineKeyboardButton(text="✦ ────「 The End 」──── ✦", callback_data="pages")])
@@ -485,13 +468,13 @@ async def auto_filter(client, msg, spoll=False):
         btn.append([InlineKeyboardButton("🌟 How To Download ❓", url=tut_url)])
 
     cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n🎬 Select Your Pick ↡\n\n</b>"
-    if not settings.get('button'):
+    if True:
         for file in files:
             cap += f"<b>🍿 <a href='https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}'>[{get_size(file.file_size)}] {escape(file.file_name)}</a></b>\n\n"
 
     fuk = await message.reply_text(text=cap, reply_markup=InlineKeyboardMarkup(btn), disable_web_page_preview=True)
-    asyncio.create_task(handle_auto_delete(fuk, settings))
-    asyncio.create_task(handle_auto_delete(message, settings))
+    asyncio.create_task(handle_auto_delete(fuk))
+    asyncio.create_task(handle_auto_delete(message))
 
 async def advantage_spell_chok(client, msg):
     mv_rqst = msg.text
@@ -504,8 +487,6 @@ async def advantage_spell_chok(client, msg):
     g_s = await search_gagala(query) + await search_gagala(msg.text)
 
     if not g_s:
-        if NO_RESULTS_MSG:
-            await client.send_message(chat_id=LOG_CHANNEL, text=script.NORSLTS.format(reqstr.id, reqstr.mention, mv_rqst))
         k = await msg.reply(script.NO_RESULTS, disable_web_page_preview=True)
         await asyncio.sleep(60)
         return await k.delete()
@@ -521,8 +502,6 @@ async def advantage_spell_chok(client, msg):
 
     movielist = list(dict.fromkeys(filter(None, [re.sub(r'(\-|\(|\)|_)', '', i, flags=re.IGNORECASE).strip() for i in gs_parsed])))
     if not movielist:
-        if NO_RESULTS_MSG:
-            await client.send_message(chat_id=LOG_CHANNEL, text=script.NORSLTS.format(reqstr.id, reqstr.mention, mv_rqst))
         k = await msg.reply(script.NO_RESULTS, disable_web_page_preview=True)
         await asyncio.sleep(60)
         return await k.delete()
@@ -534,7 +513,6 @@ async def advantage_spell_chok(client, msg):
     await asyncio.sleep(30)
     await k.delete()
 async def manual_filters(client, message, text=False):
-    settings = await get_settings(message.chat.id)
     group_id = message.chat.id
     name = text or message.text
     reply_id = message.reply_to_message.id if message.reply_to_message else message.id
@@ -548,9 +526,9 @@ async def manual_filters(client, message, text=False):
                 try:
                     button = ast.literal_eval(btn) if btn != "[]" else []
                     if fileid == "None":
-                        joelkb = await client.send_message(group_id, reply_text, disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup(button) if button else None, protect_content=bool(settings.get("file_secure")), reply_to_message_id=reply_id)
+                        joelkb = await client.send_message(group_id, reply_text, disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup(button) if button else None, protect_content=False, reply_to_message_id=reply_id)
                     else:
-                        joelkb = await client.send_cached_media(group_id, fileid, caption=reply_text or "", reply_markup=InlineKeyboardMarkup(button) if button else None, protect_content=bool(settings.get("file_secure")), reply_to_message_id=reply_id)
+                        joelkb = await client.send_cached_media(group_id, fileid, caption=reply_text or "", reply_markup=InlineKeyboardMarkup(button) if button else None, protect_content=False, reply_to_message_id=reply_id)
                     asyncio.create_task(handle_auto_delete(joelkb, settings))
                 except Exception as e:
                     logger.exception(e)
