@@ -1,10 +1,10 @@
 import logging
 from pyrogram.errors import InputUserDeactivated, UserNotParticipant, FloodWait, UserIsBlocked, PeerIdInvalid
-from info import AUTH_CHANNEL, IS_SHORTLINK, SPELL_CHECK_REPLY, TUTORIAL, GRP_LNK, CHNL_LNK, CUSTOM_FILE_CAPTION, SHORT1_URL, SHORT1_API, SHORT2_URL, SHORT2_API, LOG_CHANNEL
+from info import AUTH_CHANNEL, IS_SHORTLINK, SHORT1_URL, SHORT1_API, SHORT2_URL, SHORT2_API, LOG_CHANNEL, SPELL_CHECK_REPLY
 import asyncio
 from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
 from pyrogram.errors import FloodWait, UserIsBlocked, MessageNotModified, PeerIdInvalid
-from pyrogram import enums
+from pyrogram import enums, filters
 from typing import Union
 from Script import script
 import re
@@ -37,15 +37,13 @@ START_CHAR = ('\'', '"', SMART_OPEN)
  
 class temp(object):
     BANNED_USERS = []
-    BANNED_CHATS = []
     ME = None
     CURRENT=int(os.environ.get("SKIP", 2))
     CANCEL = False
     MELCOW = {}
     U_NAME = None
     B_NAME = None
-    GETALL = {}
-    SHORT = {}
+    GROUP_ACCESS = {}
     SETTINGS = {}
 
 async def is_subscribed(bot, query):
@@ -98,7 +96,7 @@ async def broadcast_messages_group(chat_id, message):
     
 async def search_gagala(text):
 
-    query = text.replace(" ", "+")
+    query = urllib.parse.quote_plus(text)
 
     url = f"https://html.duckduckgo.com/html/?q={query}"
 
@@ -111,14 +109,11 @@ async def search_gagala(text):
     timeout = aiohttp.ClientTimeout(total=8)
 
     try:
-        async with aiohttp.ClientSession(
-            timeout=timeout
-        ) as session:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
 
             async with session.get(
                 url,
-                headers=headers,
-                ssl=False
+                headers=headers
             ) as response:
 
                 if response.status != 200:
@@ -157,53 +152,85 @@ async def search_gagala(text):
     except Exception:
         return []
 
-# Only Spell Check and ShortLink are per-group settings.
-# All other bot behaviour is hardcoded in the feature that uses it.
-
-def _setting_bool(value, default):
+def _as_bool(value, default):
     if isinstance(value, bool):
         return value
     if isinstance(value, str):
         value = value.strip().lower()
-        if value in {"true", "yes", "1", "enable", "enabled", "on", "y"}:
+        if value in {"true", "yes", "1", "on", "enable"}:
             return True
-        if value in {"false", "no", "0", "disable", "disabled", "off", "n"}:
+        if value in {"false", "no", "0", "off", "disable"}:
             return False
     return default
 
-async def get_settings(group_id):
-    # Cached per group. MongoDB is read only once per group after bot startup.
-    if group_id in temp.SETTINGS:
-        return temp.SETTINGS[group_id]
 
-    stored = await db.get_settings(group_id)
+async def get_settings(group_id):
+    group_id = int(group_id)
+    settings = temp.SETTINGS.get(group_id)
+    if settings is not None:
+        return settings
+
+    overrides = await db.get_group_settings(group_id)
     settings = {
-        "spell_check": _setting_bool(stored.get("spell_check"), SPELL_CHECK_REPLY),
-        "is_shortlink": _setting_bool(stored.get("is_shortlink"), IS_SHORTLINK),
-        "shortlink": stored.get("shortlink") or SHORT1_URL,
-        "shortlink_api": stored.get("shortlink_api") or SHORT1_API,
-        "second_shortlink": stored.get("second_shortlink") or SHORT2_URL,
-        "second_shortlink_api": stored.get("second_shortlink_api") or SHORT2_API,
+        "spell_check": _as_bool(overrides.get("spell_check"), SPELL_CHECK_REPLY),
+        "is_shortlink": _as_bool(overrides.get("is_shortlink"), IS_SHORTLINK),
     }
     temp.SETTINGS[group_id] = settings
     return settings
 
+
 async def save_group_settings(group_id, key, value):
-    # Only these values may be changed through settings/shortener commands.
-    allowed = {
-        "spell_check", "is_shortlink",
-        "shortlink", "shortlink_api",
-        "second_shortlink", "second_shortlink_api",
-    }
-    if key not in allowed:
+    if key not in {"spell_check", "is_shortlink"}:
         return
-    current = await get_settings(group_id)
-    if key in {"spell_check", "is_shortlink"}:
-        value = _setting_bool(value, False)
-    current[key] = value
-    temp.SETTINGS[group_id] = current
-    await db.update_setting(group_id, key, value)
-    
+
+    group_id = int(group_id)
+    default = SPELL_CHECK_REPLY if key == "spell_check" else IS_SHORTLINK
+
+    if bool(value) == bool(default):
+        await db.remove_group_setting(group_id, key)
+    else:
+        await db.set_group_setting(group_id, key, bool(value))
+
+    settings = temp.SETTINGS.setdefault(
+        group_id,
+        {"spell_check": SPELL_CHECK_REPLY, "is_shortlink": IS_SHORTLINK},
+    )
+    settings[key] = bool(value)
+
+
+async def is_group_connected(chat_id):
+    chat_id = int(chat_id)
+    cached = temp.GROUP_ACCESS.get(chat_id)
+    if cached is not None:
+        return cached
+    connected = await db.is_group_connected(chat_id)
+    temp.GROUP_ACCESS[chat_id] = connected
+    return connected
+
+
+async def set_group_connected(chat_id, connected):
+    chat_id = int(chat_id)
+    if connected:
+        await db.connect_group(chat_id, "")
+    else:
+        await db.disconnect_group(chat_id)
+    temp.GROUP_ACCESS[chat_id] = connected
+
+
+async def connected_group_filter(_, __, update):
+    chat = getattr(update, "chat", None)
+    if chat is None and getattr(update, "message", None):
+        chat = update.message.chat
+    if chat is None:
+        return True
+    if chat.type not in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP):
+        return True
+    return await is_group_connected(chat.id)
+
+
+connected_group = filters.create(connected_group_filter)
+
+
 def get_size(size):
     """Get size in readable format"""
 
@@ -265,17 +292,6 @@ def extract_user(message: Message) -> Union[int, str]:
         user_first_name = message.from_user.first_name
     return (user_id, user_first_name)
 
-def list_to_str(k):
-    if not k:
-        return "N/A"
-    elif len(k) == 1:
-        return str(k[0])
-    elif MAX_LIST_ELM:
-        k = k[:int(MAX_LIST_ELM)]
-        return ' '.join(f'{elem}, ' for elem in k)
-    else:
-        return ' '.join(f'{elem}, ' for elem in k)
-
 def last_online(from_user):
     time = ""
     if from_user.is_bot:
@@ -314,112 +330,6 @@ def split_quotes(text: str) -> List:
         key = text[0] + text[0]
     return list(filter(None, [key, rest]))
 
-def gfilterparser(text, keyword):
-    if "buttonalert" in text:
-        text = (text.replace("\n", "\\n").replace("\t", "\\t"))
-    buttons = []
-    note_data = ""
-    prev = 0
-    i = 0
-    alerts = []
-    for match in BTN_URL_REGEX.finditer(text):
-        n_escapes = 0
-        to_check = match.start(1) - 1
-        while to_check > 0 and text[to_check] == "\\":
-            n_escapes += 1
-            to_check -= 1
-
-        if n_escapes % 2 == 0:
-            note_data += text[prev:match.start(1)]
-            prev = match.end(1)
-            if match.group(3) == "buttonalert":
-                if bool(match.group(5)) and buttons:
-                    buttons[-1].append(InlineKeyboardButton(
-                        text=match.group(2),
-                        callback_data=f"gfilteralert:{i}:{keyword}"
-                    ))
-                else:
-                    buttons.append([InlineKeyboardButton(
-                        text=match.group(2),
-                        callback_data=f"gfilteralert:{i}:{keyword}"
-                    )])
-                i += 1
-                alerts.append(match.group(4))
-            elif bool(match.group(5)) and buttons:
-                buttons[-1].append(InlineKeyboardButton(
-                    text=match.group(2),
-                    url=match.group(4).replace(" ", "")
-                ))
-            else:
-                buttons.append([InlineKeyboardButton(
-                    text=match.group(2),
-                    url=match.group(4).replace(" ", "")
-                )])
-
-        else:
-            note_data += text[prev:to_check]
-            prev = match.start(1) - 1
-    else:
-        note_data += text[prev:]
-
-    try:
-        return note_data, buttons, alerts
-    except:
-        return note_data, buttons, None
-
-def parser(text, keyword):
-    if "buttonalert" in text:
-        text = (text.replace("\n", "\\n").replace("\t", "\\t"))
-    buttons = []
-    note_data = ""
-    prev = 0
-    i = 0
-    alerts = []
-    for match in BTN_URL_REGEX.finditer(text):
-        n_escapes = 0
-        to_check = match.start(1) - 1
-        while to_check > 0 and text[to_check] == "\\":
-            n_escapes += 1
-            to_check -= 1
-
-        if n_escapes % 2 == 0:
-            note_data += text[prev:match.start(1)]
-            prev = match.end(1)
-            if match.group(3) == "buttonalert":
-                if bool(match.group(5)) and buttons:
-                    buttons[-1].append(InlineKeyboardButton(
-                        text=match.group(2),
-                        callback_data=f"alertmessage:{i}:{keyword}"
-                    ))
-                else:
-                    buttons.append([InlineKeyboardButton(
-                        text=match.group(2),
-                        callback_data=f"alertmessage:{i}:{keyword}"
-                    )])
-                i += 1
-                alerts.append(match.group(4))
-            elif bool(match.group(5)) and buttons:
-                buttons[-1].append(InlineKeyboardButton(
-                    text=match.group(2),
-                    url=match.group(4).replace(" ", "")
-                ))
-            else:
-                buttons.append([InlineKeyboardButton(
-                    text=match.group(2),
-                    url=match.group(4).replace(" ", "")
-                )])
-
-        else:
-            note_data += text[prev:to_check]
-            prev = match.start(1) - 1
-    else:
-        note_data += text[prev:]
-
-    try:
-        return note_data, buttons, alerts
-    except:
-        return note_data, buttons, None
-
 def remove_escapes(text: str) -> str:
     res = ""
     is_escaped = False
@@ -445,155 +355,40 @@ def humanbytes(size):
     return str(round(size, 2)) + " " + Dic_powerN[n] + 'B'
 
 async def get_shortlink(chat_id, link, client=None):
-    settings = await get_settings(chat_id) 
-    
-    # 1. Load Primary Shortener (Short1)
-    if 'shortlink' in settings and settings['shortlink']:
-        p_url = settings['shortlink']
-        p_api = settings['shortlink_api']
-    else:
-        p_url = SHORT1_URL
-        p_api = SHORT1_API
-        
-    # 2. Load Secondary Shortener (Short2)
-    if 'second_shortlink' in settings and settings['second_shortlink']:
-        s_url = settings['second_shortlink']
-        s_api = settings['second_shortlink_api']
-    else:
-        s_url = SHORT2_URL
-        s_api = SHORT2_API
-
-    # Strict timeout to prevent hanging
     timeout = aiohttp.ClientTimeout(total=6)
 
-    async def _request_shorten(base_site, api_key, target_link):
+    async def _request_shorten(base_site, api_key):
         if base_site == "api.shareus.io":
-            url = f'https://{base_site}/api'
-            params = {"key": api_key, "link": target_link}
+            url = f"https://{base_site}/api"
+            params = {"key": api_key, "link": link}
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(url, params=params, raise_for_status=True, ssl=False) as response:
+                async with session.get(url, params=params) as response:
+                    response.raise_for_status()
                     return await response.text()
-        else:
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                shortzy = Shortzy(api_key=api_key, base_site=base_site, session=session)
-                return await shortzy.convert(target_link)
 
-    async def notify_admin(error_msg, shortener_name):
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            shortzy = Shortzy(api_key=api_key, base_site=base_site, session=session)
+            return await shortzy.convert(link)
+
+    try:
+        return await _request_shorten(SHORT1_URL, SHORT1_API)
+    except Exception as first_error:
+        logger.warning("Primary shortener failed: %s", first_error)
+
+    try:
+        return await _request_shorten(SHORT2_URL, SHORT2_API)
+    except Exception as second_error:
+        logger.error("Secondary shortener failed: %s", second_error)
         if client and LOG_CHANNEL:
             try:
                 await client.send_message(
-                    LOG_CHANNEL, 
-                    f"⚠️ **Shortener Warning**\n"
-                    f"Provider: `{shortener_name}`\n"
-                    f"Error: `{error_msg}`\n"
-                    f"Chat ID: `{chat_id}`"
+                    LOG_CHANNEL,
+                    f"⚠️ Shortener failure\nChat: `{chat_id}`\nError: `{second_error}`",
                 )
-            except Exception as e:
-                logger.error(f"Failed to send admin notification: {e}")
+            except Exception:
+                pass
+        raise RuntimeError("All shorteners are down.") from second_error
 
-    # --- ATTEMPT 1: SHORT1 (Tried ONCE) ---
-    try:
-        return await _request_shorten(p_url, p_api, link)
-    except Exception as e1:
-        logger.warning(f"SHORT1 failed: {e1}")
-        await notify_admin(str(e1), p_url)
-
-        # --- ATTEMPT 2: Immediate Fallback to SHORT2 ---
-        try:
-            return await _request_shorten(s_url, s_api, link)
-        except Exception as e2:
-            logger.error(f"SHORT2 fallback also failed: {e2}")
-            await notify_admin(str(e2), s_url)
-
-            # All attempts failed, raise exception to trigger user notice
-            raise Exception("All shorteners are down.")
-    
-async def get_tutorial(chat_id):
-    return TUTORIAL
-    
-async def send_all(bot, userid, files, ident, chat_id, user_name, query):
-    settings = await get_settings(chat_id)
-    ENABLE_SHORTLINK = settings.get('is_shortlink', IS_SHORTLINK)
-    try:
-        if ENABLE_SHORTLINK:
-            for file in files:
-                title = file.file_name
-                size = get_size(file.file_size)
-                await bot.send_message(chat_id=userid, text=f"<b>Hᴇʏ ᴛʜᴇʀᴇ {user_name} 👋🏽 \n\n✅ Sᴇᴄᴜʀᴇ ʟɪɴᴋ ᴛᴏ ʏᴏᴜʀ ғɪʟᴇ ʜᴀs sᴜᴄᴄᴇssғᴜʟʟʏ ʙᴇᴇɴ ɢᴇɴᴇʀᴀᴛᴇᴅ ᴘʟᴇᴀsᴇ ᴄʟɪᴄᴋ ᴅᴏᴡɴʟᴏᴀᴅ ʙᴜᴛᴛᴏɴ\n\n🗃️ Fɪʟᴇ Nᴀᴍᴇ : {title}\n🔖 Fɪʟᴇ Sɪᴢᴇ : {size}</b>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📤 Dᴏᴡɴʟᴏᴀᴅ 📥", url=await get_shortlink(chat_id, f"https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}"))]]))
-        else:
-            for file in files:
-                    f_caption = file.caption
-                    title = file.file_name
-                    size = get_size(file.file_size)
-                    if CUSTOM_FILE_CAPTION:
-                        try:
-                            f_caption = CUSTOM_FILE_CAPTION.format(file_name='' if title is None else title,
-                                                                    file_size='' if size is None else size,
-                                                                    file_caption='' if f_caption is None else f_caption)
-                        except Exception as e:
-                            print(e)
-                            f_caption = f_caption
-                    if f_caption is None:
-                        f_caption = f"{title}"
-                    await bot.send_cached_media(
-                        chat_id=userid,
-                        file_id=file.file_id,
-                        caption=f_caption,
-                        protect_content=True if ident == "filep" else False,
-                        reply_markup=InlineKeyboardMarkup(
-                            [
-                                [
-                                InlineKeyboardButton('Sᴜᴘᴘᴏʀᴛ Gʀᴏᴜᴘ', url=GRP_LNK),
-                                InlineKeyboardButton('Uᴘᴅᴀᴛᴇs Cʜᴀɴɴᴇʟ', url=CHNL_LNK)
-                            ],[
-                                InlineKeyboardButton("Bᴏᴛ Oᴡɴᴇʀ", url="t.me/heroflix")
-                                ]
-                            ]
-                        )
-                    )
-    except UserIsBlocked:
-        await query.answer('Uɴʙʟᴏᴄᴋ ᴛʜᴇ ʙᴏᴛ ᴍᴀʜɴ !', show_alert=True)
-    except PeerIdInvalid:
-        await query.answer('Hᴇʏ, Sᴛᴀʀᴛ Bᴏᴛ Fɪʀsᴛ Aɴᴅ Cʟɪᴄᴋ Sᴇɴᴅ Aʟʟ', show_alert=True)
-    except Exception as e:
-        await query.answer('Hᴇʏ, Sᴛᴀʀᴛ Bᴏᴛ Fɪʀsᴛ Aɴᴅ Cʟɪᴄᴋ Sᴇɴᴅ Aʟʟ', show_alert=True)
-    '''if IS_SHORTLINK == True:
-        for file in files:
-            title = file.file_name
-            size = get_size(file.file_size)
-            await bot.send_message(chat_id=userid, text=f"<b>Hᴇʏ ᴛʜᴇʀᴇ {user_name} 👋🏽 \n\n✅ Sᴇᴄᴜʀᴇ ʟɪɴᴋ ᴛᴏ ʏᴏᴜʀ ғɪʟᴇ ʜᴀs sᴜᴄᴄᴇssғᴜʟʟʏ ʙᴇᴇɴ ɢᴇɴᴇʀᴀᴛᴇᴅ ᴘʟᴇᴀsᴇ ᴄʟɪᴄᴋ ᴅᴏᴡɴʟᴏᴀᴅ ʙᴜᴛᴛᴏɴ\n\n🗃️ Fɪʟᴇ Nᴀᴍᴇ : {title}\n🔖 Fɪʟᴇ Sɪᴢᴇ : {size}</b>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📤 Dᴏᴡɴʟᴏᴀᴅ 📥", url=await get_shortlink(chat_id, f"https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}"))]])
-    )
-    else:
-        for file in files:
-            f_caption = file.caption
-            title = file.file_name
-            size = get_size(file.file_size)
-            if CUSTOM_FILE_CAPTION:
-                try:
-                    f_caption = CUSTOM_FILE_CAPTION.format(file_name='' if title is None else title,
-                                                            file_size='' if size is None else size,
-                                                            file_caption='' if f_caption is None else f_caption)
-                except Exception as e:
-                    print(e)
-                    f_caption = f_caption
-            if f_caption is None:
-                f_caption = f"{title}"
-            await bot.send_cached_media(
-                chat_id=userid,
-                file_id=file.file_id,
-                caption=f_caption,
-                protect_content=True if ident == "filep" else False,
-                reply_markup=InlineKeyboardMarkup(
-                    [
-                        [
-                        InlineKeyboardButton('Sᴜᴘᴘᴏʀᴛ Gʀᴏᴜᴘ', url=GRP_LNK),
-                        InlineKeyboardButton('Uᴘᴅᴀᴛᴇs Cʜᴀɴɴᴇʟ', url=CHNL_LNK)
-                    ],[
-                        InlineKeyboardButton("Bᴏᴛ Oᴡɴᴇʀ", url="t.me/heroflix")
-                        ]
-                    ]
-                )
-            )'''
 
 async def extract_v2(text):
     text = text.lower()
