@@ -1,56 +1,46 @@
-import asyncio
-import logging
-import math
-import re
+import asyncio, re, math, logging
 import time as _time
-from html import escape
-
-from pyrogram import Client, filters
+from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-from pyrogram.errors import MessageNotModified
-
+from pyrogram.errors import FloodWait, UserIsBlocked, MessageNotModified, PeerIdInvalid
+from html import escape
 from Script import script
 from info import *
-from utils import get_size, is_subscribed, search_gagala, temp, get_settings, get_shortlink
-from database.ia_filterdb import Media, get_file_details, get_search_results, get_bad_files
+from utils import get_size, is_subscribed, search_gagala, temp, get_settings
 from database.users_chats_db import db
+from database.ia_filterdb import Media, get_file_details, get_search_results, get_bad_files
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.ERROR)
 
+lock = asyncio.Lock()
 
-def tutorial_url():
-    if not TUTORIAL:
-        return None
-    return TUTORIAL if str(TUTORIAL).startswith("http") else f"https://telegram.me/{TUTORIAL}"
+FRESH = {}
+SPELL_CHECK = {}
+PAGINATION = {}
 
 GLOBAL_SEM = asyncio.Semaphore(12)
 USER_COOLDOWN = {}
-FRESH = {}
-SPELL_CHECK = {}
+
+
+def tutorial_url():
+    return TUTORIAL if TUTORIAL.startswith('http') else f'https://telegram.me/{TUTORIAL}'
 
 REMOVES = [
-    "in", "series", "4k", "kdrama", "ott", "movies", "webseries", "language", "hd",
-    "hollywood", "and", "&", "bollywood", "dub", "anime", "dubbed", "file", "download",
-    "movie", "film", "netflix", "link", "subtitles", "full movie", "korean drama",
-    "web series", "tv series", "television series", "tv show", "with subtitles"
+    "in", "series", "4k", "kdrama", "ott", 
+    "movies", "webseries", "language", "hd", "hollywood", 
+    "and", "&", "bollywood", "dub", "anime",
+    "dubbed", "file", "download", "movie", "film",
+    "netflix", "link", "subtitles",
+    "full movie", "korean drama", "web series",
+    "tv series", "television series", "tv show", "with subtitles"
 ]
-
 
 def remove_words(text):
     text = " ".join(text.split())
-    for word in sorted(REMOVES, key=len, reverse=True):
-        text = re.sub(rf"\b{re.escape(word)}\b", " ", text, flags=re.I)
+    for x in sorted(REMOVES, key=len, reverse=True):
+        text = re.sub(rf"\b{re.escape(x)}\b", " ", text, flags=re.I)
     return " ".join(text.split())
-
-
-async def group_is_connected(chat_id):
-    try:
-        status = await db.get_chat(chat_id)
-    except Exception:
-        return False
-    return bool(status and isinstance(status, dict) and status.get("connected", False))
-
 
 def is_spam(uid, cooldown=2):
     now = _time.monotonic()
@@ -58,82 +48,44 @@ def is_spam(uid, cooldown=2):
     if now - last < cooldown:
         return True
     USER_COOLDOWN[uid] = now
-    if len(USER_COOLDOWN) > 10000:
-        cutoff = now - 60
-        USER_COOLDOWN.clear()
     return False
 
-
-async def _delete_later(message, seconds=900):
-    await asyncio.sleep(seconds)
+async def handle_auto_delete(message_obj):
     try:
-        await message.delete()
+        await asyncio.sleep(600)
+        await message_obj.delete()
     except Exception:
         pass
 
 
-async def _send_shortlink_message(client, user_id, file_id, chat_id):
-    files = await get_file_details(file_id)
-    if not files:
-        return None
-    file = files[0]
-    title = " ".join(x for x in (file.file_name or "").split() if not x.startswith(("www.", "@")))
-    try:
-        short_url = await get_shortlink(
-            chat_id,
-            f"https://telegram.me/{temp.U_NAME}?start=file_{file_id}",
-            client=client,
-        )
-    except Exception:
-        return False
-
-    msg = await client.send_message(
-        chat_id=user_id,
-        text=f"<b>[ {get_size(file.file_size)} ] {escape(title)}\n\n📗 Download Link ➔ {short_url}</b>",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("♻️ Download Link ♻️", url=short_url)],
-            [InlineKeyboardButton("❓ How To Download ❓", url=tutorial_url())],
-        ]),
-    )
-    asyncio.create_task(_delete_later(msg))
-    return True
-
-
-@Client.on_message(filters.group & filters.text & filters.incoming)
+@Client.on_message(filters.group & filters.text & filters.incoming & connected_group)
 async def give_filter(client, message):
-    if message.text.startswith("/"):
-        return
-    if not await group_is_connected(message.chat.id):
-        return
     await auto_filter(client, message)
 
 
 @Client.on_message(filters.private & filters.text & filters.incoming)
 async def pm_text(bot, message):
     content = message.text
-    if content.startswith(("/", "#", "file", "short")) or (message.from_user and message.from_user.id in ADMINS):
+    if content.startswith("/") or content.startswith("#") or content.startswith("file") or content.startswith("short") or message.from_user.id in ADMINS:
         return
     await message.reply_text(
         text="<b>🌀 Unlimited Movies, Series, Anime\n🔆 New Releases Upload Same Day\n♻️ 24x7 Service 📆 Daily Updates</b>",
-        reply_markup=InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("🌟 Paid (No Ads)", url="https://telegram.me/HeroFlixx/49"),
-                InlineKeyboardButton("🍿 Free (With Ads)", url="https://telegram.me/addlist/X5k2lnJLIGAyZjQ1"),
-            ]
-        ]),
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌟 Paid (No Ads)", url="https://telegram.me/HeroFlixx/49"), InlineKeyboardButton("🍿 Free (With Ads)", url="https://telegram.me/addlist/X5k2lnJLIGAyZjQ1")]])
     )
-
 
 @Client.on_callback_query(filters.regex(r"^next"))
 async def next_page(bot, query):
+    if not query.message or query.message.chat.type not in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP):
+        return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+    if not await db.is_group_connected(query.message.chat.id):
+        return await query.answer("This group is not connected.", show_alert=True)
     if is_spam(query.from_user.id):
         return
 
     async with GLOBAL_SEM:
         try:
             _, req, key, offset = query.data.split("_")
-            req = int(req)
-            offset = int(offset)
+            req, offset = int(req), int(offset)
         except Exception:
             return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
 
@@ -144,55 +96,62 @@ async def next_page(bot, query):
         if not search:
             return await query.answer(script.OLD_ALRT_TXT.format(query.from_user.first_name), show_alert=True)
 
-        files, n_offset, total = await get_search_results(query.message.chat.id, search, offset=offset, filter=True)
+        files, next_offset, total = await get_search_results(
+            query.message.chat.id, search, offset=offset
+        )
         if not files:
             return await query.answer(script.OLD_ALRT_TXT.format(query.from_user.first_name), show_alert=True)
 
-        try:
-            n_offset = int(n_offset)
-        except Exception:
-            n_offset = 0
-
-        temp.GETALL[key] = files
-        temp.SHORT[query.from_user.id] = query.message.chat.id
 
         max_limit = 10
-        btn = []
         try:
-            curr_page = math.ceil(int(offset) / max_limit) + 1
-            total_pages = math.ceil(total / max_limit)
-            previous = None if offset == 0 else max(0, offset - max_limit)
-            if n_offset == 0:
-                btn.append([
-                    InlineKeyboardButton("⏪ BACK", callback_data=f"next_{req}_{key}_{previous}"),
-                    InlineKeyboardButton(f"{curr_page} / {total_pages}", callback_data="pages"),
-                ])
-            elif previous is None:
-                btn.append([
-                    InlineKeyboardButton("🔅 Page", callback_data="pages"),
-                    InlineKeyboardButton(f"{curr_page} / {total_pages}", callback_data="pages"),
-                    InlineKeyboardButton(" NEXT ⏩", callback_data=f"next_{req}_{key}_{n_offset}"),
-                ])
-            else:
-                btn.append([
-                    InlineKeyboardButton("⏪ BACK", callback_data=f"next_{req}_{key}_{previous}"),
-                    InlineKeyboardButton(f"{curr_page} / {total_pages}", callback_data="pages"),
-                    InlineKeyboardButton(" NEXT ⏩", callback_data=f"next_{req}_{key}_{n_offset}"),
-                ])
-        except Exception:
-            pass
+            next_value = int(next_offset) if next_offset != "" else 0
+        except (TypeError, ValueError):
+            next_value = 0
 
-        tut = tutorial_url()
-        if tut:
-            btn.append([InlineKeyboardButton("❓ How To Download ❓", url=tut)])
+        current_page = (offset // max_limit) + 1
+        total_pages = max(1, math.ceil(total / max_limit))
+        back_offset = max(0, offset - max_limit)
 
-        cap = f"<b>🔆 Results For ➔ ‛{escape(search)}’👇\n\n🎬 Select Your Pick ↡\n\n</b>"
+        buttons = []
+        if next_value:
+            buttons.append([
+                InlineKeyboardButton("⏪ BACK", callback_data=f"next_{req}_{key}_{back_offset}") if offset else InlineKeyboardButton("🔅 Page", callback_data="pages"),
+                InlineKeyboardButton(f"{current_page} / {total_pages}", callback_data="pages"),
+                InlineKeyboardButton("NEXT ⏩", callback_data=f"next_{req}_{key}_{next_value}"),
+            ])
+        elif offset:
+            buttons.append([
+                InlineKeyboardButton("⏪ BACK", callback_data=f"next_{req}_{key}_{back_offset}"),
+                InlineKeyboardButton(f"{current_page} / {total_pages}", callback_data="pages"),
+            ])
+        else:
+            buttons.append([
+                InlineKeyboardButton("✦ ────「 The End 」──── ✦", callback_data="pages")
+            ])
+
+        if TUTORIAL:
+            buttons.append([
+                InlineKeyboardButton("🌟 How To Download ❓", url=tutorial_url())
+            ])
+
+        cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n<i>🗨 Choose Link - Press Start ↷</i>\n\n</b>"
         for file in files:
-            title = " ".join(x for x in (file.file_name or "").split() if not x.startswith(("@", "www.")))
-            cap += f"<b>🍿 <a href='https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}'>[{get_size(file.file_size)}] {escape(title)}</a></b>\n\n"
+            title = " ".join(
+                x for x in (file.file_name or "").split()
+                if not x.startswith(("@", "www."))
+            )
+            cap += (
+                f"<b>🍿 <a href='https://telegram.me/{temp.U_NAME}?start=files_{message.chat.id}_{file.file_id}'>"
+                f"[{get_size(file.file_size)}] {escape(title)}</a></b>\n\n"
+            )
 
         try:
-            await query.message.edit_text(cap, reply_markup=InlineKeyboardMarkup(btn), disable_web_page_preview=True)
+            await query.message.edit_text(
+                cap,
+                reply_markup=InlineKeyboardMarkup(buttons),
+                disable_web_page_preview=True,
+            )
             await query.answer()
         except MessageNotModified:
             await query.answer()
@@ -202,14 +161,20 @@ async def next_page(bot, query):
 
 @Client.on_callback_query(filters.regex(r"^spolling"))
 async def advantage_spoll_choker(bot, query):
-    if is_spam(query.from_user.id) or not query.from_user or not query.message:
+    if not query.from_user or not query.message:
         return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+    if query.message.chat.type not in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP):
+        return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+    if not await db.is_group_connected(query.message.chat.id):
+        return await query.answer("This group is not connected.", show_alert=True)
+    if is_spam(query.from_user.id):
+        return
 
     async with GLOBAL_SEM:
         try:
             _, user, movie_ = query.data.split('#')
             user = int(user)
-        except Exception:
+        except:
             return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
 
         if user != 0 and query.from_user.id != user:
@@ -223,34 +188,37 @@ async def advantage_spoll_choker(bot, query):
         if not movies:
             await query.answer(script.OLD_ALRT_TXT.format(query.from_user.first_name), show_alert=True)
             try:
-                await query.message.edit_text("❗Link Expired, Request Again ♻", disable_web_page_preview=True)
-            except Exception:
+                await query.message.edit_text(text="❗Link Expired, Request Again ♻", disable_web_page_preview=True)
+            except:
                 pass
             return
 
         try:
             movie = movies[int(movie_)]
-        except Exception:
+        except:
             return await query.answer("❗Invalid Option", show_alert=True)
 
-        await query.answer("Checking, Please Wait ♻️\n\n[ Don't Spam – Just Wait! ]", show_alert=True)
-        files, offset, total_results = await get_search_results(query.message.chat.id, movie, offset=0, filter=True)
+        try:
+            await query.answer("Checking, Please Wait ♻️\n\n[ Don't Spam – Just Wait! ]", show_alert=True)
+        except:
+            pass
+
+        files, offset, total_results = await get_search_results(
+            query.message.chat.id, movie, offset=0
+        )
         if files:
             await auto_filter(bot, query, (movie, files, offset, total_results))
         else:
             try:
-                msg = await query.message.edit_text(script.NO_RESULTS, disable_web_page_preview=True)
+                msg = await query.message.edit_text(text=script.NO_RESULTS, disable_web_page_preview=True)
                 await asyncio.sleep(60)
                 await msg.delete()
             except Exception:
                 pass
 
-
 @Client.on_callback_query()
 async def cb_handler(client: Client, query: CallbackQuery):
-    if not query.data:
-        return
-    if query.data.startswith(("premium_", "buy_plan_", "prem_")):
+    if query.data and query.data.startswith(("premium_", "buy_plan_", "prem_")):
         return
 
     if query.data == "close_data":
@@ -258,170 +226,162 @@ async def cb_handler(client: Client, query: CallbackQuery):
             await query.message.delete()
         except Exception:
             pass
-        return await query.answer("Closed !")
+        return await query.answer("Closed!")
 
     if query.data == "pages":
         return await query.answer("You are on the page navigation.", show_alert=True)
 
-    if query.data.startswith("file#"):
-        file_id = query.data.split("#", 1)[1]
-        if not await _send_indexed_file(client, query.from_user.id, file_id):
-            return await query.answer("No such file exist.", show_alert=True)
-        return await query.answer("File sent to PM successfully!", show_alert=True)
-
     if query.data.startswith("killfilesdq"):
-        if str(query.from_user.id) not in ADMINS:
-            return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+        user_id = query.from_user.id
+        if query.message.chat.type in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP):
+            member = await client.get_chat_member(query.message.chat.id, user_id)
+            if member.status not in (
+                enums.ChatMemberStatus.ADMINISTRATOR,
+                enums.ChatMemberStatus.OWNER,
+            ) and str(user_id) not in ADMINS:
+                return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+
         try:
             _, keyword = query.data.split("#", 1)
-        except Exception:
+        except ValueError:
             return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
-        files, total = await get_bad_files(keyword)
-        await query.message.edit_text("<b>File deletion process will start in 5 seconds !</b>")
+
+        files, _ = await get_bad_files(keyword)
+        await query.message.edit_text("<b>File deletion process will start in 5 seconds!</b>")
         await asyncio.sleep(5)
+
         deleted = 0
-        for file in files:
-            try:
-                result = await Media.collection.delete_one({'_id': file.file_id})
-                deleted += result.deleted_count
-            except Exception:
-                logger.exception("Failed deleting %s", file.file_id)
+        async with lock:
+            for file in files:
+                result = await Media.collection.delete_one({"_id": file.file_id})
+                if result.deleted_count:
+                    deleted += 1
+
         await query.message.edit_text(
-            f"<b>Process Completed!\n\nSuccessfully deleted {deleted} files for {escape(keyword)}.</b>"
+            f"<b>Process completed! Successfully deleted {deleted} files for: {escape(keyword)}</b>"
         )
-        return await query.answer("Deletion process completed!", show_alert=True)
-
-
-async def _send_indexed_file(client, user_id, file_id):
-    files = await get_file_details(file_id)
-    if not files:
-        return False
-    file = files[0]
-    caption = file.file_name or ""
-    if CUSTOM_FILE_CAPTION:
-        try:
-            caption = CUSTOM_FILE_CAPTION.format(
-                file_name=file.file_name or "",
-                file_size=get_size(file.file_size),
-                file_caption="",
-            )
-        except Exception:
-            caption = file.file_name or ""
-
-    await client.send_cached_media(
-        chat_id=user_id,
-        file_id=file_id,
-        caption=caption,
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}')]
-        ]),
-    )
-    return True
+        return await query.answer("Deletion completed.", show_alert=True)
 
 
 async def auto_filter(client, msg, spoll=False):
     if not spoll:
         message = msg
-        if message.text.startswith("/") or re.findall(r"((^/|^,|^!|^\.|^[\U0001F900-\U000E007F]).*)", message.text) or len(message.text) >= 100:
+        if (
+            message.text.startswith("/")
+            or re.findall(r"((^/|^,|^!|^\.|^[\U0001F900-\U000E007F]).*)", message.text)
+            or len(message.text) >= 100
+        ):
             return
+
         search = remove_words(message.text.lower())
-        search = re.sub(r"\b(complete|combined|all\s*episodes?|full\s*episodes?)\b", "com", search, flags=re.IGNORECASE)
+        search = re.sub(
+            r"\b(complete|combined|all\s*episodes?|full\s*episodes?)\b",
+            "com",
+            search,
+            flags=re.IGNORECASE,
+        )
         search = re.sub(r"[-:–]+", " ", search)
         search = re.sub(r"\s+", " ", search).strip()
-        search = re.sub(r"(?:session|season)\s?(\d+)", lambda x: f"s{x.group(1).zfill(2)}", search, flags=re.IGNORECASE)
-        search = re.sub(r"so(\d+)", lambda x: f"s{x.group(1).zfill(2)}", search, flags=re.IGNORECASE)
-        for lang, code in [("english", "eng"), ("hindi", "hin"), ("tamil", "tam"), ("telugu", "tel"), ("kannada", "kan"), ("malayalam", "mal")]:
+        search = re.sub(
+            r"(?:(?:session|season)\s?)(\d+)",
+            lambda x: f"s{x.group(1).zfill(2)}",
+            search,
+            flags=re.IGNORECASE,
+        )
+        search = re.sub(
+            r"so(\d+)",
+            lambda x: f"s{x.group(1).zfill(2)}",
+            search,
+            flags=re.IGNORECASE,
+        )
+        for lang, code in [
+            ("english", "eng"), ("hindi", "hin"), ("tamil", "tam"),
+            ("telugu", "tel"), ("kannada", "kan"), ("malayalam", "mal"),
+        ]:
             search = search.replace(lang, code)
-        files, offset, total_results = await get_search_results(message.chat.id, search, offset=0, filter=True)
-        settings = await get_settings(message.chat.id)
+
+        files, offset, total_results = await get_search_results(
+            message.chat.id, search, offset=0
+        )
         if not files:
-            if settings.get("spell_check", SPELL_CHECK_REPLY):
+            settings = await get_settings(message.chat.id)
+            if settings["spell_check"]:
                 return await advantage_spell_chok(client, msg)
             return
     else:
         message = msg.message.reply_to_message
         search, files, offset, total_results = spoll
-        settings = await get_settings(message.chat.id)
-        try:
-            await msg.message.delete()
-        except Exception:
-            pass
+        await msg.message.delete()
 
     key = f"{message.chat.id}-{message.id}"
     FRESH[key] = search
-    temp.GETALL[key] = files
-    if not hasattr(temp, "SHORT"):
-        temp.SHORT = {}
-    temp.SHORT[message.from_user.id] = message.chat.id
 
-    btn = []
+    buttons = []
     if offset != "":
+        max_limit = 10
         req = message.from_user.id if message.from_user else 0
-        try:
-            total_pages = math.ceil(int(total_results) / 10)
-            btn.append([
-                InlineKeyboardButton("🔅 Page", callback_data="pages"),
-                InlineKeyboardButton(text=f"1/{total_pages}", callback_data="pages"),
-                InlineKeyboardButton(text=" NEXT ⏩", callback_data=f"next_{req}_{key}_{offset}"),
-            ])
-        except Exception:
-            pass
+        total_pages = max(1, math.ceil(int(total_results) / max_limit))
+        buttons.append([
+            InlineKeyboardButton("🔅 Page", callback_data="pages"),
+            InlineKeyboardButton(f"1 / {total_pages}", callback_data="pages"),
+            InlineKeyboardButton("NEXT ⏩", callback_data=f"next_{req}_{key}_{offset}"),
+        ])
     else:
-        btn.append([InlineKeyboardButton("✦ ────「 The End 」──── ✦", callback_data="pages")])
+        buttons.append([
+            InlineKeyboardButton("✦ ────「 The End 」──── ✦", callback_data="pages")
+        ])
 
-    tut = tutorial_url()
-    if tut:
-        btn.append([InlineKeyboardButton("❓ How To Download ❓", url=tut)])
+    if TUTORIAL:
+        buttons.append([
+            InlineKeyboardButton("🌟 How To Download ❓", url=tutorial_url())
+        ])
 
-    cap = f"<b>🔆 Results For ➔ ‛{escape(search)}’👇\n\n🎬 Select Your Pick ↡\n\n</b>"
+    cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n<i>🗨 Choose Link - Press Start ↷</i>\n\n</b>"
     for file in files:
-        title = " ".join(x for x in (file.file_name or "").split() if not x.startswith(("@", "www.")))
-        cap += f"<b>🍿 <a href='https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}'>[{get_size(file.file_size)}] {escape(title)}</a></b>\n\n"
+        title = " ".join(
+            x for x in (file.file_name or "").split()
+            if not x.startswith(("@", "www."))
+        )
+        cap += (
+            f"<b>🍿 <a href='https://telegram.me/{temp.U_NAME}?start=files_{message.chat.id}_{file.file_id}'>"
+            f"[{get_size(file.file_size)}] {escape(title)}</a></b>\n\n"
+        )
 
-    sent = await message.reply_text(cap, reply_markup=InlineKeyboardMarkup(btn), disable_web_page_preview=True)
-    asyncio.create_task(_delete_later(sent))
-    asyncio.create_task(_delete_later(message))
+    result = await message.reply_text(
+        cap,
+        reply_markup=InlineKeyboardMarkup(buttons),
+        disable_web_page_preview=True,
+    )
+    asyncio.create_task(handle_auto_delete(result))
+    asyncio.create_task(handle_auto_delete(message))
 
 
 async def advantage_spell_chok(client, msg):
     mv_rqst = msg.text
     reqstr1 = msg.from_user.id if msg.from_user else None
-    if not reqstr1:
-        return
-    try:
-        reqstr = await client.get_users(reqstr1)
-    except Exception:
-        return await msg.reply("❌ Unable to fetch user.")
+    if not reqstr1: return
+    try: reqstr = await client.get_users(reqstr1)
+    except: return await msg.reply("❌ Unable to fetch user.")
 
     query = re.sub(r"\s+", " ", remove_words(mv_rqst)).strip() + "movie"
-    # Keep the existing DuckDuckGo spell-check implementation unchanged.
     g_s = await search_gagala(query) + await search_gagala(msg.text)
 
     if not g_s:
-        if NO_RESULTS_MSG:
-            await client.send_message(chat_id=LOG_CHANNEL, text=script.NORSLTS.format(reqstr.id, reqstr.mention, mv_rqst))
         k = await msg.reply(script.NO_RESULTS, disable_web_page_preview=True)
         await asyncio.sleep(60)
         return await k.delete()
 
     gs = list(filter(re.compile(r".*(imdb|wikipedia).*", re.IGNORECASE).search, g_s))
-    gs_parsed = list(dict.fromkeys(filter(None, [
-        re.sub(r'\b(imdb|wikipedia|reviews|full|all|episode(s)?|film|movie|tv\s*series|television\s*series|web\s*series|tv\s*show|show|series)\b|[\(\)\-]', ' ', i, flags=re.IGNORECASE).strip()
-        for i in gs
-    ])))
+    gs_parsed = list(dict.fromkeys(filter(None, [re.sub(r'\b(imdb|wikipedia|reviews|full|all|episode(s)?|film|movie|tv\s*series|television\s*series|web\s*series|tv\s*show|show|series)\b|[\(\)\-]', ' ', i, flags=re.IGNORECASE).strip() for i in gs])))
 
     if not gs_parsed:
         for mv in g_s:
             match = re.compile(r"watch\s+([a-zA-Z0-9_\s\-\(\)]+)", re.IGNORECASE).search(mv)
-            if match:
-                gs_parsed.append(match.group(1).strip())
-
+            if match: gs_parsed.append(match.group(1).strip())
     gs_parsed = list(dict.fromkeys(filter(None, gs_parsed)))[:3]
-    movielist = list(dict.fromkeys(filter(None, [re.sub(r'(\-|\(|\)|_)', '', i, flags=re.IGNORECASE).strip() for i in gs_parsed])))
 
+    movielist = list(dict.fromkeys(filter(None, [re.sub(r'(\-|\(|\)|_)', '', i, flags=re.IGNORECASE).strip() for i in gs_parsed])))
     if not movielist:
-        if NO_RESULTS_MSG:
-            await client.send_message(chat_id=LOG_CHANNEL, text=script.NORSLTS.format(reqstr.id, reqstr.mention, mv_rqst))
         k = await msg.reply(script.NO_RESULTS, disable_web_page_preview=True)
         await asyncio.sleep(60)
         return await k.delete()
@@ -431,7 +391,4 @@ async def advantage_spell_chok(client, msg):
     btn.append([InlineKeyboardButton("×××× ⟨ Close ⟩ ××××", callback_data="close_data")])
     k = await msg.reply("<b>🎬 Select Your Pick ↡</b>", reply_markup=InlineKeyboardMarkup(btn))
     await asyncio.sleep(30)
-    try:
-        await k.delete()
-    except Exception:
-        pass
+    await k.delete()
