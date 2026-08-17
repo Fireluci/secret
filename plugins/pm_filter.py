@@ -5,13 +5,13 @@ import re
 import time as _time
 from html import escape
 
-from pyrogram import Client, filters, enums
+from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from pyrogram.errors import MessageNotModified
 
 from Script import script
 from info import *
-from utils import get_size, is_subscribed, search_gagala, temp, get_settings, get_shortlink, connected_group
+from utils import get_size, is_subscribed, search_gagala, temp, get_settings, get_shortlink
 from database.ia_filterdb import Media, get_file_details, get_search_results, get_bad_files
 from database.users_chats_db import db
 
@@ -44,13 +44,13 @@ def remove_words(text):
     return " ".join(text.split())
 
 
-
-
-async def connected_group_check(chat_id):
+async def group_is_connected(chat_id):
     try:
-        return await db.is_group_connected(int(chat_id))
+        status = await db.get_chat(chat_id)
     except Exception:
         return False
+    return bool(status and isinstance(status, dict) and status.get("connected", False))
+
 
 def is_spam(uid, cooldown=2):
     now = _time.monotonic()
@@ -60,13 +60,7 @@ def is_spam(uid, cooldown=2):
     USER_COOLDOWN[uid] = now
     if len(USER_COOLDOWN) > 10000:
         cutoff = now - 60
-        stale = [user_id for user_id, timestamp in USER_COOLDOWN.items() if timestamp < cutoff]
-        for user_id in stale:
-            USER_COOLDOWN.pop(user_id, None)
-        if len(USER_COOLDOWN) > 10000:
-            oldest = sorted(USER_COOLDOWN.items(), key=lambda item: item[1])[:1000]
-            for user_id, _ in oldest:
-                USER_COOLDOWN.pop(user_id, None)
+        USER_COOLDOWN.clear()
     return False
 
 
@@ -105,17 +99,33 @@ async def _send_shortlink_message(client, user_id, file_id, chat_id):
     return True
 
 
-@Client.on_message(filters.group & filters.text & filters.incoming & connected_group)
+@Client.on_message(filters.group & filters.text & filters.incoming)
 async def give_filter(client, message):
     if message.text.startswith("/"):
+        return
+    if not await group_is_connected(message.chat.id):
         return
     await auto_filter(client, message)
 
 
+@Client.on_message(filters.private & filters.text & filters.incoming)
+async def pm_text(bot, message):
+    content = message.text
+    if content.startswith(("/", "#", "file", "short")) or (message.from_user and message.from_user.id in ADMINS):
+        return
+    await message.reply_text(
+        text="<b>🌀 Unlimited Movies, Series, Anime\n🔆 New Releases Upload Same Day\n♻️ 24x7 Service 📆 Daily Updates</b>",
+        reply_markup=InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("🌟 Paid (No Ads)", url="https://telegram.me/HeroFlixx/49"),
+                InlineKeyboardButton("🍿 Free (With Ads)", url="https://telegram.me/addlist/X5k2lnJLIGAyZjQ1"),
+            ]
+        ]),
+    )
+
+
 @Client.on_callback_query(filters.regex(r"^next"))
 async def next_page(bot, query):
-    if query.message and query.message.chat and query.message.chat.type in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP) and not await connected_group_check(query.message.chat.id):
-        return await query.answer("This group is disconnected.", show_alert=True)
     if is_spam(query.from_user.id):
         return
 
@@ -134,7 +144,7 @@ async def next_page(bot, query):
         if not search:
             return await query.answer(script.OLD_ALRT_TXT.format(query.from_user.first_name), show_alert=True)
 
-        files, n_offset, total = await get_search_results(query.message.chat.id, search, offset=offset)
+        files, n_offset, total = await get_search_results(query.message.chat.id, search, offset=offset, filter=True)
         if not files:
             return await query.answer(script.OLD_ALRT_TXT.format(query.from_user.first_name), show_alert=True)
 
@@ -144,7 +154,7 @@ async def next_page(bot, query):
             n_offset = 0
 
         temp.GETALL[key] = files
-        temp.SHORT[(query.from_user.id, query.message.chat.id)] = query.message.chat.id
+        temp.SHORT[query.from_user.id] = query.message.chat.id
 
         max_limit = 10
         btn = []
@@ -192,8 +202,6 @@ async def next_page(bot, query):
 
 @Client.on_callback_query(filters.regex(r"^spolling"))
 async def advantage_spoll_choker(bot, query):
-    if query.message and query.message.chat and query.message.chat.type in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP) and not await connected_group_check(query.message.chat.id):
-        return await query.answer("This group is disconnected.", show_alert=True)
     if is_spam(query.from_user.id) or not query.from_user or not query.message:
         return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
 
@@ -226,7 +234,7 @@ async def advantage_spoll_choker(bot, query):
             return await query.answer("❗Invalid Option", show_alert=True)
 
         await query.answer("Checking, Please Wait ♻️\n\n[ Don't Spam – Just Wait! ]", show_alert=True)
-        files, offset, total_results = await get_search_results(query.message.chat.id, movie, offset=0)
+        files, offset, total_results = await get_search_results(query.message.chat.id, movie, offset=0, filter=True)
         if files:
             await auto_filter(bot, query, (movie, files, offset, total_results))
         else:
@@ -256,8 +264,6 @@ async def cb_handler(client: Client, query: CallbackQuery):
         return await query.answer("You are on the page navigation.", show_alert=True)
 
     if query.data.startswith("file#"):
-        if query.message and query.message.chat and query.message.chat.type in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP) and not await connected_group_check(query.message.chat.id):
-            return await query.answer("This group is disconnected.", show_alert=True)
         file_id = query.data.split("#", 1)[1]
         if not await _send_indexed_file(client, query.from_user.id, file_id):
             return await query.answer("No such file exist.", show_alert=True)
@@ -326,7 +332,7 @@ async def auto_filter(client, msg, spoll=False):
         search = re.sub(r"so(\d+)", lambda x: f"s{x.group(1).zfill(2)}", search, flags=re.IGNORECASE)
         for lang, code in [("english", "eng"), ("hindi", "hin"), ("tamil", "tam"), ("telugu", "tel"), ("kannada", "kan"), ("malayalam", "mal")]:
             search = search.replace(lang, code)
-        files, offset, total_results = await get_search_results(message.chat.id, search, offset=0)
+        files, offset, total_results = await get_search_results(message.chat.id, search, offset=0, filter=True)
         settings = await get_settings(message.chat.id)
         if not files:
             if settings.get("spell_check", SPELL_CHECK_REPLY):
@@ -346,7 +352,7 @@ async def auto_filter(client, msg, spoll=False):
     temp.GETALL[key] = files
     if not hasattr(temp, "SHORT"):
         temp.SHORT = {}
-    temp.SHORT[(message.from_user.id, message.chat.id)] = message.chat.id
+    temp.SHORT[message.from_user.id] = message.chat.id
 
     btn = []
     if offset != "":
