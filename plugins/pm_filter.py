@@ -347,7 +347,7 @@ async def auto_filter(client, msg, spoll=False):
             if not x.startswith(("@", "www."))
         )
         cap += (
-            f"<b>🍿 <a href='https://telegram.me/{temp.U_NAME}?start=files_{query.message.chat.id}_{file.file_id}'>"
+            f"<b>🍿 <a href='https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}'>"
             f"[{get_size(file.file_size)}] {escape(title)}</a></b>\n\n"
         )
 
