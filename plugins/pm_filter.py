@@ -22,6 +22,9 @@ PAGINATION = {}
 GLOBAL_SEM = asyncio.Semaphore(12)
 USER_COOLDOWN = {}
 
+if not hasattr(temp, "SHORT"):
+    temp.SHORT = {}
+
 
 def tutorial_url():
     return TUTORIAL if TUTORIAL.startswith('http') else f'https://telegram.me/{TUTORIAL}'
@@ -142,8 +145,11 @@ async def next_page(bot, query):
                 x for x in (file.file_name or "").split()
                 if not x.startswith(("@", "www."))
             )
+            if query.from_user:
+                temp.SHORT[(query.from_user.id, file.file_id)] = query.message.chat.id
+            temp.SHORT[file.file_id] = query.message.chat.id
             cap += (
-                f"<b>🍿 <a href='https://telegram.me/{temp.U_NAME}?start=files_{query.message.chat.id}_{file.file_id}'>"
+                f"<b>🍿 <a href='https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}'>"
                 f"[{get_size(file.file_size)}] {escape(title)}</a></b>\n\n"
             )
 
@@ -346,6 +352,9 @@ async def auto_filter(client, msg, spoll=False):
             x for x in (file.file_name or "").split()
             if not x.startswith(("@", "www."))
         )
+        if message.from_user:
+            temp.SHORT[(message.from_user.id, file.file_id)] = message.chat.id
+        temp.SHORT[file.file_id] = message.chat.id
         cap += (
             f"<b>🍿 <a href='https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}'>"
             f"[{get_size(file.file_size)}] {escape(title)}</a></b>\n\n"
