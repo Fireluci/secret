@@ -25,7 +25,6 @@ USER_COOLDOWN = {}
 if not hasattr(temp, "SHORT"):
     temp.SHORT = {}
 
-
 def tutorial_url():
     return TUTORIAL if TUTORIAL.startswith('http') else f'https://telegram.me/{TUTORIAL}'
 
@@ -59,7 +58,6 @@ async def handle_auto_delete(message_obj):
         await message_obj.delete()
     except Exception:
         pass
-
 
 @Client.on_message(filters.group & filters.text & filters.incoming)
 async def give_filter(client, message):
@@ -105,7 +103,6 @@ async def next_page(bot, query):
         )
         if not files:
             return await query.answer(script.OLD_ALRT_TXT.format(query.from_user.first_name), show_alert=True)
-
 
         max_limit = 10
         try:
@@ -164,7 +161,6 @@ async def next_page(bot, query):
             await query.answer()
         except Exception:
             await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
-
 
 @Client.on_callback_query(filters.regex(r"^spolling"))
 async def advantage_spoll_choker(bot, query):
@@ -269,7 +265,6 @@ async def cb_handler(client: Client, query: CallbackQuery):
         )
         return await query.answer("Deletion completed.", show_alert=True)
 
-
 async def auto_filter(client, msg, spoll=False):
     if not spoll:
         message = msg
@@ -367,7 +362,6 @@ async def auto_filter(client, msg, spoll=False):
     )
     asyncio.create_task(handle_auto_delete(result))
     asyncio.create_task(handle_auto_delete(message))
-
 
 async def advantage_spell_chok(client, msg):
     mv_rqst = msg.text
