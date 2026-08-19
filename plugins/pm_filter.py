@@ -62,11 +62,16 @@ async def handle_auto_delete(message_obj):
 async def give_filter(client, message):
     if message.text.startswith("/"):
         return
+
     try:
-        if not await db.is_group_connected(message.chat.id):
-            return
+        connected = await db.is_group_connected(message.chat.id)
     except Exception:
+        logger.exception("Failed to check connected status for group %s", message.chat.id)
         return
+
+    if not connected:
+        return
+
     await auto_filter(client, message)
 
 @Client.on_callback_query(filters.regex(r"^next"))
@@ -138,7 +143,7 @@ async def next_page(bot, query):
                 if not x.startswith(("@", "www."))
             )
             cap += (
-                f"<b>🍿 <a href='https://telegram.me/{temp.U_NAME}?start=files_{message.chat.id}_{file.file_id}'>"
+                f"<b>🍿 <a href='https://telegram.me/{temp.U_NAME}?start=files_{query.message.chat.id}_{file.file_id}'>"
                 f"[{get_size(file.file_size)}] {escape(title)}</a></b>\n\n"
             )
 
@@ -311,6 +316,9 @@ async def auto_filter(client, msg, spoll=False):
 
     key = f"{message.chat.id}-{message.id}"
     FRESH[key] = search
+    PAGINATION[key] = files
+    if len(PAGINATION) > 1000:
+        PAGINATION.clear()
 
     buttons = []
     if offset != "":
@@ -339,7 +347,7 @@ async def auto_filter(client, msg, spoll=False):
             if not x.startswith(("@", "www."))
         )
         cap += (
-            f"<b>🍿 <a href='https://telegram.me/{temp.U_NAME}?start=files_{message.chat.id}_{file.file_id}'>"
+            f"<b>🍿 <a href='https://telegram.me/{temp.U_NAME}?start=files_{query.message.chat.id}_{file.file_id}'>"
             f"[{get_size(file.file_size)}] {escape(title)}</a></b>\n\n"
         )
 
