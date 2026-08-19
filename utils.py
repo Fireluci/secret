@@ -34,7 +34,8 @@ SECOND_SHORTENER = {}
 SMART_OPEN = '“'
 SMART_CLOSE = '”'
 START_CHAR = ('\'', '"', SMART_OPEN)
- 
+SHORT = {}
+
 class temp(object):
     BANNED_USERS = []
     ME = None
