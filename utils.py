@@ -410,7 +410,7 @@ async def get_shortlink(chat_id, link, client=None):
                     return await response.text()
 
         async with aiohttp.ClientSession(timeout=timeout) as session:
-            shortzy = Shortzy(api_key=api_key, base_site=base_site, session=session)
+            shortzy = Shortzy(api_key=api_key, base_site=base_site)
             return await shortzy.convert(link)
 
     try:
