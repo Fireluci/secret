@@ -8,7 +8,6 @@ from Script import script
 from pyrogram import Client, filters, enums
 from pyrogram.errors import FloodWait
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-
 from database.ia_filterdb import Media, get_file_details, unpack_new_file_id, get_bad_files
 from database.users_chats_db import db
 from info import *
@@ -16,13 +15,10 @@ from utils import get_settings, get_size, is_subscribed, save_group_settings, te
 
 logger = logging.getLogger(__name__)
 
-
 def tutorial_url():
     if not TUTORIAL:
         return None
     return TUTORIAL if str(TUTORIAL).startswith("http") else f"https://telegram.me/{TUTORIAL}"
-
-
 
 async def send_file_to_user(client, user_id, file_id):
     files = await get_file_details(file_id)
@@ -51,7 +47,6 @@ async def send_file_to_user(client, user_id, file_id):
     )
     return True
 
-
 async def send_shortlink_page(client, user_id, file_id, chat_id):
     files = await get_file_details(file_id)
     if not files:
@@ -70,7 +65,7 @@ async def send_shortlink_page(client, user_id, file_id, chat_id):
 
     msg = await client.send_message(
         chat_id=user_id,
-        text=f"<b>[ {get_size(file.file_size)} ] {title}\n\n📗 Download Link ➔ {short_url}</b>",
+        text=f"<b>🔆 [ {get_size(file.file_size)} ] {title}\n\n📥 Download Link↓\n {short_url}</b>",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("♻️ Download Link ♻️", url=short_url)],
             [InlineKeyboardButton("❓ How To Download ❓", url=tutorial_url())],
@@ -79,14 +74,12 @@ async def send_shortlink_page(client, user_id, file_id, chat_id):
     asyncio.create_task(delete_later(msg))
     return True
 
-
 async def delete_later(message, seconds=900):
     await asyncio.sleep(seconds)
     try:
         await message.delete()
     except Exception:
         pass
-
 
 @Client.on_message(filters.command("start") & filters.incoming)
 async def start(client, message):
@@ -141,7 +134,7 @@ async def start(client, message):
         retry = f"https://telegram.me/{temp.U_NAME}?start={payload}"
         return await client.send_message(
             message.from_user.id,
-            "**🔆 First Join Our Main Channel & Then Click Try Again ♻\n\n🔆 पहले हमारे मैन चैनल से जुड़ें और फिर Try Again दबाएँ ♻**",
+            "**🔆 First Join Our Main Channel & Click Try Again ♻**",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🏮 Main Channel ⟨Click Here⟩ 🏮", url=FORCE)],
                 [InlineKeyboardButton("🔄 Try Again", url=retry)],
@@ -202,7 +195,6 @@ async def start(client, message):
     if not await send_file_to_user(client, message.from_user.id, file_id):
         await message.reply("No such file exist.")
 
-
 @Client.on_message(filters.command('channel') & filters.user(ADMINS))
 async def channel_info(bot, message):
     channels = CHANNELS if isinstance(CHANNELS, list) else [CHANNELS]
@@ -216,14 +208,12 @@ async def channel_info(bot, message):
     text += f'\n\n**Total:** {len(channels)}'
     await message.reply(text)
 
-
 @Client.on_message(filters.command('logs') & filters.user(ADMINS))
 async def log_file(bot, message):
     try:
         await message.reply_document('TelegramBot.log')
     except Exception as e:
         await message.reply(str(e))
-
 
 @Client.on_message(filters.command('delete') & filters.user(ADMINS))
 async def delete(bot, message):
@@ -252,7 +242,6 @@ async def delete(bot, message):
     result = await Media.collection.delete_many({'file_name': media.file_name, 'file_size': media.file_size, 'mime_type': media.mime_type})
     await msg.edit('🛃 Deleted File!' if result.deleted_count else 'File not found in database')
 
-
 @Client.on_message(filters.command('deleteall') & filters.user(ADMINS))
 async def delete_all_index(bot, message):
     await message.reply_text(
@@ -264,7 +253,6 @@ async def delete_all_index(bot, message):
         quote=True,
     )
 
-
 @Client.on_callback_query(filters.regex(r'^autofilter_delete$'))
 async def delete_all_index_confirm(bot, callback):
     if callback.from_user.id not in ADMINS:
@@ -273,15 +261,13 @@ async def delete_all_index_confirm(bot, callback):
     await callback.answer('Done')
     await callback.message.edit('Successfully deleted all the indexed files.')
 
-
 def get_settings_keyboard(settings: dict):
     spell = bool(settings.get("spell_check", SPELL_CHECK_REPLY))
     short = bool(settings.get("is_shortlink", IS_SHORTLINK))
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("Sᴘᴇʟʟ Cʜᴇᴄᴋ", callback_data=f"setgs#spell_check#{spell}"), InlineKeyboardButton("✔ Oɴ" if spell else "✘ Oғғ", callback_data=f"setgs#spell_check#{spell}")],
+        [InlineKeyboardButton("Spell Check", callback_data=f"setgs#spell_check#{spell}"), InlineKeyboardButton("✔ Oɴ" if spell else "✘ Oғғ", callback_data=f"setgs#spell_check#{spell}")],
         [InlineKeyboardButton("ShortLink", callback_data=f"setgs#is_shortlink#{short}"), InlineKeyboardButton("✔ Oɴ" if short else "✘ Oғғ", callback_data=f"setgs#is_shortlink#{short}")],
     ])
-
 
 @Client.on_callback_query(filters.regex(r'^setgs#'))
 async def settings_callback(client, callback):
@@ -308,7 +294,6 @@ async def settings_callback(client, callback):
         pass
     await callback.answer("Updated")
 
-
 @Client.on_message(filters.command('settings') & filters.user(ADMINS))
 async def settings(client, message):
     if message.chat.type not in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
@@ -317,12 +302,11 @@ async def settings(client, message):
         return
     settings = await get_settings(message.chat.id)
     await message.reply_text(
-        f"<b>⚙️ <code>Settings For {message.chat.title}</code></b>",
+        f"<b>⚙️ Settings For {message.chat.title}</b>",
         reply_markup=get_settings_keyboard(settings),
         parse_mode=enums.ParseMode.HTML,
         reply_to_message_id=message.id,
     )
-
 
 @Client.on_message(filters.command("deletefiles") & filters.user(ADMINS))
 async def deletemultiplefiles(bot, message):
@@ -344,7 +328,6 @@ async def deletemultiplefiles(bot, message):
         parse_mode=enums.ParseMode.HTML,
     )
 
-
 @Client.on_message(filters.command("shortlink1") & filters.user(ADMINS))
 async def update_shortlink1(bot, message):
     if message.chat.type == enums.ChatType.PRIVATE:
@@ -364,7 +347,6 @@ async def update_shortlink1(bot, message):
     await reply.edit_text(f"<b>Successfully updated Primary Shortener (Short1)!\n\nWebsite: <code>{shortlink_url}</code>\nAPI: <code>{api}</code></b>")
     await asyncio.sleep(10)
     await reply.delete()
-
 
 @Client.on_message(filters.command("shortlink2") & filters.user(ADMINS))
 async def update_shortlink2(bot, message):
@@ -386,7 +368,6 @@ async def update_shortlink2(bot, message):
     await asyncio.sleep(10)
     await reply.delete()
 
-
 @Client.on_message(filters.command("shorteners") & filters.user(ADMINS))
 async def view_shorteners(bot, message):
     if message.chat.type == enums.ChatType.PRIVATE:
@@ -407,10 +388,9 @@ async def view_shorteners(bot, message):
         parse_mode=enums.ParseMode.MARKDOWN,
     )
 
-
 @Client.on_message(filters.command("restart") & filters.user(ADMINS))
 async def stop_button(bot, message):
     msg = await bot.send_message(text="**🔄 𝙱𝙾𝚃 𝙸𝚂 𝚁𝙴𝚂𝚃𝙰𝚁𝚃𝙸𝙽𝙶**", chat_id=message.chat.id)
-    await asyncio.sleep(3)
+    await asyncio.sleep(60)
     await msg.edit("**✅️ 𝙱𝙾𝚃 𝙸𝚂 𝚁𝙴𝚂𝚃𝙰𝚁𝚃𝙴𝙳**")
     os.execl(sys.executable, sys.executable, *sys.argv)
