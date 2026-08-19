@@ -184,11 +184,11 @@ async def start(client, message):
         return
 
     if pre == "files":
-        try:
-            chat_id_text, file_id = payload.split("_", 1)
-            chat_id = int(chat_id_text)
-        except (ValueError, TypeError):
-            return await message.reply_text("<b>Invalid or expired link.</b>")
+        file_id = payload
+        short_cache = getattr(temp, "SHORT", {})
+        chat_id = short_cache.get((message.from_user.id, file_id)) or short_cache.get(message.from_user.id)
+        if chat_id is None:
+            return await message.reply_text("<b>Link Expired, Search Again in Group!</b>")
 
         settings = await get_settings(chat_id)
         if settings.get("is_shortlink", IS_SHORTLINK) and message.from_user.id not in PREMIUM_USER:
