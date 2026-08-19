@@ -163,15 +163,17 @@ async def start(client, message):
         )
 
     if "_" in data:
-        pre, file_id = data.split("_", 1)
+        pre, payload = data.split("_", 1)
     else:
-        pre, file_id = "file", data
+        pre, payload = "file", data
 
     if pre not in {"file", "files", "short"}:
         return
 
     if pre == "short":
-        chat_id = temp.SHORT.get((message.from_user.id, file_id)) or temp.SHORT.get(message.from_user.id)
+        file_id = payload
+        short_cache = getattr(temp, "SHORT", {})
+        chat_id = short_cache.get((message.from_user.id, file_id)) or short_cache.get(message.from_user.id)
         if chat_id is None:
             return await message.reply("Invalid or expired link.")
         result = await send_shortlink_page(client, message.from_user.id, file_id, chat_id)
@@ -182,9 +184,11 @@ async def start(client, message):
         return
 
     if pre == "files":
-        chat_id = temp.SHORT.get((message.from_user.id, file_id)) or temp.SHORT.get(message.from_user.id)
-        if chat_id is None:
-            return await message.reply_text("<b>Link Expired, Search Again in Group!</b>")
+        try:
+            chat_id_text, file_id = payload.split("_", 1)
+            chat_id = int(chat_id_text)
+        except (ValueError, TypeError):
+            return await message.reply_text("<b>Invalid or expired link.</b>")
 
         settings = await get_settings(chat_id)
         if settings.get("is_shortlink", IS_SHORTLINK) and message.from_user.id not in PREMIUM_USER:
