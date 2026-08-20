@@ -13,10 +13,10 @@ def is_enabled(value, default):
 
 SESSION = environ.get('SESSION', 'Media_search')
 API_ID = int(environ.get('API_ID', '1736204'))
-API_HASH = environ.get('API_HASH', '890d40e0f91a4de32dec2965444b2cbe')
-BOT_TOKEN = environ.get('BOT_TOKEN', '8586754770:AAHx7v0yI-NIP-QKzgcBxRfbGk_RaNt7JZM')
+API_HASH = environ.get('API_HASH')
+BOT_TOKEN = environ.get('BOT_TOKEN')
 
-DATABASE_URI = environ.get('DATABASE_URI', "mongodb+srv://ariana:ariana@ariana.vxqvh5x.mongodb.net/?appName=ariana")
+DATABASE_URI = environ.get('DATABASE_URI')
 DATABASE_NAME = environ.get('DATABASE_NAME', "heroflix")
 COLLECTION_NAME = environ.get('COLLECTION_NAME', 'index')
 
@@ -31,15 +31,19 @@ auth_channel = environ.get('AUTH_CHANNEL', '-1002048881772')
 AUTH_CHANNEL = int(auth_channel) if auth_channel and id_pattern.search(auth_channel) else None
 
 SHORT1_URL = environ.get('SHORT1_URL', 'cpmshort.com')
-SHORT1_API = environ.get('SHORT1_API', '4edd2741cf55b86fd7306942fd25bb163c8f8cd6')
+SHORT1_API = environ.get('SHORT1_API')
 SHORT2_URL = environ.get('SHORT2_URL', 'easysky.in')
-SHORT2_API = environ.get('SHORT2_API', 'f3753546bce8faa1a5e9ef961431c0b57e4d26a9')
+SHORT2_API = environ.get('SHORT2_API')
 IS_SHORTLINK = is_enabled(environ.get("IS_SHORTLINK", "True"), True)
 PORT = environ.get("PORT", "8080")
 CHNL_LNK = environ.get('CHNL_LNK', 'heroflix')
 TUTORIAL = environ.get('TUTORIAL', 'HeroFlixx/54')
 LOG_CHANNEL = int(environ.get('LOG_CHANNEL', '-1001652564383'))
 SUPPORT_CHAT = environ.get('SUPPORT_CHAT', 'herofeedbot')
+
+_missing = [name for name, value in {'API_HASH': API_HASH, 'BOT_TOKEN': BOT_TOKEN, 'DATABASE_URI': DATABASE_URI}.items() if not value]
+if _missing:
+    raise RuntimeError('Missing required environment variables: ' + ', '.join(_missing))
  
 CUSTOM_FILE_CAPTION = environ.get("CUSTOM_FILE_CAPTION", f"{script.CAPTION}")
  
