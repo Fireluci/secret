@@ -4,7 +4,6 @@ import sys
 import asyncio
 import logging
 
-from Script import script
 from pyrogram import Client, filters, enums
 from pyrogram.errors import FloodWait
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -91,7 +90,7 @@ async def start(client, message):
         if tut:
             buttons = [[InlineKeyboardButton('❓How To Use Me❓', url=tut)]]
         await message.reply(
-            script.START_TXT.format(
+            START_TXT.format(
                 message.from_user.mention if message.from_user else message.chat.title,
                 temp.U_NAME,
                 temp.B_NAME,
@@ -113,7 +112,7 @@ async def start(client, message):
     if not await db.is_user_exist(message.from_user.id):
         await db.add_user(message.from_user.id, message.from_user.first_name)
         try:
-            await client.send_message(LOG_CHANNEL, script.LOG_TEXT_P.format(message.from_user.id, message.from_user.mention))
+            await client.send_message(LOG_CHANNEL, LOG_TEXT_P.format(message.from_user.id, message.from_user.mention))
         except Exception:
             pass
 
@@ -124,7 +123,7 @@ async def start(client, message):
         ]
         return await message.reply_photo(
             photo=PICS,
-            caption=script.START_TXT.format(message.from_user.mention, temp.U_NAME, temp.B_NAME),
+            caption=START_TXT.format(message.from_user.mention, temp.U_NAME, temp.B_NAME),
             reply_markup=InlineKeyboardMarkup(buttons),
             parse_mode=enums.ParseMode.HTML,
         )
@@ -150,7 +149,7 @@ async def start(client, message):
         ]
         return await message.reply_photo(
             photo=PICS,
-            caption=script.START_TXT.format(message.from_user.mention, temp.U_NAME, temp.B_NAME),
+            caption=START_TXT.format(message.from_user.mention, temp.U_NAME, temp.B_NAME),
             reply_markup=InlineKeyboardMarkup(buttons),
             parse_mode=enums.ParseMode.HTML,
         )

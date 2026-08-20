@@ -4,7 +4,6 @@ from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from pyrogram.errors import FloodWait, UserIsBlocked, MessageNotModified, PeerIdInvalid
 from html import escape
-from Script import script
 from info import *
 from utils import get_size, is_subscribed, search_gagala, temp, get_settings
 from database.users_chats_db import db
@@ -131,7 +130,7 @@ async def give_filter(client, message):
 @Client.on_callback_query(filters.regex(r"^next"))
 async def next_page(bot, query):
     if not query.message or query.message.chat.type not in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP):
-        return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+        return await query.answer(ALRT_TXT.format(query.from_user.first_name), show_alert=True)
     if not await db.is_group_connected(query.message.chat.id):
         return await query.answer("This group is not connected.", show_alert=True)
     if is_spam(query.from_user.id):
@@ -142,20 +141,20 @@ async def next_page(bot, query):
             _, req, key, offset = query.data.split("_")
             req, offset = int(req), int(offset)
         except Exception:
-            return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+            return await query.answer(ALRT_TXT.format(query.from_user.first_name), show_alert=True)
 
         if req not in (query.from_user.id, 0):
-            return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+            return await query.answer(ALRT_TXT.format(query.from_user.first_name), show_alert=True)
 
         search = FRESH.get(key)
         if not search:
-            return await query.answer(script.OLD_ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+            return await query.answer(OLD_ALRT_TXT.format(query.from_user.first_name), show_alert=True)
 
         files, next_offset, total = await get_search_results(
             query.message.chat.id, search, offset=offset
         )
         if not files:
-            return await query.answer(script.OLD_ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+            return await query.answer(OLD_ALRT_TXT.format(query.from_user.first_name), show_alert=True)
 
         buttons = await get_result_buttons(
             query.message.chat.id, req, key, offset, next_offset, total, query.from_user.id
@@ -173,14 +172,14 @@ async def next_page(bot, query):
         except MessageNotModified:
             await query.answer()
         except Exception:
-            await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+            await query.answer(ALRT_TXT.format(query.from_user.first_name), show_alert=True)
 
 @Client.on_callback_query(filters.regex(r"^spolling"))
 async def advantage_spoll_choker(bot, query):
     if not query.from_user or not query.message:
-        return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+        return await query.answer(ALRT_TXT.format(query.from_user.first_name), show_alert=True)
     if query.message.chat.type not in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP):
-        return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+        return await query.answer(ALRT_TXT.format(query.from_user.first_name), show_alert=True)
     if not await db.is_group_connected(query.message.chat.id):
         return await query.answer("This group is not connected.", show_alert=True)
     if is_spam(query.from_user.id):
@@ -191,10 +190,10 @@ async def advantage_spoll_choker(bot, query):
             _, user, movie_ = query.data.split('#')
             user = int(user)
         except:
-            return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+            return await query.answer(ALRT_TXT.format(query.from_user.first_name), show_alert=True)
 
         if user != 0 and query.from_user.id != user:
-            return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+            return await query.answer(ALRT_TXT.format(query.from_user.first_name), show_alert=True)
 
         if movie_ == "close_spellcheck":
             await query.message.delete()
@@ -202,7 +201,7 @@ async def advantage_spoll_choker(bot, query):
 
         movies = SPELL_CHECK.get(query.message.reply_to_message.id if query.message.reply_to_message else 0)
         if not movies:
-            await query.answer(script.OLD_ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+            await query.answer(OLD_ALRT_TXT.format(query.from_user.first_name), show_alert=True)
             try:
                 await query.message.edit_text(text="❗Link Expired, Request Again ♻", disable_web_page_preview=True)
             except:
@@ -221,7 +220,7 @@ async def advantage_spoll_choker(bot, query):
             await auto_filter(bot, query, (movie, files, offset, total_results))
         else:
             try:
-                msg = await query.message.edit_text(text=script.NO_RESULTS, disable_web_page_preview=True)
+                msg = await query.message.edit_text(text=NO_RESULTS, disable_web_page_preview=True)
                 await asyncio.sleep(60)
                 await msg.delete()
             except Exception:
@@ -247,12 +246,12 @@ async def cb_handler(client: Client, query: CallbackQuery):
                 enums.ChatMemberStatus.ADMINISTRATOR,
                 enums.ChatMemberStatus.OWNER,
             ) and str(user_id) not in ADMINS:
-                return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+                return await query.answer(ALRT_TXT.format(query.from_user.first_name), show_alert=True)
 
         try:
             _, keyword = query.data.split("#", 1)
         except ValueError:
-            return await query.answer(script.ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+            return await query.answer(ALRT_TXT.format(query.from_user.first_name), show_alert=True)
 
         files, _ = await get_bad_files(keyword)
         await query.message.edit_text("<b>File deletion process will start in 5 seconds!</b>")
@@ -320,7 +319,7 @@ async def auto_filter(client, msg, spoll=False):
         # the spellcheck selection message so users do not confuse results.
         message = msg.message.reply_to_message
         if not message:
-            return await msg.answer(script.OLD_ALRT_TXT.format(msg.from_user.first_name), show_alert=True)
+            return await msg.answer(OLD_ALRT_TXT.format(msg.from_user.first_name), show_alert=True)
         search, files, offset, total_results = spoll
         try:
             await msg.message.delete()
@@ -360,7 +359,7 @@ async def advantage_spell_chok(client, msg):
     g_s = await search_gagala(query) + await search_gagala(msg.text)
 
     if not g_s:
-        k = await msg.reply(script.NO_RESULTS, disable_web_page_preview=True)
+        k = await msg.reply(NO_RESULTS, disable_web_page_preview=True)
         await asyncio.sleep(60)
         return await k.delete()
 
@@ -375,7 +374,7 @@ async def advantage_spell_chok(client, msg):
 
     movielist = list(dict.fromkeys(filter(None, [re.sub(r'(\-|\(|\)|_)', '', i, flags=re.IGNORECASE).strip() for i in gs_parsed])))
     if not movielist:
-        k = await msg.reply(script.NO_RESULTS, disable_web_page_preview=True)
+        k = await msg.reply(NO_RESULTS, disable_web_page_preview=True)
         await asyncio.sleep(60)
         return await k.delete()
 

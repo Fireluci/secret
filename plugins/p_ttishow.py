@@ -5,9 +5,8 @@ from pyrogram.errors.exceptions.bad_request_400 import MessageTooLong, PeerIdInv
 
 from database.users_chats_db import db
 from database.ia_filterdb import Media
-from info import ADMINS, LOG_CHANNEL, SUPPORT_CHAT
+from info import ADMINS, LOG_CHANNEL, SUPPORT_CHAT, STATUS_TXT
 from utils import connected_group, get_size
-from Script import script
 
 
 @Client.on_message(filters.command("stats") & filters.incoming & filters.user(ADMINS) & connected_group)
@@ -18,7 +17,7 @@ async def get_stats(bot, message):
     files = await Media.count_documents()
     size = await db.get_db_size()
     await reply.edit(
-        script.STATUS_TXT.format(
+        STATUS_TXT.format(
             files,
             total_users,
             total_chats,
