@@ -6,7 +6,6 @@ from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
 from pyrogram.errors import FloodWait, UserIsBlocked, MessageNotModified, PeerIdInvalid
 from pyrogram import enums, filters
 from typing import Union
-from Script import script
 import re
 import os
 from datetime import datetime 

@@ -42,7 +42,45 @@ TUTORIAL = environ.get('TUTORIAL', 'HeroFlixx/54')
 LOG_CHANNEL = int(environ.get('LOG_CHANNEL', '-1001652564383'))
 SUPPORT_CHAT = environ.get('SUPPORT_CHAT', 'herofeedbot')
  
-CUSTOM_FILE_CAPTION = environ.get("CUSTOM_FILE_CAPTION", f"{script.CAPTION}")
+
+# ==================== BOT TEXT ====================
+START_TXT = """<b>🌀 Unlimited Movies, Series, Anime
+🔆 New Releases Upload Every Day
+♻️ 24 x 7 Service 📆 Daily Updates</b>"""
+
+STATUS_TXT = """<b>★ Tᴏᴛᴀʟ Fɪʟᴇs: <code>{}</code>
+★ Tᴏᴛᴀʟ Usᴇʀs: <code>{}</code>
+★ Tᴏᴛᴀʟ Cʜᴀᴛs: <code>{}</code>
+★ Usᴇᴅ Sᴛᴏʀᴀɢᴇ: <code>{}</code>
+★ Fʀᴇᴇ Sᴛᴏʀᴀɢᴇ: <code>{}</code></b>"""
+
+LOG_TEXT_P = """#NewUser
+ID - <code>{}</code>
+Nᴀᴍᴇ - {}"""
+
+ALRT_TXT = '🔒 This option belongs to another user. '
+
+OLD_ALRT_TXT = '♻ Link Expired, Please Request in Group Again!'
+
+NO_RESULTS = """<b><i>💢 No Results For Your Search❗️
+
+⚠️ The Reason❓[<a href="https://telegram.me/HeroFlixx/3">Click Here</a>]
+🌀 Please Follow Request Tips!
+🔆 Request Tips ➔ [<a href="https://telegram.me/HeroFlixx/2">Click Here</a>]</i></b>"""
+
+CAPTION = '<a href="https://telegram.me/{CHNL_LNK}"><b><i>{file_name}</i></b></a>'
+
+RESTART_TXT = """
+<b>Bᴏᴛ Rᴇsᴛᴀʀᴛᴇᴅ !
+
+📅 Dᴀᴛᴇ : <code>{}</code>
+⏰ Tɪᴍᴇ : <code>{}</code>
+🌐 Tɪᴍᴇᴢᴏɴᴇ : <code>Asia/Kolkata</code>
+🛠️ Bᴜɪʟᴅ Sᴛᴀᴛᴜs: <code>v2.7.1 [ Sᴛᴀʙʟᴇ ]</code></b>"""
+
+LOGO = '🔆彡[ HEROFLiX ]彡🔆'
+
+CUSTOM_FILE_CAPTION = environ.get("CUSTOM_FILE_CAPTION", CAPTION)
  
 SPELL_CHECK_REPLY = is_enabled(environ.get("SPELL_CHECK_REPLY", "True"), True)
  
