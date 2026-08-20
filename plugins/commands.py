@@ -65,7 +65,7 @@ async def send_shortlink_page(client, user_id, file_id, chat_id):
 
     msg = await client.send_message(
         chat_id=user_id,
-        text=f"<b>🔆 [ {get_size(file.file_size)} ] {title}\n\n📥 Download Link↓\n {short_url}</b>",
+        text=f'<b>🔆 [ {get_size(file.file_size)} ] <a href="https://telegram.me/HEROFLiX">{title}</a>\n\n📥 Download Link↓\n{short_url}</b>',
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("♻️ Download Link ♻️", url=short_url)],
             [InlineKeyboardButton("❓ How To Download ❓", url=tutorial_url())],
