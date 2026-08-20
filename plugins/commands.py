@@ -184,7 +184,7 @@ async def start(client, message):
             return await message.reply_text("<b>Link Expired, Search Again in Group!</b>")
 
         settings = await get_settings(chat_id)
-        if settings.get("is_shortlink", IS_SHORTLINK) and message.from_user.id not in PREMIUM_USER:
+        if settings.get("is_shortlink", IS_SHORTLINK):
             result = await send_shortlink_page(client, message.from_user.id, file_id, chat_id)
             if result is None:
                 return await message.reply("❌ Link generation failed. Please try again later.")
