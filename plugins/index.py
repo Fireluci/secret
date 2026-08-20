@@ -72,6 +72,7 @@ async def index_files(bot, query):
         return await query.answer('Wait Until Previous Index is Finished', show_alert=True)
     msg = query.message
     await query.answer('Processing...⏳', show_alert=True)
+    temp.CANCEL = False
     await msg.edit(
         "Starting Indexing",
         reply_markup=InlineKeyboardMarkup(
@@ -83,7 +84,7 @@ async def index_files(bot, query):
         chat = int(chat)
     except:
         pass
-    await index_files_to_db(int(lst_msg_id), chat, msg, bot)
+    asyncio.create_task(index_files_to_db(int(lst_msg_id), chat, msg, bot))
 
 @Client.on_message(
     (filters.forwarded | (filters.regex(
@@ -191,8 +192,6 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, resume_current=None, res
 
             current = temp.CURRENT
             last_edit = current
-            temp.CANCEL = False
-            
             async for message in bot.iter_messages(chat, lst_msg_id, temp.CURRENT):
                 if temp.CANCEL:
                     try:
@@ -309,6 +308,7 @@ async def check_pending_index_on_startup(client):
                          [InlineKeyboardButton('Cancel', callback_data='index_cancel')]]
                     )
                 )
+                temp.CANCEL = False
                 asyncio.create_task(index_files_to_db(lst_msg_id, chat_id, msg, client, current, saved, dup, deleted))
                 break
             except Exception:
