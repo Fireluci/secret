@@ -214,11 +214,6 @@ async def advantage_spoll_choker(bot, query):
         except:
             return await query.answer("❗Invalid Option", show_alert=True)
 
-        try:
-            await query.answer("Checking, Please Wait ♻️\n\n[ Don't Spam – Just Wait! ]", show_alert=True)
-        except:
-            pass
-
         files, offset, total_results = await get_search_results(
             query.message.chat.id, movie, offset=0
         )
@@ -234,9 +229,6 @@ async def advantage_spoll_choker(bot, query):
 
 @Client.on_callback_query()
 async def cb_handler(client: Client, query: CallbackQuery):
-    if query.data and query.data.startswith(("premium_", "buy_plan_", "prem_")):
-        return
-
     if query.data == "close_data":
         try:
             await query.message.delete()
