@@ -52,6 +52,59 @@ def is_spam(uid, cooldown=2):
     USER_COOLDOWN[uid] = now
     return False
 
+
+async def get_result_buttons(chat_id, req, key, offset, next_offset, total, user_id=None):
+    max_limit = 10
+    try:
+        next_value = int(next_offset) if next_offset != "" else 0
+    except (TypeError, ValueError):
+        next_value = 0
+
+    current_page = (offset // max_limit) + 1
+    total_pages = max(1, math.ceil(int(total) / max_limit))
+    back_offset = max(0, offset - max_limit)
+
+    buttons = []
+    if next_value:
+        buttons.append([
+            InlineKeyboardButton(
+                "⏪ BACK", callback_data=f"next_{req}_{key}_{back_offset}"
+            ) if offset else InlineKeyboardButton("🔅 Page", callback_data="pages"),
+            InlineKeyboardButton(f"{current_page} / {total_pages}", callback_data="pages"),
+            InlineKeyboardButton("NEXT ⏩", callback_data=f"next_{req}_{key}_{next_value}"),
+        ])
+    elif offset:
+        buttons.append([
+            InlineKeyboardButton("⏪ BACK", callback_data=f"next_{req}_{key}_{back_offset}"),
+            InlineKeyboardButton(f"{current_page} / {total_pages}", callback_data="pages"),
+        ])
+    else:
+        buttons.append([InlineKeyboardButton("✦ ────「 The End 」──── ✦", callback_data="pages")])
+
+    settings = await get_settings(chat_id)
+    if settings.get("is_shortlink", IS_SHORTLINK):
+        buttons.append([InlineKeyboardButton("🌟 How To Download ❓", url=tutorial_url())])
+
+    return buttons
+
+
+def build_results_caption(search, files):
+    cap = f"<b>🔆 Results For ➔ ‛{escape(search)}’👇\n\n<i>🗨 Choose Link - Press Start ↷</i>\n\n</b>"
+    for file in files:
+        title = file.file_name or ""
+        cap += (
+            f"<b>🍿 <a href='https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}'>"
+            f"[{get_size(file.file_size)}] {escape(title)}</a></b>\n\n"
+        )
+    return cap
+
+
+def store_file_links(user_id, chat_id, files):
+    for file in files:
+        if user_id:
+            temp.SHORT[(user_id, file.file_id)] = chat_id
+        temp.SHORT[file.file_id] = chat_id
+
 async def handle_auto_delete(message_obj):
     try:
         await asyncio.sleep(600)
@@ -104,51 +157,11 @@ async def next_page(bot, query):
         if not files:
             return await query.answer(script.OLD_ALRT_TXT.format(query.from_user.first_name), show_alert=True)
 
-        max_limit = 10
-        try:
-            next_value = int(next_offset) if next_offset != "" else 0
-        except (TypeError, ValueError):
-            next_value = 0
-
-        current_page = (offset // max_limit) + 1
-        total_pages = max(1, math.ceil(total / max_limit))
-        back_offset = max(0, offset - max_limit)
-
-        buttons = []
-        if next_value:
-            buttons.append([
-                InlineKeyboardButton("⏪ BACK", callback_data=f"next_{req}_{key}_{back_offset}") if offset else InlineKeyboardButton("🔅 Page", callback_data="pages"),
-                InlineKeyboardButton(f"{current_page} / {total_pages}", callback_data="pages"),
-                InlineKeyboardButton("NEXT ⏩", callback_data=f"next_{req}_{key}_{next_value}"),
-            ])
-        elif offset:
-            buttons.append([
-                InlineKeyboardButton("⏪ BACK", callback_data=f"next_{req}_{key}_{back_offset}"),
-                InlineKeyboardButton(f"{current_page} / {total_pages}", callback_data="pages"),
-            ])
-        else:
-            buttons.append([
-                InlineKeyboardButton("✦ ────「 The End 」──── ✦", callback_data="pages")
-            ])
-
-        if TUTORIAL:
-            buttons.append([
-                InlineKeyboardButton("🌟 How To Download ❓", url=tutorial_url())
-            ])
-
-        cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n<i>🗨 Choose Link - Press Start ↷</i>\n\n</b>"
-        for file in files:
-            title = " ".join(
-                x for x in (file.file_name or "").split()
-                if not x.startswith(("@", "www."))
-            )
-            if query.from_user:
-                temp.SHORT[(query.from_user.id, file.file_id)] = query.message.chat.id
-            temp.SHORT[file.file_id] = query.message.chat.id
-            cap += (
-                f"<b>🍿 <a href='https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}'>"
-                f"[{get_size(file.file_size)}] {escape(title)}</a></b>\n\n"
-            )
+        buttons = await get_result_buttons(
+            query.message.chat.id, req, key, offset, next_offset, total, query.from_user.id
+        )
+        store_file_links(query.from_user.id, query.message.chat.id, files)
+        cap = build_results_caption(search, files)
 
         try:
             await query.message.edit_text(
@@ -307,53 +320,33 @@ async def auto_filter(client, msg, spoll=False):
         )
         if not files:
             settings = await get_settings(message.chat.id)
-            if settings["spell_check"]:
+            if settings.get("spell_check", False):
                 return await advantage_spell_chok(client, msg)
             return
     else:
+        # Keep the original user message as the reply target, then remove
+        # the spellcheck selection message so users do not confuse results.
         message = msg.message.reply_to_message
+        if not message:
+            return await msg.answer(script.OLD_ALRT_TXT.format(msg.from_user.first_name), show_alert=True)
         search, files, offset, total_results = spoll
-        await msg.message.delete()
+        try:
+            await msg.message.delete()
+        except Exception:
+            pass
 
     key = f"{message.chat.id}-{message.id}"
     FRESH[key] = search
-    PAGINATION[key] = files
-    if len(PAGINATION) > 1000:
-        PAGINATION.clear()
+    if len(FRESH) > 1000:
+        FRESH.clear()
+        FRESH[key] = search
 
-    buttons = []
-    if offset != "":
-        max_limit = 10
-        req = message.from_user.id if message.from_user else 0
-        total_pages = max(1, math.ceil(int(total_results) / max_limit))
-        buttons.append([
-            InlineKeyboardButton("🔅 Page", callback_data="pages"),
-            InlineKeyboardButton(f"1 / {total_pages}", callback_data="pages"),
-            InlineKeyboardButton("NEXT ⏩", callback_data=f"next_{req}_{key}_{offset}"),
-        ])
-    else:
-        buttons.append([
-            InlineKeyboardButton("✦ ────「 The End 」──── ✦", callback_data="pages")
-        ])
-
-    if TUTORIAL:
-        buttons.append([
-            InlineKeyboardButton("🌟 How To Download ❓", url=tutorial_url())
-        ])
-
-    cap = f"<b>🔆 Results For ➔ ‛{search}’👇\n\n<i>🗨 Choose Link - Press Start ↷</i>\n\n</b>"
-    for file in files:
-        title = " ".join(
-            x for x in (file.file_name or "").split()
-            if not x.startswith(("@", "www."))
-        )
-        if message.from_user:
-            temp.SHORT[(message.from_user.id, file.file_id)] = message.chat.id
-        temp.SHORT[file.file_id] = message.chat.id
-        cap += (
-            f"<b>🍿 <a href='https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}'>"
-            f"[{get_size(file.file_size)}] {escape(title)}</a></b>\n\n"
-        )
+    req = message.from_user.id if message.from_user else 0
+    buttons = await get_result_buttons(
+        message.chat.id, req, key, 0, offset, total_results, req
+    )
+    store_file_links(req, message.chat.id, files)
+    cap = build_results_caption(search, files)
 
     result = await message.reply_text(
         cap,
@@ -362,6 +355,7 @@ async def auto_filter(client, msg, spoll=False):
     )
     asyncio.create_task(handle_auto_delete(result))
     asyncio.create_task(handle_auto_delete(message))
+
 
 async def advantage_spell_chok(client, msg):
     mv_rqst = msg.text
