@@ -51,7 +51,6 @@ def is_spam(uid, cooldown=2):
     USER_COOLDOWN[uid] = now
     return False
 
-
 async def get_result_buttons(chat_id, req, key, offset, next_offset, total, user_id=None):
     max_limit = 10
     try:
@@ -86,7 +85,6 @@ async def get_result_buttons(chat_id, req, key, offset, next_offset, total, user
 
     return buttons
 
-
 def build_results_caption(search, files):
     cap = f"<b>🔆 Results For ➔ ‛{escape(search)}’👇\n\n<i>🗨 Choose Link - Press Start ↷</i>\n\n</b>"
     for file in files:
@@ -96,7 +94,6 @@ def build_results_caption(search, files):
             f"[{get_size(file.file_size)}] {escape(title)}</a></b>\n\n"
         )
     return cap
-
 
 def store_file_links(user_id, chat_id, files):
     for file in files:
@@ -346,7 +343,6 @@ async def auto_filter(client, msg, spoll=False):
     )
     asyncio.create_task(handle_auto_delete(result))
     asyncio.create_task(handle_auto_delete(message))
-
 
 async def advantage_spell_chok(client, msg):
     mv_rqst = msg.text
