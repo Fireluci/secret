@@ -99,13 +99,20 @@ async def get_result_buttons(chat_id, req, key, offset, next_offset, total, user
     return buttons
 
 def build_results_caption(search, files):
-    cap = f"<b>🔆 Results For ➔ ‛{escape(search)}’👇\n\n<i>🗨 Choose Link - Press Start ↷</i>\n\n</b>"
+    cap = (
+        f"<b>🔆 Results For ➔ ‛{escape(search)}’👇\n\n"
+        f"🎬 Select Your Pick ↡\n\n"
+    )
+
     for file in files:
         title = file.file_name or ""
         cap += (
-            f"<b>🍿 <a href='https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}'>"
-            f"[{get_size(file.file_size)}] {escape(title)}</a></b>\n\n"
+            f"🍿 <a href=\"https://telegram.me/{temp.U_NAME}"
+            f"?start=files_{file.file_id}\">"
+            f"[{get_size(file.file_size)}] {escape(title)}</a>\n\n"
         )
+
+    cap += "</b>"
     return cap
 
 def store_file_links(user_id, chat_id, files):
@@ -313,11 +320,21 @@ async def auto_filter(client, msg, spoll=False):
             search,
             flags=re.IGNORECASE,
         )
+
         for lang, code in [
             ("english", "eng"), ("hindi", "hin"), ("tamil", "tam"),
             ("telugu", "tel"), ("kannada", "kan"), ("malayalam", "mal"),
         ]:
             search = search.replace(lang, code)
+
+        # Nothing remains after normalization
+        if not search.strip():
+            k = await message.reply_text(
+                NO_RESULTS,
+                disable_web_page_preview=True
+            )
+            asyncio.create_task(handle_auto_delete(k))
+            return
 
         files, offset, total_results = await get_search_results(
             message.chat.id, search, offset=0
