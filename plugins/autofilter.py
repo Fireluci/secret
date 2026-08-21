@@ -123,6 +123,7 @@ async def handle_auto_delete(message_obj):
     except Exception:
         pass
 
+@Client.on_message(filters.group & filters.text & filters.incoming)
 async def give_filter(client, message):
     if message.text.startswith("/"):
         return
@@ -138,6 +139,7 @@ async def give_filter(client, message):
 
     await auto_filter(client, message)
 
+@Client.on_callback_query(filters.regex(r"^next"))
 async def next_page(bot, query):
     if not query.message or query.message.chat.type not in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP):
         return await query.answer(ALRT_TXT.format(query.from_user.first_name), show_alert=True)
@@ -184,6 +186,7 @@ async def next_page(bot, query):
         except Exception:
             await query.answer(ALRT_TXT.format(query.from_user.first_name), show_alert=True)
 
+@Client.on_callback_query(filters.regex(r"^spolling"))
 async def advantage_spoll_choker(bot, query):
     if not query.from_user or not query.message:
         return await query.answer(ALRT_TXT.format(query.from_user.first_name), show_alert=True)
@@ -235,6 +238,7 @@ async def advantage_spoll_choker(bot, query):
             except Exception:
                 pass
 
+@Client.on_callback_query()
 async def cb_handler(client: Client, query: CallbackQuery):
     if query.data == "close_data":
         try:
@@ -462,6 +466,7 @@ async def delete_later(message, seconds=900):
     except Exception:
         pass
 
+@Client.on_message(filters.command("start") & filters.incoming)
 async def start(client, message):
     if message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
         if not await is_group_connected(message.chat.id):
@@ -575,12 +580,14 @@ async def start(client, message):
     if not await send_file_to_user(client, message.from_user.id, file_id):
         await message.reply("No such file exist.")
 
+@Client.on_message(filters.command('logs') & filters.user(ADMINS))
 async def log_file(bot, message):
     try:
         await message.reply_document('TelegramBot.log')
     except Exception as e:
         await message.reply(str(e))
 
+@Client.on_message(filters.command('deleteall') & filters.user(ADMINS))
 async def delete_all_index(bot, message):
     await message.reply_text(
         'This will delete all indexed files.\nDo you want to continue??',
@@ -591,6 +598,7 @@ async def delete_all_index(bot, message):
         quote=True,
     )
 
+@Client.on_callback_query(filters.regex(r'^autofilter_delete$'))
 async def delete_all_index_confirm(bot, callback):
     if callback.from_user.id not in ADMINS:
         return await callback.answer("Unauthorized!", show_alert=True)
@@ -606,6 +614,7 @@ def get_settings_keyboard(settings: dict):
         [InlineKeyboardButton("ShortLink", callback_data=f"setgs#is_shortlink#{short}"), InlineKeyboardButton("✔ Oɴ" if short else "✘ Oғғ", callback_data=f"setgs#is_shortlink#{short}")],
     ])
 
+@Client.on_callback_query(filters.regex(r'^setgs#'))
 async def settings_callback(client, callback):
     if callback.from_user.id not in ADMINS:
         return await callback.answer("Only bot admins can change settings.", show_alert=True)
@@ -630,6 +639,7 @@ async def settings_callback(client, callback):
         pass
     await callback.answer("Updated")
 
+@Client.on_message(filters.command('settings') & filters.user(ADMINS))
 async def settings(client, message):
     if message.chat.type not in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
         return await message.reply_text("Use /settings inside a connected group.")
@@ -643,6 +653,7 @@ async def settings(client, message):
         reply_to_message_id=message.id,
     )
 
+@Client.on_message(filters.command("shortlink1") & filters.user(ADMINS))
 async def update_shortlink1(bot, message):
     if message.chat.type == enums.ChatType.PRIVATE:
         return await message.reply_text("<b>Only works in groups !</b>")
@@ -662,6 +673,7 @@ async def update_shortlink1(bot, message):
     await asyncio.sleep(10)
     await reply.delete()
 
+@Client.on_message(filters.command("shortlink2") & filters.user(ADMINS))
 async def update_shortlink2(bot, message):
     if message.chat.type == enums.ChatType.PRIVATE:
         return await message.reply_text("<b>Only works in groups !</b>")
@@ -681,6 +693,7 @@ async def update_shortlink2(bot, message):
     await asyncio.sleep(10)
     await reply.delete()
 
+@Client.on_message(filters.command("shorteners") & filters.user(ADMINS))
 async def view_shorteners(bot, message):
     if message.chat.type == enums.ChatType.PRIVATE:
         return await message.reply_text("<b>Only works in groups !</b>")
@@ -700,6 +713,7 @@ async def view_shorteners(bot, message):
         parse_mode=enums.ParseMode.MARKDOWN,
     )
 
+@Client.on_message(filters.command("restart") & filters.user(ADMINS))
 async def stop_button(bot, message):
     msg = await bot.send_message(text="**🔄 𝙱𝙾𝚃 𝙸𝚂 𝚁𝙴𝚂𝚃𝙰𝚁𝚃𝙸𝙽𝙶**", chat_id=message.chat.id)
     await asyncio.sleep(60)
