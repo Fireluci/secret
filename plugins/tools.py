@@ -423,3 +423,36 @@ async def view_shorteners(bot, message):
         f"• **Secondary (Short2):** `{s2_url}` (API: `{s2_api}`)",
         parse_mode=enums.ParseMode.MARKDOWN,
     )
+
+@Client.on_message(filters.command('logs') & filters.user(ADMINS))
+async def log_file(bot, message):
+    try:
+        await message.reply_document('TelegramBot.log')
+    except Exception as e:
+        await message.reply(str(e))
+
+@Client.on_message(filters.command('clearindex') & filters.user(ADMINS))
+async def delete_all_index(bot, message):
+    await message.reply_text(
+        'This will delete all indexed files.\nDo you want to continue??',
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton(text="🛃 Delete Files!", callback_data="clear_index")],
+            [InlineKeyboardButton(text="💢 Cancel 💢", callback_data="close_data")],
+        ]),
+        quote=True,
+    )
+
+@Client.on_callback_query(filters.regex(r'^clear_index$'))
+async def delete_all_index_confirm(bot, callback):
+    if callback.from_user.id not in ADMINS:
+        return await callback.answer("Unauthorized!", show_alert=True)
+    await Media.collection.drop()
+    await callback.answer('Done')
+    await callback.message.edit('Successfully deleted all the indexed files.')
+
+@Client.on_message(filters.command("restart") & filters.user(ADMINS))
+async def stop_button(bot, message):
+    msg = await bot.send_message(text="**🔄 𝙱𝙾𝚃 𝙸𝚂 𝚁𝙴𝚂𝚃𝙰𝚁𝚃𝙸𝙽𝙶**", chat_id=message.chat.id)
+    await asyncio.sleep(60)
+    await msg.edit("**✅️ 𝙱𝙾𝚃 𝙸𝚂 𝚁𝙴𝚂𝚃𝙰𝚁𝚃𝙴𝙳**")
+    os.execl(sys.executable, sys.executable, *sys.argv)
