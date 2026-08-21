@@ -1,0 +1,707 @@
+import asyncio, re, math, logging
+import time as _time
+from pyrogram import Client, filters, enums
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from pyrogram.errors import FloodWait, UserIsBlocked, MessageNotModified, PeerIdInvalid
+from html import escape
+from info import *
+from utils import get_size, is_subscribed, search_gagala, temp, get_settings
+from database.users_chats_db import db
+from database.ia_filterdb import Media, get_file_details, get_search_results, get_bad_files
+import os
+import re
+import sys
+import asyncio
+import logging
+from pyrogram.errors import FloodWait
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from database.ia_filterdb import Media, get_file_details, unpack_new_file_id, get_bad_files
+from utils import get_settings, get_size, is_subscribed, save_group_settings, temp, get_shortlink, is_group_connected
+
+# ==================== PM_FILTER.PY ====================
+
+logger = logging.getLogger(__name__)
+
+logger.setLevel(logging.ERROR)
+
+lock = asyncio.Lock()
+
+FRESH = {}
+
+SPELL_CHECK = {}
+
+PAGINATION = {}
+
+GLOBAL_SEM = asyncio.Semaphore(12)
+
+USER_COOLDOWN = {}
+
+if not hasattr(temp, "SHORT"):
+    temp.SHORT = {}
+
+def tutorial_url():
+    return TUTORIAL if TUTORIAL.startswith('http') else f'https://telegram.me/{TUTORIAL}'
+
+REMOVES = [
+    "in", "series", "4k", "kdrama", "ott", 
+    "movies", "webseries", "language", "hd", "hollywood", 
+    "and", "&", "bollywood", "dub", "anime",
+    "dubbed", "file", "download", "movie", "film",
+    "netflix", "link", "subtitles",
+    "full movie", "korean drama", "web series",
+    "tv series", "television series", "tv show", "with subtitles"
+]
+
+def remove_words(text):
+    text = " ".join(text.split())
+    for x in sorted(REMOVES, key=len, reverse=True):
+        text = re.sub(rf"\b{re.escape(x)}\b", " ", text, flags=re.I)
+    return " ".join(text.split())
+
+def is_spam(uid, cooldown=2):
+    now = _time.monotonic()
+    last = USER_COOLDOWN.get(uid, 0)
+    if now - last < cooldown:
+        return True
+    USER_COOLDOWN[uid] = now
+    return False
+
+async def get_result_buttons(chat_id, req, key, offset, next_offset, total, user_id=None):
+    max_limit = 10
+    try:
+        next_value = int(next_offset) if next_offset != "" else 0
+    except (TypeError, ValueError):
+        next_value = 0
+
+    current_page = (offset // max_limit) + 1
+    total_pages = max(1, math.ceil(int(total) / max_limit))
+    back_offset = max(0, offset - max_limit)
+
+    buttons = []
+    if next_value:
+        buttons.append([
+            InlineKeyboardButton(
+                "⏪ BACK", callback_data=f"next_{req}_{key}_{back_offset}"
+            ) if offset else InlineKeyboardButton("🔅 Page", callback_data="pages"),
+            InlineKeyboardButton(f"{current_page} / {total_pages}", callback_data="pages"),
+            InlineKeyboardButton("NEXT ⏩", callback_data=f"next_{req}_{key}_{next_value}"),
+        ])
+    elif offset:
+        buttons.append([
+            InlineKeyboardButton("⏪ BACK", callback_data=f"next_{req}_{key}_{back_offset}"),
+            InlineKeyboardButton(f"{current_page} / {total_pages}", callback_data="pages"),
+        ])
+    else:
+        buttons.append([InlineKeyboardButton("✦ ────「 The End 」──── ✦", callback_data="pages")])
+
+    settings = await get_settings(chat_id)
+    if settings.get("is_shortlink", IS_SHORTLINK):
+        buttons.append([InlineKeyboardButton("🌟 How To Download ❓", url=tutorial_url())])
+
+    return buttons
+
+def build_results_caption(search, files):
+    cap = f"<b>🔆 Results For ➔ ‛{escape(search)}’👇\n\n<i>🗨 Choose Link - Press Start ↷</i>\n\n</b>"
+    for file in files:
+        title = file.file_name or ""
+        cap += (
+            f"<b>🍿 <a href='https://telegram.me/{temp.U_NAME}?start=files_{file.file_id}'>"
+            f"[{get_size(file.file_size)}] {escape(title)}</a></b>\n\n"
+        )
+    return cap
+
+def store_file_links(user_id, chat_id, files):
+    for file in files:
+        if user_id:
+            temp.SHORT[(user_id, file.file_id)] = chat_id
+        temp.SHORT[file.file_id] = chat_id
+
+async def handle_auto_delete(message_obj):
+    try:
+        await asyncio.sleep(600)
+        await message_obj.delete()
+    except Exception:
+        pass
+
+async def give_filter(client, message):
+    if message.text.startswith("/"):
+        return
+
+    try:
+        connected = await db.is_group_connected(message.chat.id)
+    except Exception:
+        logger.exception("Failed to check connected status for group %s", message.chat.id)
+        return
+
+    if not connected:
+        return
+
+    await auto_filter(client, message)
+
+async def next_page(bot, query):
+    if not query.message or query.message.chat.type not in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP):
+        return await query.answer(ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+    if not await db.is_group_connected(query.message.chat.id):
+        return await query.answer("This group is not connected.", show_alert=True)
+    if is_spam(query.from_user.id):
+        return
+
+    async with GLOBAL_SEM:
+        try:
+            _, req, key, offset = query.data.split("_")
+            req, offset = int(req), int(offset)
+        except Exception:
+            return await query.answer(ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+
+        if req not in (query.from_user.id, 0):
+            return await query.answer(ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+
+        search = FRESH.get(key)
+        if not search:
+            return await query.answer(OLD_ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+
+        files, next_offset, total = await get_search_results(
+            query.message.chat.id, search, offset=offset
+        )
+        if not files:
+            return await query.answer(OLD_ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+
+        buttons = await get_result_buttons(
+            query.message.chat.id, req, key, offset, next_offset, total, query.from_user.id
+        )
+        store_file_links(query.from_user.id, query.message.chat.id, files)
+        cap = build_results_caption(search, files)
+
+        try:
+            await query.message.edit_text(
+                cap,
+                reply_markup=InlineKeyboardMarkup(buttons),
+                disable_web_page_preview=True,
+            )
+            await query.answer()
+        except MessageNotModified:
+            await query.answer()
+        except Exception:
+            await query.answer(ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+
+async def advantage_spoll_choker(bot, query):
+    if not query.from_user or not query.message:
+        return await query.answer(ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+    if query.message.chat.type not in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP):
+        return await query.answer(ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+    if not await db.is_group_connected(query.message.chat.id):
+        return await query.answer("This group is not connected.", show_alert=True)
+    if is_spam(query.from_user.id):
+        return
+
+    async with GLOBAL_SEM:
+        try:
+            _, user, movie_ = query.data.split('#')
+            user = int(user)
+        except:
+            return await query.answer(ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+
+        if user != 0 and query.from_user.id != user:
+            return await query.answer(ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+
+        if movie_ == "close_spellcheck":
+            await query.message.delete()
+            return await query.answer("Closed !")
+
+        movies = SPELL_CHECK.get(query.message.reply_to_message.id if query.message.reply_to_message else 0)
+        if not movies:
+            await query.answer(OLD_ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+            try:
+                await query.message.edit_text(text="❗Link Expired, Request Again ♻", disable_web_page_preview=True)
+            except:
+                pass
+            return
+
+        try:
+            movie = movies[int(movie_)]
+        except:
+            return await query.answer("❗Invalid Option", show_alert=True)
+
+        files, offset, total_results = await get_search_results(
+            query.message.chat.id, movie, offset=0
+        )
+        if files:
+            await auto_filter(bot, query, (movie, files, offset, total_results))
+        else:
+            try:
+                msg = await query.message.edit_text(text=NO_RESULTS, disable_web_page_preview=True)
+                await asyncio.sleep(60)
+                await msg.delete()
+            except Exception:
+                pass
+
+async def cb_handler(client: Client, query: CallbackQuery):
+    if query.data == "close_data":
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
+        return await query.answer("Closed!")
+
+    if query.data == "pages":
+        return await query.answer("You are on the page navigation.", show_alert=True)
+
+    if query.data.startswith("killfilesdq"):
+        user_id = query.from_user.id
+        if query.message.chat.type in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP):
+            member = await client.get_chat_member(query.message.chat.id, user_id)
+            if member.status not in (
+                enums.ChatMemberStatus.ADMINISTRATOR,
+                enums.ChatMemberStatus.OWNER,
+            ) and str(user_id) not in ADMINS:
+                return await query.answer(ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+
+        try:
+            _, keyword = query.data.split("#", 1)
+        except ValueError:
+            return await query.answer(ALRT_TXT.format(query.from_user.first_name), show_alert=True)
+
+        files, _ = await get_bad_files(keyword)
+        await query.message.edit_text("<b>File deletion process will start in 5 seconds!</b>")
+        await asyncio.sleep(5)
+
+        deleted = 0
+        async with lock:
+            for file in files:
+                result = await Media.collection.delete_one({"_id": file.file_id})
+                if result.deleted_count:
+                    deleted += 1
+
+        await query.message.edit_text(
+            f"<b>Process completed! Successfully deleted {deleted} files for: {escape(keyword)}</b>"
+        )
+        return await query.answer("Deletion completed.", show_alert=True)
+
+async def auto_filter(client, msg, spoll=False):
+    if not spoll:
+        message = msg
+        if (
+            message.text.startswith("/")
+            or re.findall(r"((^/|^,|^!|^\.|^[\U0001F900-\U000E007F]).*)", message.text)
+            or len(message.text) >= 100
+        ):
+            return
+
+        search = remove_words(message.text.lower())
+        search = re.sub(
+            r"\b(complete|combined|all\s*episodes?|full\s*episodes?)\b",
+            "com",
+            search,
+            flags=re.IGNORECASE,
+        )
+        search = re.sub(r"[-:–]+", " ", search)
+        search = re.sub(r"\s+", " ", search).strip()
+        search = re.sub(
+            r"(?:(?:session|season)\s?)(\d+)",
+            lambda x: f"s{x.group(1).zfill(2)}",
+            search,
+            flags=re.IGNORECASE,
+        )
+        search = re.sub(
+            r"so(\d+)",
+            lambda x: f"s{x.group(1).zfill(2)}",
+            search,
+            flags=re.IGNORECASE,
+        )
+        for lang, code in [
+            ("english", "eng"), ("hindi", "hin"), ("tamil", "tam"),
+            ("telugu", "tel"), ("kannada", "kan"), ("malayalam", "mal"),
+        ]:
+            search = search.replace(lang, code)
+
+        files, offset, total_results = await get_search_results(
+            message.chat.id, search, offset=0
+        )
+        if not files:
+            settings = await get_settings(message.chat.id)
+            if settings.get("spell_check", False):
+                return await advantage_spell_chok(client, msg)
+            return
+    else:
+        # Keep the original user message as the reply target, then remove
+        # the spellcheck selection message so users do not confuse results.
+        message = msg.message.reply_to_message
+        if not message:
+            return await msg.answer(OLD_ALRT_TXT.format(msg.from_user.first_name), show_alert=True)
+        search, files, offset, total_results = spoll
+        try:
+            await msg.message.delete()
+        except Exception:
+            pass
+
+    key = f"{message.chat.id}-{message.id}"
+    FRESH[key] = search
+    if len(FRESH) > 1000:
+        FRESH.clear()
+        FRESH[key] = search
+
+    req = message.from_user.id if message.from_user else 0
+    buttons = await get_result_buttons(
+        message.chat.id, req, key, 0, offset, total_results, req
+    )
+    store_file_links(req, message.chat.id, files)
+    cap = build_results_caption(search, files)
+
+    result = await message.reply_text(
+        cap,
+        reply_markup=InlineKeyboardMarkup(buttons),
+        disable_web_page_preview=True,
+    )
+    asyncio.create_task(handle_auto_delete(result))
+    asyncio.create_task(handle_auto_delete(message))
+
+async def advantage_spell_chok(client, msg):
+    mv_rqst = msg.text
+    reqstr1 = msg.from_user.id if msg.from_user else None
+    if not reqstr1: return
+    try: reqstr = await client.get_users(reqstr1)
+    except: return await msg.reply("❌ Unable to fetch user.")
+
+    query = re.sub(r"\s+", " ", remove_words(mv_rqst)).strip() + "movie"
+    g_s = await search_gagala(query) + await search_gagala(msg.text)
+
+    if not g_s:
+        k = await msg.reply(NO_RESULTS, disable_web_page_preview=True)
+        await asyncio.sleep(60)
+        return await k.delete()
+
+    gs = list(filter(re.compile(r".*(imdb|wikipedia).*", re.IGNORECASE).search, g_s))
+    gs_parsed = list(dict.fromkeys(filter(None, [re.sub(r'\b(imdb|wikipedia|reviews|full|all|episode(s)?|film|movie|tv\s*series|television\s*series|web\s*series|tv\s*show|show|series)\b|[\(\)\-]', ' ', i, flags=re.IGNORECASE).strip() for i in gs])))
+
+    if not gs_parsed:
+        for mv in g_s:
+            match = re.compile(r"watch\s+([a-zA-Z0-9_\s\-\(\)]+)", re.IGNORECASE).search(mv)
+            if match: gs_parsed.append(match.group(1).strip())
+    gs_parsed = list(dict.fromkeys(filter(None, gs_parsed)))[:3]
+
+    movielist = list(dict.fromkeys(filter(None, [re.sub(r'(\-|\(|\)|_)', '', i, flags=re.IGNORECASE).strip() for i in gs_parsed])))
+    if not movielist:
+        k = await msg.reply(NO_RESULTS, disable_web_page_preview=True)
+        await asyncio.sleep(60)
+        return await k.delete()
+
+    SPELL_CHECK[msg.id] = movielist
+    btn = [[InlineKeyboardButton(text=movie, callback_data=f"spolling#{reqstr1}#{idx}")] for idx, movie in enumerate(movielist)]
+    btn.append([InlineKeyboardButton("×××× ⟨ Close ⟩ ××××", callback_data="close_data")])
+    k = await msg.reply("<b>🎬 Select Your Pick ↡</b>", reply_markup=InlineKeyboardMarkup(btn))
+    await asyncio.sleep(30)
+    await k.delete()
+
+# ==================== COMMANDS.PY (REMAINING) ====================
+
+logger = logging.getLogger(__name__)
+
+def tutorial_url():
+    if not TUTORIAL:
+        return None
+    return TUTORIAL if str(TUTORIAL).startswith("http") else f"https://telegram.me/{TUTORIAL}"
+
+async def send_file_to_user(client, user_id, file_id):
+    files = await get_file_details(file_id)
+    if not files:
+        return False
+    file = files[0]
+    title = " ".join(x for x in (file.file_name or "").split() if not x.startswith(("www.", "@")))
+    caption = title
+    if CUSTOM_FILE_CAPTION:
+        try:
+            caption = CUSTOM_FILE_CAPTION.format(
+                file_name=title,
+                file_size=get_size(file.file_size),
+                file_caption="",
+            )
+        except Exception:
+            caption = title
+
+    await client.send_cached_media(
+        chat_id=user_id,
+        file_id=file_id,
+        caption=caption,
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}')]
+        ]),
+    )
+    return True
+
+async def send_shortlink_page(client, user_id, file_id, chat_id):
+    files = await get_file_details(file_id)
+    if not files:
+        return False
+    file = files[0]
+    title = " ".join(x for x in (file.file_name or "").split() if not x.startswith(("www.", "@")))
+
+    try:
+        short_url = await get_shortlink(
+            chat_id,
+            f"https://telegram.me/{temp.U_NAME}?start=file_{file_id}",
+            client=client,
+        )
+    except Exception:
+        return None
+
+    msg = await client.send_message(
+        chat_id=user_id,
+        text=f'<b>🔆 [ {get_size(file.file_size)} ] <a href="https://telegram.me/HEROFLiX">{title}</a>\n\n📥 Download Link↓\n{short_url}</b>',
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("♻️ Download Link ♻️", url=short_url)],
+            [InlineKeyboardButton("❓ How To Download ❓", url=tutorial_url())],
+        ]),
+    )
+    asyncio.create_task(delete_later(msg))
+    return True
+
+async def delete_later(message, seconds=900):
+    await asyncio.sleep(seconds)
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+async def start(client, message):
+    if message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
+        if not await is_group_connected(message.chat.id):
+            return
+        buttons = []
+        tut = tutorial_url()
+        if tut:
+            buttons = [[InlineKeyboardButton('❓How To Use Me❓', url=tut)]]
+        await message.reply(
+            START_TXT.format(
+                message.from_user.mention if message.from_user else message.chat.title,
+                temp.U_NAME,
+                temp.B_NAME,
+            ),
+            reply_markup=InlineKeyboardMarkup(buttons) if buttons else None,
+            disable_web_page_preview=True,
+        )
+        return
+
+    if not message.from_user:
+        return
+
+    ban_status = await db.get_ban_status(message.from_user.id)
+    if ban_status.get("is_banned"):
+        return await message.reply_text(
+            f'Sorry Dude, You are Banned to use Me.\nBan Reason: {ban_status.get("ban_reason", "No Reason")}'
+        )
+
+    if not await db.is_user_exist(message.from_user.id):
+        await db.add_user(message.from_user.id, message.from_user.first_name)
+        try:
+            await client.send_message(LOG_CHANNEL, LOG_TEXT_P.format(message.from_user.id, message.from_user.mention))
+        except Exception:
+            pass
+
+    if len(message.command) != 2:
+        buttons = [
+            [InlineKeyboardButton("🌟 Paid (No Ads)", url="https://telegram.me/HeroFlixx/49"), InlineKeyboardButton("🍿 Free (With Ads)", url="https://telegram.me/addlist/X5k2lnJLIGAyZjQ1")],
+            [InlineKeyboardButton("👤 Admin", url=f"https://telegram.me/{SUPPORT_CHAT}"), InlineKeyboardButton("⚜ Updates", url=FORCE)],
+        ]
+        return await message.reply_photo(
+            photo=PICS,
+            caption=START_TXT.format(message.from_user.mention, temp.U_NAME, temp.B_NAME),
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode=enums.ParseMode.HTML,
+        )
+
+    if AUTH_CHANNEL and not await is_subscribed(client, message):
+        payload = message.text.split(" ", 1)[1] if " " in message.text else "subscribe"
+        retry = f"https://telegram.me/{temp.U_NAME}?start={payload}"
+        return await client.send_message(
+            message.from_user.id,
+            "**🔆 First Join Our Main Channel & Click Try Again ♻**",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🏮 Main Channel ⟨Click Here⟩ 🏮", url=FORCE)],
+                [InlineKeyboardButton("🔄 Try Again", url=retry)],
+            ]),
+            parse_mode=enums.ParseMode.MARKDOWN,
+        )
+
+    data = message.command[1]
+    if data in {"subscribe", "error", "okay", "help"}:
+        buttons = [
+            [InlineKeyboardButton("🌟 Paid (No Ads)", url="https://telegram.me/HeroFlixx/49"), InlineKeyboardButton("🍿 Free (With Ads)", url="https://telegram.me/addlist/X5k2lnJLIGAyZjQ1")],
+            [InlineKeyboardButton("👤 Admin", url=f"https://telegram.me/{SUPPORT_CHAT}"), InlineKeyboardButton("⚜ Updates", url=FORCE)],
+        ]
+        return await message.reply_photo(
+            photo=PICS,
+            caption=START_TXT.format(message.from_user.mention, temp.U_NAME, temp.B_NAME),
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode=enums.ParseMode.HTML,
+        )
+
+    if "_" in data:
+        pre, payload = data.split("_", 1)
+    else:
+        pre, payload = "file", data
+
+    if pre not in {"file", "files", "short"}:
+        return
+
+    if pre == "short":
+        file_id = payload
+        short_cache = getattr(temp, "SHORT", {})
+        chat_id = short_cache.get((message.from_user.id, file_id)) or short_cache.get(message.from_user.id)
+        if chat_id is None:
+            return await message.reply("Invalid or expired link.")
+        result = await send_shortlink_page(client, message.from_user.id, file_id, chat_id)
+        if result is None:
+            return await message.reply("❌ Link generation failed. Please try again later.")
+        if result is False:
+            return await message.reply("No such file exist.")
+        return
+
+    if pre == "files":
+        file_id = payload
+        short_cache = getattr(temp, "SHORT", {})
+        chat_id = short_cache.get((message.from_user.id, file_id)) or short_cache.get(message.from_user.id)
+        if chat_id is None:
+            return await message.reply_text("<b>Link Expired, Search Again in Group!</b>")
+
+        settings = await get_settings(chat_id)
+        if settings.get("is_shortlink", IS_SHORTLINK):
+            result = await send_shortlink_page(client, message.from_user.id, file_id, chat_id)
+            if result is None:
+                return await message.reply("❌ Link generation failed. Please try again later.")
+            if result is False:
+                return await message.reply("No such file exist.")
+            return
+
+    if not await send_file_to_user(client, message.from_user.id, file_id):
+        await message.reply("No such file exist.")
+
+async def log_file(bot, message):
+    try:
+        await message.reply_document('TelegramBot.log')
+    except Exception as e:
+        await message.reply(str(e))
+
+async def delete_all_index(bot, message):
+    await message.reply_text(
+        'This will delete all indexed files.\nDo you want to continue??',
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton(text="🛃 Delete Files!", callback_data="autofilter_delete")],
+            [InlineKeyboardButton(text="💢 Cancel 💢", callback_data="close_data")],
+        ]),
+        quote=True,
+    )
+
+async def delete_all_index_confirm(bot, callback):
+    if callback.from_user.id not in ADMINS:
+        return await callback.answer("Unauthorized!", show_alert=True)
+    await Media.collection.drop()
+    await callback.answer('Done')
+    await callback.message.edit('Successfully deleted all the indexed files.')
+
+def get_settings_keyboard(settings: dict):
+    spell = bool(settings.get("spell_check", SPELL_CHECK_REPLY))
+    short = bool(settings.get("is_shortlink", IS_SHORTLINK))
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("Spell Check", callback_data=f"setgs#spell_check#{spell}"), InlineKeyboardButton("✔ Oɴ" if spell else "✘ Oғғ", callback_data=f"setgs#spell_check#{spell}")],
+        [InlineKeyboardButton("ShortLink", callback_data=f"setgs#is_shortlink#{short}"), InlineKeyboardButton("✔ Oɴ" if short else "✘ Oғғ", callback_data=f"setgs#is_shortlink#{short}")],
+    ])
+
+async def settings_callback(client, callback):
+    if callback.from_user.id not in ADMINS:
+        return await callback.answer("Only bot admins can change settings.", show_alert=True)
+    try:
+        _, setting, _ = callback.data.split("#")
+    except Exception:
+        return await callback.answer("Invalid setting.", show_alert=True)
+    if setting not in {"spell_check", "is_shortlink"}:
+        return await callback.answer("Invalid setting.", show_alert=True)
+
+    chat_id = callback.message.chat.id
+    if chat_id and callback.message.chat.type in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP):
+        if not await is_group_connected(chat_id):
+            return await callback.answer("This group is disconnected.", show_alert=True)
+    settings = await get_settings(chat_id)
+    current = bool(settings.get(setting))
+    await save_group_settings(chat_id, setting, not current)
+    settings = await get_settings(chat_id)
+    try:
+        await callback.message.edit_reply_markup(reply_markup=get_settings_keyboard(settings))
+    except Exception:
+        pass
+    await callback.answer("Updated")
+
+async def settings(client, message):
+    if message.chat.type not in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
+        return await message.reply_text("Use /settings inside a connected group.")
+    if not await is_group_connected(message.chat.id):
+        return
+    settings = await get_settings(message.chat.id)
+    await message.reply_text(
+        f"<b>⚙️ Settings For {message.chat.title}</b>",
+        reply_markup=get_settings_keyboard(settings),
+        parse_mode=enums.ParseMode.HTML,
+        reply_to_message_id=message.id,
+    )
+
+async def update_shortlink1(bot, message):
+    if message.chat.type == enums.ChatType.PRIVATE:
+        return await message.reply_text("<b>Only works in groups !</b>")
+    if not await is_group_connected(message.chat.id):
+        return await message.reply_text("Connect this group first with /connect.")
+    try:
+        _, shortlink_url, api = message.text.split(" ", 2)
+    except Exception:
+        return await message.reply_text("<b>Wrong Format. Example - /shortlink1 softurl.in YOUR_API</b>")
+
+    reply = await message.reply_text("<b>Please Wait...</b>")
+    shortlink_url = re.sub(r"[:/]", "", re.sub(r"https?://?", "", shortlink_url))
+    await save_group_settings(message.chat.id, 'shortlink', shortlink_url)
+    await save_group_settings(message.chat.id, 'shortlink_api', api)
+    await save_group_settings(message.chat.id, 'is_shortlink', True)
+    await reply.edit_text(f"<b>Successfully updated Primary Shortener (Short1)!\n\nWebsite: <code>{shortlink_url}</code>\nAPI: <code>{api}</code></b>")
+    await asyncio.sleep(10)
+    await reply.delete()
+
+async def update_shortlink2(bot, message):
+    if message.chat.type == enums.ChatType.PRIVATE:
+        return await message.reply_text("<b>Only works in groups !</b>")
+    if not await is_group_connected(message.chat.id):
+        return await message.reply_text("Connect this group first with /connect.")
+    try:
+        _, shortlink_url, api = message.text.split(" ", 2)
+    except Exception:
+        return await message.reply_text("<b>Wrong Format. Example - /shortlink2 nowshort.com YOUR_API</b>")
+
+    reply = await message.reply_text("<b>Please Wait...</b>")
+    shortlink_url = re.sub(r"[:/]", "", re.sub(r"https?://?", "", shortlink_url))
+    await save_group_settings(message.chat.id, 'second_shortlink', shortlink_url)
+    await save_group_settings(message.chat.id, 'second_shortlink_api', api)
+    await save_group_settings(message.chat.id, 'is_shortlink', True)
+    await reply.edit_text(f"<b>Successfully updated Secondary Shortener (Short2)!\n\nWebsite: <code>{shortlink_url}</code>\nAPI: <code>{api}</code></b>")
+    await asyncio.sleep(10)
+    await reply.delete()
+
+async def view_shorteners(bot, message):
+    if message.chat.type == enums.ChatType.PRIVATE:
+        return await message.reply_text("<b>Only works in groups !</b>")
+    if not await is_group_connected(message.chat.id):
+        return await message.reply_text("Connect this group first with /connect.")
+    settings = await get_settings(message.chat.id)
+    s1_url = settings.get('shortlink') or SHORT1_URL
+    s1_api = settings.get('shortlink_api') or SHORT1_API
+    s2_url = settings.get('second_shortlink') or SHORT2_URL
+    s2_api = settings.get('second_shortlink_api') or SHORT2_API
+    is_active = settings.get('is_shortlink', IS_SHORTLINK)
+    await message.reply_text(
+        f"⚙️ **Current Group Shortener Configuration**\n\n"
+        f"• **Status:** `{'Enabled' if is_active else 'Disabled'}`\n"
+        f"• **Primary (Short1):** `{s1_url}` (API: `{s1_api}`)\n"
+        f"• **Secondary (Short2):** `{s2_url}` (API: `{s2_api}`)",
+        parse_mode=enums.ParseMode.MARKDOWN,
+    )
+
+async def stop_button(bot, message):
+    msg = await bot.send_message(text="**🔄 𝙱𝙾𝚃 𝙸𝚂 𝚁𝙴𝚂𝚃𝙰𝚁𝚃𝙸𝙽𝙶**", chat_id=message.chat.id)
+    await asyncio.sleep(60)
+    await msg.edit("**✅️ 𝙱𝙾𝚃 𝙸𝚂 𝚁𝙴𝚂𝚃𝙰𝚁𝚃𝙴𝙳**")
+    os.execl(sys.executable, sys.executable, *sys.argv)
