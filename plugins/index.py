@@ -20,6 +20,7 @@ media_filter = filters.document | filters.video | filters.audio
 
 index_channels = list(dict.fromkeys([*CHANNELS, CAPTION_INDEX_CHANNEL]))
 
+@Client.on_message(filters.chat(index_channels) & media_filter)
 async def media(bot, message):
     """Index media from configured channels."""
     for file_type in ("document", "video", "audio"):
@@ -66,6 +67,7 @@ async def save_index_state(chat_id, lst_msg_id, current, total_files, duplicate,
 async def clear_index_state():
     await index_state_col.delete_one({"_id": "active_index"})
 
+@Client.on_callback_query(filters.regex(r'^index'))
 async def index_files(bot, query):
     if not query.from_user or query.from_user.id not in ADMINS:
         return await query.answer("Unauthorized!", show_alert=True)
@@ -113,6 +115,11 @@ async def index_files(bot, query):
         pass
     asyncio.create_task(index_files_to_db(int(lst_msg_id), chat, msg, bot))
 
+@Client.on_message(
+    (filters.forwarded | (filters.regex(
+        r"(https://)?(t\.me/|telegram\.me/|telegram\.dog/)(c/)?(\d+|[a-zA-Z_0-9]+)/(\d+)$"
+    )) & filters.text) & filters.private & filters.incoming
+)
 async def send_for_index(bot, message):
     if message.from_user.id not in ADMINS:
         return
@@ -171,6 +178,7 @@ async def send_for_index(bot, message):
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 
+@Client.on_message(filters.command('setskip') & filters.user(ADMINS) & connected_group)
 async def set_skip_number(bot, message):
     if ' ' in message.text:
         _, skip = message.text.split(" ")
@@ -338,6 +346,7 @@ async def check_pending_index_on_startup(client):
 
 logger = logging.getLogger(__name__)
 
+@Client.on_edited_message(filters.chat(CAPTION_INDEX_CHANNEL))
 async def caption_edit_handler(client, message):
     media = message.document or message.video or message.audio
     if not media:
