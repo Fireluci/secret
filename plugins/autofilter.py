@@ -238,8 +238,8 @@ async def advantage_spoll_choker(bot, query):
             except Exception:
                 pass
 
-@Client.on_callback_query()
-async def cb_handler(client: Client, query: CallbackQuery):
+@Client.on_callback_query(~filters.regex(r"^index"))
+async def cb_handler(client, query):
     if query.data == "close_data":
         try:
             await query.message.delete()
