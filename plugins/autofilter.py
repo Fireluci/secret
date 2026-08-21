@@ -123,10 +123,13 @@ async def handle_auto_delete(message_obj):
     except Exception:
         pass
 
-@Client.on_message(filters.group & filters.text & filters.incoming)
+@Client.on_message(
+    filters.group
+    & filters.text
+    & filters.incoming
+    & ~filters.regex(r"^/")
+)
 async def give_filter(client, message):
-    if message.text.startswith("/"):
-        return
 
     try:
         connected = await db.is_group_connected(message.chat.id)
