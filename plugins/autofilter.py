@@ -153,7 +153,7 @@ async def give_filter(client, message):
 @Client.on_callback_query(filters.regex(r"^next"))
 async def next_page(bot, query):
     if not query.message or query.message.chat.type not in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP):
-        return await query.answer(ALRT_TXT(query.from_user.first_name), show_alert=True)
+        return await query.answer(ALRT_TXT, show_alert=True)
     if not await db.is_group_connected(query.message.chat.id):
         return await query.answer("This group is not connected.", show_alert=True)
     if is_spam(query.from_user.id):
@@ -164,20 +164,20 @@ async def next_page(bot, query):
             _, req, key, offset = query.data.split("_")
             req, offset = int(req), int(offset)
         except Exception:
-            return await query.answer(ALRT_TXT(query.from_user.first_name), show_alert=True)
+            return await query.answer(ALRT_TXT, show_alert=True)
 
         if req not in (query.from_user.id, 0):
-            return await query.answer(ALRT_TXT(query.from_user.first_name), show_alert=True)
+            return await query.answer(ALRT_TXT, show_alert=True)
 
         search = FRESH.get(key)
         if not search:
-            return await query.answer(EXPIRED(query.from_user.first_name), show_alert=True)
+            return await query.answer(EXPIRED, show_alert=True)
 
         files, next_offset, total = await get_search_results(
             query.message.chat.id, search, offset=offset
         )
         if not files:
-            return await query.answer(EXPIRED(query.from_user.first_name), show_alert=True)
+            return await query.answer(EXPIRED, show_alert=True)
 
         buttons = await get_result_buttons(
             query.message.chat.id, req, key, offset, next_offset, total, query.from_user.id
@@ -195,14 +195,14 @@ async def next_page(bot, query):
         except MessageNotModified:
             await query.answer()
         except Exception:
-            await query.answer(ALRT_TXT(query.from_user.first_name), show_alert=True)
+            await query.answer(ALRT_TXT, show_alert=True)
 
 @Client.on_callback_query(filters.regex(r"^spolling"))
 async def advantage_spoll_choker(bot, query):
     if not query.from_user or not query.message:
-        return await query.answer(ALRT_TXT(query.from_user.first_name), show_alert=True)
+        return await query.answer(ALRT_TXT, show_alert=True)
     if query.message.chat.type not in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP):
-        return await query.answer(ALRT_TXT(query.from_user.first_name), show_alert=True)
+        return await query.answer(ALRT_TXT, show_alert=True)
     if not await db.is_group_connected(query.message.chat.id):
         return await query.answer("This group is not connected.", show_alert=True)
     if is_spam(query.from_user.id):
@@ -213,10 +213,10 @@ async def advantage_spoll_choker(bot, query):
             _, user, movie_ = query.data.split('#')
             user = int(user)
         except:
-            return await query.answer(ALRT_TXT(query.from_user.first_name), show_alert=True)
+            return await query.answer(ALRT_TXT, show_alert=True)
 
         if user != 0 and query.from_user.id != user:
-            return await query.answer(ALRT_TXT(query.from_user.first_name), show_alert=True)
+            return await query.answer(ALRT_TXT, show_alert=True)
 
         if movie_ == "close_spellcheck":
             await query.message.delete()
@@ -224,7 +224,7 @@ async def advantage_spoll_choker(bot, query):
 
         movies = SPELL_CHECK.get(query.message.reply_to_message.id if query.message.reply_to_message else 0)
         if not movies:
-            await query.answer(EXPIRED(query.from_user.first_name), show_alert=True)
+            await query.answer(EXPIRED, show_alert=True)
             try:
                 await query.message.edit_text(text="❗Link Expired, Request Again ♻", disable_web_page_preview=True)
             except:
@@ -269,12 +269,12 @@ async def cb_handler(client, query):
                 enums.ChatMemberStatus.ADMINISTRATOR,
                 enums.ChatMemberStatus.OWNER,
             ) and str(user_id) not in ADMINS:
-                return await query.answer(ALRT_TXT(query.from_user.first_name), show_alert=True)
+                return await query.answer(ALRT_TXT, show_alert=True)
 
         try:
             _, keyword = query.data.split("#", 1)
         except ValueError:
-            return await query.answer(ALRT_TXT(query.from_user.first_name), show_alert=True)
+            return await query.answer(ALRT_TXT, show_alert=True)
 
         files, _ = await get_bad_files(keyword)
         await query.message.edit_text("<b>File deletion process will start in 5 seconds!</b>")
