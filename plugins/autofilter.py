@@ -1,24 +1,56 @@
 import asyncio, re, math, logging
+
 import time as _time
+
 from pyrogram import Client, filters, enums
+
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+
 from pyrogram.errors import FloodWait, UserIsBlocked, MessageNotModified, PeerIdInvalid
+
 from html import escape
+
 from info import *
+
 from utils import get_size, is_subscribed, search_gagala, temp, get_settings
+
 from database.users_chats_db import db
+
 from database.ia_filterdb import Media, get_file_details, get_search_results, get_bad_files
+
 import os
+
 import re
+
 import sys
+
 import asyncio
+
 import logging
+
 from pyrogram.errors import FloodWait
+
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
 from database.ia_filterdb import Media, get_file_details, unpack_new_file_id, get_bad_files
+
 from utils import get_settings, get_size, is_subscribed, save_group_settings, temp, get_shortlink, is_group_connected
 
-# ==================== PM_FILTER.PY ====================
+import time
+
+import datetime
+
+from pyrogram import Client, filters
+
+from info import ADMINS
+
+from utils import broadcast_messages, broadcast_messages_group, connected_group
+
+from pyrogram.errors.exceptions.bad_request_400 import MessageTooLong, PeerIdInvalid
+
+from database.ia_filterdb import Media
+
+from utils import connected_group, get_size
 
 logger = logging.getLogger(__name__)
 
@@ -241,7 +273,7 @@ async def advantage_spoll_choker(bot, query):
             except Exception:
                 pass
 
-@Client.on_callback_query(~filters.regex(r"^index"))
+@Client.on_callback_query(filters.regex(r"^(close_data|pages|killfilesdq#)"))
 async def cb_handler(client, query):
     if query.data == "close_data":
         try:
@@ -399,14 +431,7 @@ async def advantage_spell_chok(client, msg):
     await asyncio.sleep(30)
     await k.delete()
 
-# ==================== COMMANDS.PY (REMAINING) ====================
-
 logger = logging.getLogger(__name__)
-
-def tutorial_url():
-    if not TUTORIAL:
-        return None
-    return TUTORIAL if str(TUTORIAL).startswith("http") else f"https://telegram.me/{TUTORIAL}"
 
 async def send_file_to_user(client, user_id, file_id):
     files = await get_file_details(file_id)
@@ -453,7 +478,7 @@ async def send_shortlink_page(client, user_id, file_id, chat_id):
 
     msg = await client.send_message(
         chat_id=user_id,
-        text=f'<b>🔆 [ {get_size(file.file_size)} ] <a href="https://telegram.me/HEROFLiX">{title}</a>\n\n📥 Download Link↓\n{short_url}</b>',
+        text=f'<b>🔆 [ {get_size(file.file_size)} ] <a href="https://telegram.me/{CHNL_LNK}">{title}</a>\n\n📥 Download Link↓\n{short_url}</b>',
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("♻️ Download Link ♻️", url=short_url)],
             [InlineKeyboardButton("❓ How To Download ❓", url=tutorial_url())],
@@ -616,105 +641,6 @@ def get_settings_keyboard(settings: dict):
         [InlineKeyboardButton("Spell Check", callback_data=f"setgs#spell_check#{spell}"), InlineKeyboardButton("✔ Oɴ" if spell else "✘ Oғғ", callback_data=f"setgs#spell_check#{spell}")],
         [InlineKeyboardButton("ShortLink", callback_data=f"setgs#is_shortlink#{short}"), InlineKeyboardButton("✔ Oɴ" if short else "✘ Oғғ", callback_data=f"setgs#is_shortlink#{short}")],
     ])
-
-@Client.on_callback_query(filters.regex(r'^setgs#'))
-async def settings_callback(client, callback):
-    if callback.from_user.id not in ADMINS:
-        return await callback.answer("Only bot admins can change settings.", show_alert=True)
-    try:
-        _, setting, _ = callback.data.split("#")
-    except Exception:
-        return await callback.answer("Invalid setting.", show_alert=True)
-    if setting not in {"spell_check", "is_shortlink"}:
-        return await callback.answer("Invalid setting.", show_alert=True)
-
-    chat_id = callback.message.chat.id
-    if chat_id and callback.message.chat.type in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP):
-        if not await is_group_connected(chat_id):
-            return await callback.answer("This group is disconnected.", show_alert=True)
-    settings = await get_settings(chat_id)
-    current = bool(settings.get(setting))
-    await save_group_settings(chat_id, setting, not current)
-    settings = await get_settings(chat_id)
-    try:
-        await callback.message.edit_reply_markup(reply_markup=get_settings_keyboard(settings))
-    except Exception:
-        pass
-    await callback.answer("Updated")
-
-@Client.on_message(filters.command('settings') & filters.user(ADMINS))
-async def settings(client, message):
-    if message.chat.type not in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
-        return await message.reply_text("Use /settings inside a connected group.")
-    if not await is_group_connected(message.chat.id):
-        return
-    settings = await get_settings(message.chat.id)
-    await message.reply_text(
-        f"<b>⚙️ Settings For {message.chat.title}</b>",
-        reply_markup=get_settings_keyboard(settings),
-        parse_mode=enums.ParseMode.HTML,
-        reply_to_message_id=message.id,
-    )
-
-@Client.on_message(filters.command("shortlink1") & filters.user(ADMINS))
-async def update_shortlink1(bot, message):
-    if message.chat.type == enums.ChatType.PRIVATE:
-        return await message.reply_text("<b>Only works in groups !</b>")
-    if not await is_group_connected(message.chat.id):
-        return await message.reply_text("Connect this group first with /connect.")
-    try:
-        _, shortlink_url, api = message.text.split(" ", 2)
-    except Exception:
-        return await message.reply_text("<b>Wrong Format. Example - /shortlink1 softurl.in YOUR_API</b>")
-
-    reply = await message.reply_text("<b>Please Wait...</b>")
-    shortlink_url = re.sub(r"[:/]", "", re.sub(r"https?://?", "", shortlink_url))
-    await save_group_settings(message.chat.id, 'shortlink', shortlink_url)
-    await save_group_settings(message.chat.id, 'shortlink_api', api)
-    await save_group_settings(message.chat.id, 'is_shortlink', True)
-    await reply.edit_text(f"<b>Successfully updated Primary Shortener (Short1)!\n\nWebsite: <code>{shortlink_url}</code>\nAPI: <code>{api}</code></b>")
-    await asyncio.sleep(10)
-    await reply.delete()
-
-@Client.on_message(filters.command("shortlink2") & filters.user(ADMINS))
-async def update_shortlink2(bot, message):
-    if message.chat.type == enums.ChatType.PRIVATE:
-        return await message.reply_text("<b>Only works in groups !</b>")
-    if not await is_group_connected(message.chat.id):
-        return await message.reply_text("Connect this group first with /connect.")
-    try:
-        _, shortlink_url, api = message.text.split(" ", 2)
-    except Exception:
-        return await message.reply_text("<b>Wrong Format. Example - /shortlink2 nowshort.com YOUR_API</b>")
-
-    reply = await message.reply_text("<b>Please Wait...</b>")
-    shortlink_url = re.sub(r"[:/]", "", re.sub(r"https?://?", "", shortlink_url))
-    await save_group_settings(message.chat.id, 'second_shortlink', shortlink_url)
-    await save_group_settings(message.chat.id, 'second_shortlink_api', api)
-    await save_group_settings(message.chat.id, 'is_shortlink', True)
-    await reply.edit_text(f"<b>Successfully updated Secondary Shortener (Short2)!\n\nWebsite: <code>{shortlink_url}</code>\nAPI: <code>{api}</code></b>")
-    await asyncio.sleep(10)
-    await reply.delete()
-
-@Client.on_message(filters.command("shorteners") & filters.user(ADMINS))
-async def view_shorteners(bot, message):
-    if message.chat.type == enums.ChatType.PRIVATE:
-        return await message.reply_text("<b>Only works in groups !</b>")
-    if not await is_group_connected(message.chat.id):
-        return await message.reply_text("Connect this group first with /connect.")
-    settings = await get_settings(message.chat.id)
-    s1_url = settings.get('shortlink') or SHORT1_URL
-    s1_api = settings.get('shortlink_api') or SHORT1_API
-    s2_url = settings.get('second_shortlink') or SHORT2_URL
-    s2_api = settings.get('second_shortlink_api') or SHORT2_API
-    is_active = settings.get('is_shortlink', IS_SHORTLINK)
-    await message.reply_text(
-        f"⚙️ **Current Group Shortener Configuration**\n\n"
-        f"• **Status:** `{'Enabled' if is_active else 'Disabled'}`\n"
-        f"• **Primary (Short1):** `{s1_url}` (API: `{s1_api}`)\n"
-        f"• **Secondary (Short2):** `{s2_url}` (API: `{s2_api}`)",
-        parse_mode=enums.ParseMode.MARKDOWN,
-    )
 
 @Client.on_message(filters.command("restart") & filters.user(ADMINS))
 async def stop_button(bot, message):

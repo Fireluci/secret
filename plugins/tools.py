@@ -1,25 +1,56 @@
 import asyncio
+
 import time
+
 import datetime
+
 from pyrogram import Client, filters
+
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
 from database.users_chats_db import db
+
 from info import ADMINS
+
 from utils import broadcast_messages, broadcast_messages_group, connected_group
+
 import logging
+
 from pyrogram import Client, filters, enums
+
 from pyrogram.errors.exceptions.bad_request_400 import MessageTooLong, PeerIdInvalid
+
 from database.ia_filterdb import Media
+
 from info import *
+
 from utils import connected_group, get_size
+
 import os
+
 import re
+
 import sys
+
 from pyrogram.errors import FloodWait
+
 from database.ia_filterdb import Media, get_file_details, unpack_new_file_id, get_bad_files
+
 from utils import get_settings, get_size, is_subscribed, save_group_settings, temp, get_shortlink, is_group_connected
 
-# ==================== BROADCAST.PY ====================
+import asyncio, re, math, logging
+
+import time as _time
+
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+
+from pyrogram.errors import FloodWait, UserIsBlocked, MessageNotModified, PeerIdInvalid
+
+from html import escape
+
+from utils import get_size, is_subscribed, search_gagala, temp, get_settings
+
+from database.ia_filterdb import Media, get_file_details, get_search_results, get_bad_files
 
 BROADCAST_CANCEL = set()
 
@@ -30,7 +61,7 @@ async def broadcast_users(bot, message):
     b_msg = message.reply_to_message
     total_users = await db.total_users_count()
     admin_id = message.from_user.id
-    BROADCAST_CANCEL.discard(admin_id)
+    BROADCAST_CANCEL.discard(("users", admin_id))
 
     markup = InlineKeyboardMarkup([
         [InlineKeyboardButton("❌ Cancel Broadcast", callback_data=f"cancel_broadcast#{admin_id}")]
@@ -44,7 +75,7 @@ async def broadcast_users(bot, message):
 
     success = 0
     async for user in db.get_all_users():
-        if admin_id in BROADCAST_CANCEL:
+        if ("users", admin_id) in BROADCAST_CANCEL:
             break
 
         sent, _ = await broadcast_messages(int(user["id"]), b_msg)
@@ -59,8 +90,8 @@ async def broadcast_users(bot, message):
                 reply_markup=markup,
             )
 
-    cancelled = admin_id in BROADCAST_CANCEL
-    BROADCAST_CANCEL.discard(admin_id)
+    cancelled = ("users", admin_id) in BROADCAST_CANCEL
+    BROADCAST_CANCEL.discard(("groups", admin_id))
 
     if cancelled:
         await sts.edit_text(
@@ -96,7 +127,7 @@ async def broadcast_groups(bot, message):
 
     success = 0
     async for group in db.get_all_chats():
-        if admin_id in BROADCAST_CANCEL:
+        if ("groups", admin_id) in BROADCAST_CANCEL:
             break
 
         sent, _ = await broadcast_messages_group(int(group["id"]), b_msg)
@@ -111,7 +142,7 @@ async def broadcast_groups(bot, message):
                 reply_markup=markup,
             )
 
-    cancelled = admin_id in BROADCAST_CANCEL
+    cancelled = ("groups", admin_id) in BROADCAST_CANCEL
     BROADCAST_CANCEL.discard(admin_id)
 
     if cancelled:
@@ -138,7 +169,7 @@ async def cancel_broadcast(bot, query):
     if query.from_user.id != admin_id:
         return await query.answer("This is not your broadcast.", show_alert=True)
 
-    BROADCAST_CANCEL.add(admin_id)
+    BROADCAST_CANCEL.add(("users", admin_id))
     await query.answer("🛑 Broadcast cancelling...")
 
 @Client.on_callback_query(filters.regex(r"^cancel_group_broadcast#"))
@@ -152,10 +183,8 @@ async def cancel_group_broadcast(bot, query):
     if query.from_user.id != admin_id:
         return await query.answer("This is not your broadcast.", show_alert=True)
 
-    BROADCAST_CANCEL.add(admin_id)
+    BROADCAST_CANCEL.add(("groups", admin_id))
     await query.answer("🛑 Broadcast cancelling...")
-
-# ==================== P_TTISHOW.PY ====================
 
 @Client.on_message(filters.command("stats") & filters.incoming & filters.user(ADMINS) & connected_group)
 async def get_stats(bot, message):
@@ -252,8 +281,6 @@ async def list_chats(bot, message):
             outfile.write(out)
         await message.reply_document("chats.txt", caption="Connected Chats")
 
-# ==================== COMMANDS.PY (MOVED) ====================
-
 @Client.on_message(filters.command('channel') & filters.user(ADMINS))
 async def channel_info(bot, message):
     channels = CHANNELS if isinstance(CHANNELS, list) else [CHANNELS]
@@ -312,4 +339,103 @@ async def deletemultiplefiles(bot, message):
             [InlineKeyboardButton("💢 Cancel 💢", callback_data="close_data")],
         ]),
         parse_mode=enums.ParseMode.HTML,
+    )
+
+@Client.on_callback_query(filters.regex(r'^setgs#'))
+async def settings_callback(client, callback):
+    if callback.from_user.id not in ADMINS:
+        return await callback.answer("Only bot admins can change settings.", show_alert=True)
+    try:
+        _, setting, _ = callback.data.split("#")
+    except Exception:
+        return await callback.answer("Invalid setting.", show_alert=True)
+    if setting not in {"spell_check", "is_shortlink"}:
+        return await callback.answer("Invalid setting.", show_alert=True)
+
+    chat_id = callback.message.chat.id
+    if chat_id and callback.message.chat.type in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP):
+        if not await is_group_connected(chat_id):
+            return await callback.answer("This group is disconnected.", show_alert=True)
+    settings = await get_settings(chat_id)
+    current = bool(settings.get(setting))
+    await save_group_settings(chat_id, setting, not current)
+    settings = await get_settings(chat_id)
+    try:
+        await callback.message.edit_reply_markup(reply_markup=get_settings_keyboard(settings))
+    except Exception:
+        pass
+    await callback.answer("Updated")
+
+@Client.on_message(filters.command('settings') & filters.user(ADMINS))
+async def settings(client, message):
+    if message.chat.type not in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
+        return await message.reply_text("Use /settings inside a connected group.")
+    if not await is_group_connected(message.chat.id):
+        return
+    settings = await get_settings(message.chat.id)
+    await message.reply_text(
+        f"<b>⚙️ Settings For {message.chat.title}</b>",
+        reply_markup=get_settings_keyboard(settings),
+        parse_mode=enums.ParseMode.HTML,
+        reply_to_message_id=message.id,
+    )
+
+@Client.on_message(filters.command("shortlink1") & filters.user(ADMINS))
+async def update_shortlink1(bot, message):
+    if message.chat.type == enums.ChatType.PRIVATE:
+        return await message.reply_text("<b>Only works in groups !</b>")
+    if not await is_group_connected(message.chat.id):
+        return await message.reply_text("Connect this group first with /connect.")
+    try:
+        _, shortlink_url, api = message.text.split(" ", 2)
+    except Exception:
+        return await message.reply_text("<b>Wrong Format. Example - /shortlink1 softurl.in YOUR_API</b>")
+
+    reply = await message.reply_text("<b>Please Wait...</b>")
+    shortlink_url = re.sub(r"[:/]", "", re.sub(r"https?://?", "", shortlink_url))
+    await save_group_settings(message.chat.id, 'shortlink', shortlink_url)
+    await save_group_settings(message.chat.id, 'shortlink_api', api)
+    await save_group_settings(message.chat.id, 'is_shortlink', True)
+    await reply.edit_text(f"<b>Successfully updated Primary Shortener (Short1)!\n\nWebsite: <code>{shortlink_url}</code>\nAPI: <code>{api}</code></b>")
+    await asyncio.sleep(10)
+    await reply.delete()
+
+@Client.on_message(filters.command("shortlink2") & filters.user(ADMINS))
+async def update_shortlink2(bot, message):
+    if message.chat.type == enums.ChatType.PRIVATE:
+        return await message.reply_text("<b>Only works in groups !</b>")
+    if not await is_group_connected(message.chat.id):
+        return await message.reply_text("Connect this group first with /connect.")
+    try:
+        _, shortlink_url, api = message.text.split(" ", 2)
+    except Exception:
+        return await message.reply_text("<b>Wrong Format. Example - /shortlink2 nowshort.com YOUR_API</b>")
+
+    reply = await message.reply_text("<b>Please Wait...</b>")
+    shortlink_url = re.sub(r"[:/]", "", re.sub(r"https?://?", "", shortlink_url))
+    await save_group_settings(message.chat.id, 'second_shortlink', shortlink_url)
+    await save_group_settings(message.chat.id, 'second_shortlink_api', api)
+    await save_group_settings(message.chat.id, 'is_shortlink', True)
+    await reply.edit_text(f"<b>Successfully updated Secondary Shortener (Short2)!\n\nWebsite: <code>{shortlink_url}</code>\nAPI: <code>{api}</code></b>")
+    await asyncio.sleep(10)
+    await reply.delete()
+
+@Client.on_message(filters.command("shorteners") & filters.user(ADMINS))
+async def view_shorteners(bot, message):
+    if message.chat.type == enums.ChatType.PRIVATE:
+        return await message.reply_text("<b>Only works in groups !</b>")
+    if not await is_group_connected(message.chat.id):
+        return await message.reply_text("Connect this group first with /connect.")
+    settings = await get_settings(message.chat.id)
+    s1_url = settings.get('shortlink') or SHORT1_URL
+    s1_api = settings.get('shortlink_api') or SHORT1_API
+    s2_url = settings.get('second_shortlink') or SHORT2_URL
+    s2_api = settings.get('second_shortlink_api') or SHORT2_API
+    is_active = settings.get('is_shortlink', IS_SHORTLINK)
+    await message.reply_text(
+        f"⚙️ **Current Group Shortener Configuration**\n\n"
+        f"• **Status:** `{'Enabled' if is_active else 'Disabled'}`\n"
+        f"• **Primary (Short1):** `{s1_url}` (API: `{s1_api}`)\n"
+        f"• **Secondary (Short2):** `{s2_url}` (API: `{s2_api}`)",
+        parse_mode=enums.ParseMode.MARKDOWN,
     )
