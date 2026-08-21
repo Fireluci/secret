@@ -423,9 +423,9 @@ async def send_file_to_user(client, user_id, file_id):
     file = files[0]
     title = " ".join(x for x in (file.file_name or "").split() if not x.startswith(("www.", "@")))
     caption = title
-    if CUSTOM_FILE_CAPTION:
+    if CAPTION:
         try:
-            caption = CUSTOM_FILE_CAPTION.format(
+            caption = CAPTION.format(
                 file_name=title,
                 file_size=get_size(file.file_size),
                 file_caption="",
