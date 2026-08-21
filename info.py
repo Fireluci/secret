@@ -57,7 +57,7 @@ LOG_TEXT_P = """#NewUser
 ID - <code>{}</code>
 Nᴀᴍᴇ - {}"""
 
-OLD_ALRT_TXT = '♻ Link Expired, Please Request in Group Again!'
+
 
 NO_RESULTS = """<b><i>💢 No Results For Your Search❗️
 
