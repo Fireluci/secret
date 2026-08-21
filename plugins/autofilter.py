@@ -45,8 +45,8 @@ REMOVES = [
     "movies", "webseries", "language", "hd", "hollywood", 
     "and", "&", "bollywood", "dub", "anime",
     "dubbed", "file", "download", "movie", "film",
-    "netflix", "link", "subtitles",
-    "full movie", "korean drama", "web series",
+    "netflix", "link", "subtitles", "dubbing",
+    "full movie", "korean drama", "web series", "k drama"
     "tv series", "television series", "tv show", "with subtitles"
 ]
 
