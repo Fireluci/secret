@@ -1,25 +1,28 @@
 import asyncio
-import datetime
-import logging
 import time
-from pyrogram import Client, enums, filters
-from pyrogram.errors.exceptions.bad_request_400 import MessageTooLong, PeerIdInvalid
-from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from database.ia_filterdb import Media, save_file
+import datetime
+from pyrogram import Client, filters
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database.users_chats_db import db
+from info import ADMINS
+from utils import broadcast_messages, broadcast_messages_group, connected_group
+import logging
+from pyrogram import Client, filters, enums
+from pyrogram.errors.exceptions.bad_request_400 import MessageTooLong, PeerIdInvalid
+from database.ia_filterdb import Media
 from info import *
-from utils import broadcast_messages, broadcast_messages_group, connected_group, get_size
+from utils import connected_group, get_size
+import os
+import re
+import sys
+from pyrogram.errors import FloodWait
+from database.ia_filterdb import Media, get_file_details, unpack_new_file_id, get_bad_files
+from utils import get_settings, get_size, is_subscribed, save_group_settings, temp, get_shortlink, is_group_connected
 
 # ==================== BROADCAST.PY ====================
 
 BROADCAST_CANCEL = set()
 
-
-# ==================== USER BROADCAST ====================
-
-@Client.on_message(
-    filters.command("broadcast") & filters.user(ADMINS) & filters.reply & connected_group
-)
 async def broadcast_users(bot, message):
     b_msg = message.reply_to_message
     total_users = await db.total_users_count()
@@ -69,12 +72,6 @@ async def broadcast_users(bot, message):
             f"✅ Successful: {success}"
         )
 
-
-# ==================== GROUP BROADCAST ====================
-
-@Client.on_message(
-    filters.command("grp_broadcast") & filters.user(ADMINS) & filters.reply & connected_group
-)
 async def broadcast_groups(bot, message):
     b_msg = message.reply_to_message
     total_groups = await db.total_chat_count()
@@ -124,10 +121,6 @@ async def broadcast_groups(bot, message):
             f"✅ Successful: {success}"
         )
 
-
-# ==================== CANCEL BUTTONS ====================
-
-@Client.on_callback_query(filters.regex(r"^cancel_broadcast#"))
 async def cancel_broadcast(bot, query):
     try:
         _, admin_id = query.data.split("#", 1)
@@ -141,8 +134,6 @@ async def cancel_broadcast(bot, query):
     BROADCAST_CANCEL.add(admin_id)
     await query.answer("🛑 Broadcast cancelling...")
 
-
-@Client.on_callback_query(filters.regex(r"^cancel_group_broadcast#"))
 async def cancel_group_broadcast(bot, query):
     try:
         _, admin_id = query.data.split("#", 1)
@@ -158,7 +149,6 @@ async def cancel_group_broadcast(bot, query):
 
 # ==================== P_TTISHOW.PY ====================
 
-@Client.on_message(filters.command("stats") & filters.incoming & filters.user(ADMINS) & connected_group)
 async def get_stats(bot, message):
     reply = await message.reply("Fetching stats...")
     total_users = await db.total_users_count()
@@ -175,7 +165,6 @@ async def get_stats(bot, message):
         )
     )
 
-@Client.on_message(filters.command("ban") & filters.user(ADMINS) & connected_group)
 async def ban_user(bot, message):
     if len(message.command) == 1:
         return await message.reply("Give me a user id / username")
@@ -200,7 +189,6 @@ async def ban_user(bot, message):
     except Exception:
         pass
 
-@Client.on_message(filters.command("unban") & filters.user(ADMINS) & connected_group)
 async def unban_user(bot, message):
     if len(message.command) == 1:
         return await message.reply("Give me a user id / username")
@@ -218,7 +206,6 @@ async def unban_user(bot, message):
     await db.remove_ban(user.id)
     await message.reply(f"Successfully unbanned {user.mention}")
 
-@Client.on_message(filters.command("users") & filters.user(ADMINS) & connected_group)
 async def list_users(bot, message):
     reply = await message.reply("Getting user list...")
     out = "Users Saved In DB Are:\n\n"
@@ -237,7 +224,6 @@ async def list_users(bot, message):
             outfile.write(out)
         await message.reply_document("users.txt", caption="List Of Users")
 
-@Client.on_message(filters.command("chats") & filters.user(ADMINS) & connected_group)
 async def list_chats(bot, message):
     reply = await message.reply("Getting list of chats...")
     out = "Connected Chats:\n\n"
@@ -253,23 +239,61 @@ async def list_chats(bot, message):
             outfile.write(out)
         await message.reply_document("chats.txt", caption="Connected Chats")
 
-# ==================== CHANNEL.PY ====================
+# ==================== COMMANDS.PY (MOVED ADMIN COMMANDS) ====================
 
-media_filter = filters.document | filters.video | filters.audio
-index_channels = list(dict.fromkeys([*CHANNELS, CAPTION_INDEX_CHANNEL]))
+async def channel_info(bot, message):
+    channels = CHANNELS if isinstance(CHANNELS, list) else [CHANNELS]
+    text = '📑 **Indexed channels/groups**\n'
+    for channel in channels:
+        try:
+            chat = await bot.get_chat(channel)
+            text += '\n@' + chat.username if chat.username else '\n' + (chat.title or chat.first_name)
+        except Exception:
+            continue
+    text += f'\n\n**Total:** {len(channels)}'
+    await message.reply(text)
 
+async def delete(bot, message):
+    reply = message.reply_to_message
+    if not reply or not reply.media:
+        return await message.reply('Reply to file with /delete which you want to delete', quote=True)
 
-@Client.on_message(filters.chat(index_channels) & media_filter)
-async def media(bot, message):
-    """Index media from configured channels."""
+    msg = await message.reply("Processing...⏳", quote=True)
     for file_type in ("document", "video", "audio"):
-        media = getattr(message, file_type, None)
+        media = getattr(reply, file_type, None)
         if media is not None:
             break
     else:
-        return
+        return await msg.edit('This is not supported file format')
 
-    media.file_type = file_type
-    media.caption = message.caption
-    media.chat_id = message.chat.id
-    await save_file(media)
+    file_id, _ = unpack_new_file_id(media.file_id)
+    result = await Media.collection.delete_one({'_id': file_id})
+    if result.deleted_count:
+        return await msg.edit('🛃 Deleted File!')
+
+    file_name = re.sub(r"(_|\-|\.|\+)", " ", str(media.file_name))
+    result = await Media.collection.delete_many({'file_name': file_name, 'file_size': media.file_size, 'mime_type': media.mime_type})
+    if result.deleted_count:
+        return await msg.edit('🛃 Deleted File!')
+
+    result = await Media.collection.delete_many({'file_name': media.file_name, 'file_size': media.file_size, 'mime_type': media.mime_type})
+    await msg.edit('🛃 Deleted File!' if result.deleted_count else 'File not found in database')
+
+async def deletemultiplefiles(bot, message):
+    if message.chat.type != enums.ChatType.PRIVATE:
+        return await message.reply_text("<b>Only Works in PM !</b>")
+    try:
+        keyword = message.text.split(" ", 1)[1]
+    except Exception:
+        return await message.reply_text(f"<b>Hey {message.from_user.mention}, Give me a keyword along with the command to delete files.</b>")
+    k = await bot.send_message(chat_id=message.chat.id, text="<b>♻️ Please Wait!</b>")
+    files, total = await get_bad_files(keyword)
+    await k.delete()
+    await message.reply_text(
+        text=f"<b>{total} Files ➠ {keyword}</b>",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🛃 Delete Files!", callback_data=f"killfilesdq#{keyword}")],
+            [InlineKeyboardButton("💢 Cancel 💢", callback_data="close_data")],
+        ]),
+        parse_mode=enums.ParseMode.HTML,
+    )
