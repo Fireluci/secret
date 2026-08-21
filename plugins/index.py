@@ -1,3 +1,6 @@
+from pyrogram import Client, filters
+from info import CHANNELS, CAPTION_INDEX_CHANNEL
+from database.ia_filterdb import save_file
 import asyncio
 import logging
 import re
@@ -8,9 +11,35 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from info import ADMINS
 from database.ia_filterdb import save_file, db
 from utils import temp, connected_group
+from info import CAPTION_INDEX_CHANNEL
+from database.ia_filterdb import Media, normalize_for_search, unpack_new_file_id
+
+# ==================== CHANNEL.PY ====================
+
+media_filter = filters.document | filters.video | filters.audio
+
+index_channels = list(dict.fromkeys([*CHANNELS, CAPTION_INDEX_CHANNEL]))
+
+async def media(bot, message):
+    """Index media from configured channels."""
+    for file_type in ("document", "video", "audio"):
+        media = getattr(message, file_type, None)
+        if media is not None:
+            break
+    else:
+        return
+
+    media.file_type = file_type
+    media.caption = message.caption
+    media.chat_id = message.chat.id
+    await save_file(media)
+
+# ==================== INDEX.PY ====================
 
 logger = logging.getLogger(__name__)
+
 logger.setLevel(logging.INFO)
+
 lock = asyncio.Lock()
 
 index_state_col = db["index_state"]
@@ -37,8 +66,6 @@ async def save_index_state(chat_id, lst_msg_id, current, total_files, duplicate,
 async def clear_index_state():
     await index_state_col.delete_one({"_id": "active_index"})
 
-
-@Client.on_callback_query(filters.regex(r'^index'))
 async def index_files(bot, query):
     if not query.from_user or query.from_user.id not in ADMINS:
         return await query.answer("Unauthorized!", show_alert=True)
@@ -86,11 +113,6 @@ async def index_files(bot, query):
         pass
     asyncio.create_task(index_files_to_db(int(lst_msg_id), chat, msg, bot))
 
-@Client.on_message(
-    (filters.forwarded | (filters.regex(
-        r"(https://)?(t\.me/|telegram\.me/|telegram\.dog/)(c/)?(\d+|[a-zA-Z_0-9]+)/(\d+)$"
-    )) & filters.text) & filters.private & filters.incoming
-)
 async def send_for_index(bot, message):
     if message.from_user.id not in ADMINS:
         return
@@ -149,7 +171,6 @@ async def send_for_index(bot, message):
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 
-@Client.on_message(filters.command('setskip') & filters.user(ADMINS) & connected_group)
 async def set_skip_number(bot, message):
     if ' ' in message.text:
         _, skip = message.text.split(" ")
@@ -275,7 +296,6 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, resume_current=None, res
             except FloodWait as e:
                 logger.warning(f"FloodWait while sending final result: {e.value} seconds.")
 
-# Helper function to auto-resume when your bot starts up
 async def check_pending_index_on_startup(client):
     state = await get_index_state()
     if state:
@@ -313,3 +333,28 @@ async def check_pending_index_on_startup(client):
                 break
             except Exception:
                 continue
+
+# ==================== CAPTION_EDIT.PY ====================
+
+logger = logging.getLogger(__name__)
+
+async def caption_edit_handler(client, message):
+    media = message.document or message.video or message.audio
+    if not media:
+        return
+
+    source_text = (message.caption or getattr(media, "file_name", "") or "")[:1000]
+
+    try:
+        file_id, _ = unpack_new_file_id(media.file_id)
+        normalized_name = await normalize_for_search(source_text)
+
+        result = await Media.collection.update_one(
+            {"_id": file_id},
+            {"$set": {"file_name": normalized_name}},
+        )
+
+        if result.matched_count:
+            logger.info("Caption index updated for %s", file_id)
+    except Exception:
+        logger.exception("Failed updating caption index")
