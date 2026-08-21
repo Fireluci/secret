@@ -67,7 +67,7 @@ NO_RESULTS = """<b><i>💢 No Results For Your Search❗️
 🌀 Please Follow Request Tips!
 🔆 Request Tips ➔ [<a href="https://telegram.me/HeroFlixx/2">Click Here</a>]</i></b>"""
 
-CAPTION = '<a href="https://telegram.me/{CHNL_LNK}"><b><i>{file_name}</i></b></a>'
+CAPTION = '<a href="https://telegram.me/HeroFlix"><b>{file_name}</b></a>'
 
 RESTART_TXT = """
 <b>Bᴏᴛ Rᴇsᴛᴀʀᴛᴇᴅ !
@@ -79,7 +79,7 @@ RESTART_TXT = """
 
 LOGO = '🔆彡[ HEROFLiX ]彡🔆'
 
-CUSTOM_FILE_CAPTION = environ.get("CUSTOM_FILE_CAPTION", CAPTION)
+ 
  
 SPELL_CHECK_REPLY = is_enabled(environ.get("SPELL_CHECK_REPLY", "True"), True)
  
