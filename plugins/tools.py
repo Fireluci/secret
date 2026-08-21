@@ -23,6 +23,9 @@ from utils import get_settings, get_size, is_subscribed, save_group_settings, te
 
 BROADCAST_CANCEL = set()
 
+@Client.on_message(
+    filters.command("broadcast") & filters.user(ADMINS) & filters.reply & connected_group
+)
 async def broadcast_users(bot, message):
     b_msg = message.reply_to_message
     total_users = await db.total_users_count()
@@ -72,6 +75,9 @@ async def broadcast_users(bot, message):
             f"✅ Successful: {success}"
         )
 
+@Client.on_message(
+    filters.command("grp_broadcast") & filters.user(ADMINS) & filters.reply & connected_group
+)
 async def broadcast_groups(bot, message):
     b_msg = message.reply_to_message
     total_groups = await db.total_chat_count()
@@ -121,6 +127,7 @@ async def broadcast_groups(bot, message):
             f"✅ Successful: {success}"
         )
 
+@Client.on_callback_query(filters.regex(r"^cancel_broadcast#"))
 async def cancel_broadcast(bot, query):
     try:
         _, admin_id = query.data.split("#", 1)
@@ -134,6 +141,7 @@ async def cancel_broadcast(bot, query):
     BROADCAST_CANCEL.add(admin_id)
     await query.answer("🛑 Broadcast cancelling...")
 
+@Client.on_callback_query(filters.regex(r"^cancel_group_broadcast#"))
 async def cancel_group_broadcast(bot, query):
     try:
         _, admin_id = query.data.split("#", 1)
@@ -149,6 +157,7 @@ async def cancel_group_broadcast(bot, query):
 
 # ==================== P_TTISHOW.PY ====================
 
+@Client.on_message(filters.command("stats") & filters.incoming & filters.user(ADMINS) & connected_group)
 async def get_stats(bot, message):
     reply = await message.reply("Fetching stats...")
     total_users = await db.total_users_count()
@@ -165,6 +174,7 @@ async def get_stats(bot, message):
         )
     )
 
+@Client.on_message(filters.command("ban") & filters.user(ADMINS) & connected_group)
 async def ban_user(bot, message):
     if len(message.command) == 1:
         return await message.reply("Give me a user id / username")
@@ -189,6 +199,7 @@ async def ban_user(bot, message):
     except Exception:
         pass
 
+@Client.on_message(filters.command("unban") & filters.user(ADMINS) & connected_group)
 async def unban_user(bot, message):
     if len(message.command) == 1:
         return await message.reply("Give me a user id / username")
@@ -206,6 +217,7 @@ async def unban_user(bot, message):
     await db.remove_ban(user.id)
     await message.reply(f"Successfully unbanned {user.mention}")
 
+@Client.on_message(filters.command("users") & filters.user(ADMINS) & connected_group)
 async def list_users(bot, message):
     reply = await message.reply("Getting user list...")
     out = "Users Saved In DB Are:\n\n"
@@ -224,6 +236,7 @@ async def list_users(bot, message):
             outfile.write(out)
         await message.reply_document("users.txt", caption="List Of Users")
 
+@Client.on_message(filters.command("chats") & filters.user(ADMINS) & connected_group)
 async def list_chats(bot, message):
     reply = await message.reply("Getting list of chats...")
     out = "Connected Chats:\n\n"
@@ -239,8 +252,9 @@ async def list_chats(bot, message):
             outfile.write(out)
         await message.reply_document("chats.txt", caption="Connected Chats")
 
-# ==================== COMMANDS.PY (MOVED ADMIN COMMANDS) ====================
+# ==================== COMMANDS.PY (MOVED) ====================
 
+@Client.on_message(filters.command('channel') & filters.user(ADMINS))
 async def channel_info(bot, message):
     channels = CHANNELS if isinstance(CHANNELS, list) else [CHANNELS]
     text = '📑 **Indexed channels/groups**\n'
@@ -253,6 +267,7 @@ async def channel_info(bot, message):
     text += f'\n\n**Total:** {len(channels)}'
     await message.reply(text)
 
+@Client.on_message(filters.command('delete') & filters.user(ADMINS))
 async def delete(bot, message):
     reply = message.reply_to_message
     if not reply or not reply.media:
@@ -279,6 +294,7 @@ async def delete(bot, message):
     result = await Media.collection.delete_many({'file_name': media.file_name, 'file_size': media.file_size, 'mime_type': media.mime_type})
     await msg.edit('🛃 Deleted File!' if result.deleted_count else 'File not found in database')
 
+@Client.on_message(filters.command("deletefiles") & filters.user(ADMINS))
 async def deletemultiplefiles(bot, message):
     if message.chat.type != enums.ChatType.PRIVATE:
         return await message.reply_text("<b>Only Works in PM !</b>")
