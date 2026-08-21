@@ -11,6 +11,33 @@ from utils import broadcast_messages, broadcast_messages_group, connected_group,
 
 BROADCAST_CANCEL = set()
 
+def get_settings_keyboard(settings: dict):
+    spell = bool(settings.get("spell_check", SPELL_CHECK_REPLY))
+    short = bool(settings.get("is_shortlink", IS_SHORTLINK))
+
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                "Spell Check",
+                callback_data=f"setgs#spell_check#{spell}"
+            ),
+            InlineKeyboardButton(
+                "✔ On" if spell else "✖ Off",
+                callback_data=f"setgs#spell_check#{spell}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "ShortLink",
+                callback_data=f"setgs#is_shortlink#{short}"
+            ),
+            InlineKeyboardButton(
+                "✔ On" if short else "✖ Off",
+                callback_data=f"setgs#is_shortlink#{short}"
+            )
+        ],
+    ])
+
 @Client.on_message(
     filters.command("broadcast") & filters.user(ADMINS) & filters.reply & connected_group
 )
