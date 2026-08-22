@@ -67,7 +67,7 @@ async def broadcast_users(bot, message):
 
     users = await db.get_all_users()
 
-    for user in users:
+    async for user in users:
         if ("users", admin_id) in BROADCAST_CANCEL:
             break
 
@@ -121,33 +121,7 @@ async def cancel_broadcast(bot, query):
 
     await query.answer("🛑 Broadcast cancelling...")
     
-@Client.on_callback_query(filters.regex(r"^cancel_broadcast#"))
-async def cancel_broadcast(bot, query):
-    try:
-        _, admin_id = query.data.split("#", 1)
-        admin_id = int(admin_id)
-    except ValueError:
-        return await query.answer("Invalid request.", show_alert=True)
 
-    if query.from_user.id != admin_id:
-        return await query.answer("This is not your broadcast.", show_alert=True)
-
-    BROADCAST_CANCEL.add(("users", admin_id))
-    await query.answer("🛑 Broadcast cancelling...")
-
-@Client.on_callback_query(filters.regex(r"^cancel_group_broadcast#"))
-async def cancel_group_broadcast(bot, query):
-    try:
-        _, admin_id = query.data.split("#", 1)
-        admin_id = int(admin_id)
-    except ValueError:
-        return await query.answer("Invalid request.", show_alert=True)
-
-    if query.from_user.id != admin_id:
-        return await query.answer("This is not your broadcast.", show_alert=True)
-
-    BROADCAST_CANCEL.add(("groups", admin_id))
-    await query.answer("🛑 Broadcast cancelling...")
 
 @Client.on_message(filters.command("stats") & filters.incoming & filters.user(ADMINS) & connected_group)
 async def get_stats(bot, message):
