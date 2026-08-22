@@ -49,7 +49,7 @@ REMOVES = [
     "and", "&", "bollywood", "dub", "anime",
     "dubbed", "file", "download", "movie", "film",
     "netflix", "link", "subtitles", "dubbing",
-    "full movie", "korean drama", "web series", "k drama"
+    "full movie", "korean drama", "web series", "k drama",
     "tv series", "television series", "tv show", "with subtitles"
 ]
 
