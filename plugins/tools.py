@@ -65,18 +65,16 @@ async def broadcast_users(bot, message):
 
     success = 0
 
-    async for user in db.get_all_users():
+    users = await db.get_all_users()
+
+    for user in users:
         if ("users", admin_id) in BROADCAST_CANCEL:
             break
 
-        sent, _ = await broadcast_messages(
-            int(user["id"]),
-            b_msg
-        )
+        sent, _ = await broadcast_messages(int(user["id"]), b_msg)
 
         if sent:
             success += 1
-
         if success and success % 20 == 0:
             await sts.edit_text(
                 f"📢 <b>Broadcasting...</b>\n\n"
