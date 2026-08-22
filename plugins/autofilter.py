@@ -365,7 +365,7 @@ async def auto_filter(client, msg, spoll=False):
 
     req = message.from_user.id if message.from_user else 0
     buttons = await get_result_buttons(
-        message.chat.id, req, key, 0, offset, total_results, req
+        message.chat.id, req, key, 0, offset, total_results
     )
     store_file_links(req, message.chat.id, files)
     cap = build_results_caption(search, files)
