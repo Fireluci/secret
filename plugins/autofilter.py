@@ -159,8 +159,9 @@ async def next_page(bot, query):
 
     async with GLOBAL_SEM:
         try:
-            _, req, key, offset = query.data.split("_")
-            req, offset = int(req), int(offset)
+            _, key, offset, req = query.data.split("_")
+            offset = int(offset)
+            req = int(req)
         except Exception:
             return await query.answer(ALRT_TXT, show_alert=True)
 
@@ -178,7 +179,7 @@ async def next_page(bot, query):
             return await query.answer(EXPIRED, show_alert=True)
 
         buttons = await get_result_buttons(
-            query.message.chat.id, req, key, offset, next_offset, total, query.from_user.id
+            query.message.chat.id, req, key, offset, next_offset, total
         )
         store_file_links(query.from_user.id, query.message.chat.id, files)
         cap = build_results_caption(search, files)
@@ -350,7 +351,7 @@ async def auto_filter(client, msg, spoll=False):
         # the spellcheck selection message so users do not confuse results.
         message = msg.message.reply_to_message
         if not message:
-            return await msg.answer(EXPIRED(msg.from_user.first_name), show_alert=True)
+            return await msg.answer(EXPIRED, show_alert=True)
         search, files, offset, total_results = spoll
         try:
             await msg.message.delete()
