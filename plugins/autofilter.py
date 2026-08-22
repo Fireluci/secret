@@ -67,39 +67,37 @@ def is_spam(uid, cooldown=2):
     USER_COOLDOWN[uid] = now
     return False
 
-async def get_result_buttons(chat_id, req, key, offset, next_offset, total, user_id=None):
-    max_limit = 10
-    try:
-        next_value = int(next_offset) if next_offset != "" else 0
-    except (TypeError, ValueError):
-        next_value = 0
+async def get_result_buttons(chat_id, req_user_id, cache_id, offset, next_offset, total_results):
+    max_results = 10
+    current_page = (offset // max_results) + 1
+    total_pages = max(1, math.ceil(total_results / max_results))
 
-    current_page = (offset // max_limit) + 1
-    total_pages = max(1, math.ceil(int(total) / max_limit))
-    back_offset = max(0, offset - max_limit)
+    btn = []
 
-    buttons = []
-    if next_value:
-        buttons.append([
+    if offset > 0:
+        btn.append(
             InlineKeyboardButton(
-                "⏪ BACK", callback_data=f"next_{req}_{key}_{back_offset}"
-            ) if offset else InlineKeyboardButton("🔅 Page", callback_data="pages"),
-            InlineKeyboardButton(f"{current_page} / {total_pages}", callback_data="pages"),
-            InlineKeyboardButton("NEXT ⏩", callback_data=f"next_{req}_{key}_{next_value}"),
-        ])
-    elif offset:
-        buttons.append([
-            InlineKeyboardButton("⏪ BACK", callback_data=f"next_{req}_{key}_{back_offset}"),
-            InlineKeyboardButton(f"{current_page} / {total_pages}", callback_data="pages"),
-        ])
-    else:
-        buttons.append([InlineKeyboardButton("✦ ────「 The End 」──── ✦", callback_data="pages")])
+                "⏪ Back",
+                callback_data=f"next_{cache_id}_{offset - max_results}_{req_user_id}"
+            )
+        )
 
-    settings = await get_settings(chat_id)
-    if settings.get("is_shortlink", IS_SHORTLINK):
-        buttons.append([InlineKeyboardButton("🌟 How To Download ❓", url=tutorial_url())])
+    btn.append(
+        InlineKeyboardButton(
+            f"📒 Pages {current_page} / {total_pages}",
+            callback_data="pages"
+        )
+    )
 
-    return buttons
+    if offset + max_results < total_results:
+        btn.append(
+            InlineKeyboardButton(
+                "Next ⏩",
+                callback_data=f"next_{cache_id}_{offset + max_results}_{req_user_id}"
+            )
+        )
+
+    return [btn]
 
 def build_results_caption(search, files):
     cap = (
