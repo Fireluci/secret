@@ -16,14 +16,14 @@ from database.ia_filterdb import Media, normalize_for_search, unpack_new_file_id
 
 # ==================== CHANNEL.PY ====================
 
-media_filter = filters.document | filters.video | filters.audio
+media_filter = filters.document | filters.video
 
 index_channels = list(dict.fromkeys([*CHANNELS, CAPTION_INDEX_CHANNEL]))
 
 @Client.on_message(filters.chat(index_channels) & media_filter)
 async def media(bot, message):
     """Index media from configured channels."""
-    for file_type in ("document", "video", "audio"):
+    for file_type in ("document", "video"):
         media = getattr(message, file_type, None)
         if media is not None:
             break
@@ -348,7 +348,7 @@ logger = logging.getLogger(__name__)
 
 @Client.on_edited_message(filters.chat(CAPTION_INDEX_CHANNEL))
 async def caption_edit_handler(client, message):
-    media = message.document or message.video or message.audio
+    media = message.document or message.video
     if not media:
         return
 
