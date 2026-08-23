@@ -7,7 +7,7 @@ from pyrogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMa
 from database.ia_filterdb import Media, get_bad_files, get_file_details, get_search_results, unpack_new_file_id
 from database.users_chats_db import db
 from info import *
-from utils import broadcast_messages, broadcast_messages_group, connected_group, get_settings, get_shortlink, get_size, is_group_connected, is_subscribed, save_group_settings, search_gagala, temp
+from utils import broadcast_messages, connected_group, get_settings, get_shortlink, get_size, is_group_connected, is_subscribed, save_group_settings, search_gagala, temp
 
 BROADCAST_CANCEL = set()
 
