@@ -1,4 +1,5 @@
 import motor.motor_asyncio
+from datetime import datetime, timedelta
 
 from info import DATABASE_NAME, DATABASE_URI
 
@@ -9,6 +10,7 @@ class Database:
         self.db = self._client[database_name]
         self.col = self.db.users
         self.grp = self.db.groups
+        self.cache = self.db.bot_cache
 
     def new_user(self, id, name):
         return {
@@ -101,6 +103,46 @@ class Database:
 
     async def get_all_chats(self):
         return self.grp.find({"connected": True})
+
+    async def ensure_cache_indexes(self):
+        await self.cache.create_index(
+            "expires_at",
+            expireAfterSeconds=0,
+        )
+
+    async def set_cache(self, key, data, ttl=600):
+        await self.cache.update_one(
+            {"_id": key},
+            {
+                "$set": {
+                    "data": data,
+                    "expires_at": datetime.utcnow() + timedelta(seconds=ttl),
+                }
+            },
+            upsert=True,
+        )
+
+    async def get_cache(self, key):
+        item = await self.cache.find_one({"_id": key})
+        if not item:
+            return None
+        if item.get("expires_at") and item["expires_at"] <= datetime.utcnow():
+            await self.cache.delete_one({"_id": key})
+            return None
+        return item.get("data")
+
+    async def delete_cache(self, key):
+        await self.cache.delete_one({"_id": key})
+
+    async def set_restart_flag(self):
+        await self.set_cache("__manual_restart__", {"restart": True}, ttl=600)
+
+    async def consume_restart_flag(self):
+        data = await self.get_cache("__manual_restart__")
+        if data:
+            await self.delete_cache("__manual_restart__")
+            return True
+        return False
 
     async def get_db_size(self):
         return (await self.db.command("dbstats"))["dataSize"]
