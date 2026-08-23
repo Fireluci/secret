@@ -12,7 +12,6 @@ from pyrogram import Client, __version__
 from pyrogram.raw.all import layer
 from database.ia_filterdb import Media
 from database.users_chats_db import db
-from info import SESSION, API_ID, API_HASH, BOT_TOKEN, LOG_CHANNEL, OWNER_ID, PORT, RESTART_TXT, LOGO
 from utils import temp
 from typing import Union, Optional, AsyncGenerator
 from pyrogram import types
@@ -20,7 +19,19 @@ from datetime import date, datetime
 import pytz
 from aiohttp import web
 from plugins import web_server
+from info import (
+    SESSION,
+    API_ID,
+    API_HASH,
+    BOT_TOKEN,
+    LOG_CHANNEL,
+    PORT,
+    RESTART_TXT,
+    LOGO,
+    ADMINS,
+)
 
+OWNER_ID = ADMINS[0]
 class Bot(Client):
 
     def __init__(self):
