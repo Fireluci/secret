@@ -24,11 +24,9 @@ logger.setLevel(logging.ERROR)
 
 lock = asyncio.Lock()
 
-FRESH = {}
 
 SPELL_CHECK = {}
 
-PAGINATION = {}
 
 GLOBAL_SEM = asyncio.Semaphore(12)
 
@@ -37,8 +35,6 @@ USER_COOLDOWN = {}
 EXPIRED = '♻ Link Expired, Please Request in Group Again!'
 ALRT_TXT = '🔒 This option belongs to another user. '
 
-if not hasattr(temp, "SHORT"):
-    temp.SHORT = {}
 
 def tutorial_url():
     return TUTORIAL if TUTORIAL.startswith('http') else f'https://telegram.me/{TUTORIAL}'
@@ -129,11 +125,24 @@ def build_results_caption(search, files):
     cap += "</b>"
     return cap
 
-def store_file_links(user_id, chat_id, files):
+async def store_file_links(chat_id, files):
     for file in files:
-        if user_id:
-            temp.SHORT[(user_id, file.file_id)] = chat_id
-        temp.SHORT[file.file_id] = chat_id
+        await db.set_cache(
+            f"file:{file.file_id}",
+            {"chat_id": chat_id},
+            ttl=600,
+        )
+
+async def store_pagination(key, chat_id, search, user_id):
+    await db.set_cache(
+        f"pagination:{key}",
+        {
+            "chat_id": chat_id,
+            "search": search,
+            "user_id": user_id or 0,
+        },
+        ttl=600,
+    )
 
 async def handle_auto_delete(message_obj):
     try:
@@ -181,7 +190,11 @@ async def next_page(bot, query):
         if req not in (query.from_user.id, 0):
             return await query.answer(ALRT_TXT, show_alert=True)
 
-        search = FRESH.get(key)
+        cache = await db.get_cache(f"pagination:{key}")
+        if not cache:
+            return await query.answer(EXPIRED, show_alert=True)
+
+        search = cache.get("search")
         if not search:
             return await query.answer(EXPIRED, show_alert=True)
 
@@ -194,7 +207,7 @@ async def next_page(bot, query):
         buttons = await get_result_buttons(
             query.message.chat.id, req, key, offset, next_offset, total
         )
-        store_file_links(query.from_user.id, query.message.chat.id, files)
+        await store_file_links(query.message.chat.id, files)
         cap = build_results_caption(search, files)
 
         try:
@@ -372,16 +385,12 @@ async def auto_filter(client, msg, spoll=False):
             pass
 
     key = f"{message.chat.id}-{message.id}"
-    FRESH[key] = search
-    if len(FRESH) > 1000:
-        FRESH.clear()
-        FRESH[key] = search
-
     req = message.from_user.id if message.from_user else 0
+    await store_pagination(key, message.chat.id, search, req)
     buttons = await get_result_buttons(
         message.chat.id, req, key, 0, offset, total_results
     )
-    store_file_links(req, message.chat.id, files)
+    await store_file_links(message.chat.id, files)
     cap = build_results_caption(search, files)
 
     result = await message.reply_text(
@@ -485,7 +494,7 @@ async def send_shortlink_page(client, user_id, file_id, chat_id):
     asyncio.create_task(delete_later(msg))
     return True
 
-async def delete_later(message, seconds=900):
+async def delete_later(message, seconds=600):
     await asyncio.sleep(seconds)
     try:
         await message.delete()
@@ -574,35 +583,28 @@ async def start(client, message):
     if pre not in {"file", "files", "short"}:
         return
 
-    if pre == "short":
+    if pre in {"short", "files"}:
         file_id = payload
-        short_cache = getattr(temp, "SHORT", {})
-        chat_id = short_cache.get((message.from_user.id, file_id)) or short_cache.get(message.from_user.id)
-        if chat_id is None:
-            return await message.reply("Invalid or expired link.")
-        result = await send_shortlink_page(client, message.from_user.id, file_id, chat_id)
-        if result is None:
-            return await message.reply("❌ Link generation failed. Please try again later.")
-        if result is False:
-            return await message.reply("No such file exist.")
-        return
+        cache = await db.get_cache(f"file:{file_id}")
+        if not cache:
+            return await message.reply_text("<b>Link Expired, Search Again in Group!</b>")
 
-    if pre == "files":
-        file_id = payload
-        short_cache = getattr(temp, "SHORT", {})
-        chat_id = short_cache.get((message.from_user.id, file_id)) or short_cache.get(message.from_user.id)
+        chat_id = cache.get("chat_id")
         if chat_id is None:
             return await message.reply_text("<b>Link Expired, Search Again in Group!</b>")
 
         settings = await get_settings(chat_id)
         if settings.get("is_shortlink", IS_SHORTLINK):
-            result = await send_shortlink_page(client, message.from_user.id, file_id, chat_id)
+            result = await send_shortlink_page(
+                client, message.from_user.id, file_id, chat_id
+            )
             if result is None:
                 return await message.reply("❌ Link generation failed. Please try again later.")
             if result is False:
                 return await message.reply("No such file exist.")
             return
 
-    if not await send_file_to_user(client, message.from_user.id, file_id):
-        await message.reply("No such file exist.")
+        if not await send_file_to_user(client, message.from_user.id, file_id):
+            await message.reply("No such file exist.")
+        return
 
