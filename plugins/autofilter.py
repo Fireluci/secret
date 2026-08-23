@@ -97,6 +97,19 @@ async def get_result_buttons(chat_id, req_user_id, cache_id, offset, next_offset
             )
         )
 
+    settings = await get_settings(chat_id)
+
+    if settings.get("is_shortlink", IS_SHORTLINK):
+        return [
+            btn,
+            [
+                InlineKeyboardButton(
+                    "❓ How To Download ❓",
+                    url=tutorial_url()
+                )
+            ]
+        ]
+
     return [btn]
 
 def build_results_caption(search, files):
