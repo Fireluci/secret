@@ -4,8 +4,7 @@ import asyncio
 import json
 from datetime import datetime, timedelta
 from Script import script
-from pyrogram import Client, filters, enums, raw
-from pyrogram import utils as pyrogram_utils
+from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, ChatJoinRequest, ChatMemberUpdated
 from pyrogram.errors import FloodWait, MessageNotModified
 from database.ia_filterdb import Media, get_file_details, unpack_new_file_id, get_bad_files
@@ -89,67 +88,27 @@ async def notify_owner(client: Client, text: str):
     except Exception:
         pass
 
-async def _resolve_premium_log_peer(client):
-    """Resolve PREMIUM_LOG as an invite link, username, or numeric chat ID."""
-    global PREMIUM_LOG
-
-    if not PREMIUM_LOG:
-        return None
-
-    value = str(PREMIUM_LOG).strip()
-
-    # Invite links are resolved through Telegram's CheckChatInvite API.
-    if value.startswith("https://t.me/+") or value.startswith("https://telegram.me/+"):
-        invite_hash = value.rsplit("+", 1)[1].split("/", 1)[0]
-        result = await client.invoke(raw.functions.messages.CheckChatInvite(hash=invite_hash))
-
-        if isinstance(result, (raw.types.messages.ChatInviteAlready, raw.types.messages.ChatInvitePeek)):
-            chat = result.chat
-            if isinstance(chat, raw.types.Channel):
-                return raw.types.InputPeerChannel(channel_id=chat.id, access_hash=chat.access_hash)
-            if isinstance(chat, raw.types.Chat):
-                return raw.types.InputPeerChat(chat_id=chat.id)
-
-        # If the invite is valid but the bot has not joined, the logger cannot
-        # send to it; the configured account must already be a member/admin.
-        raise RuntimeError("PREMIUM_LOG invite resolved, but bot is not a member of that chat")
-
-    # Username or numeric ID. get_chat populates Pyrogram's peer storage.
-    chat = await client.get_chat(int(value) if value.lstrip("-").isdigit() else value)
-    return await client.resolve_peer(chat.id)
-
-
-async def _send_premium_log_raw(client, peer, text: str):
-    parsed = await pyrogram_utils.parse_text_entities(client, text, enums.ParseMode.HTML, None)
-    return await client.invoke(raw.functions.messages.SendMessage(
-        peer=peer,
-        message=parsed["message"],
-        random_id=client.rnd_id(),
-        no_webpage=True,
-        entities=parsed.get("entities")
-    ))
-
-
 async def safe_premium_log(client: Client, text: str):
-    if not PREMIUM_LOG:
-        await notify_owner(client, text)
-        return
-
-    try:
-        peer = await _resolve_premium_log_peer(client)
-        await _send_premium_log_raw(client, peer, text)
-        return
-    except Exception as first_error:
-        logger.warning(f"PREMIUM_LOG failed ({first_error}); retrying peer resolution.")
-
-    try:
-        peer = await _resolve_premium_log_peer(client)
-        await _send_premium_log_raw(client, peer, text)
-        return
-    except Exception as final_error:
-        logger.warning(f"PREMIUM_LOG unavailable ({final_error}); falling back to owner DM.")
-        await notify_owner(client, text)
-
+    global PREMIUM_LOG
+    if PREMIUM_LOG:
+        try:
+            log_id = int(PREMIUM_LOG)
+            try:
+                await client.get_chat(log_id)
+            except Exception:
+                await client.resolve_peer(log_id)
+            
+            await client.send_message(
+                log_id,
+                text,
+                parse_mode=enums.ParseMode.HTML,
+                disable_web_page_preview=True
+            )
+            return
+        except Exception as e:
+            logger.warning(f"PREMIUM_LOG failed ({e}), falling back to owner DM.")
+    
+    await notify_owner(client, text)
 
 async def safe_kick(client: Client, chat_id, user_id) -> bool:
     if not chat_id: 
@@ -202,12 +161,6 @@ async def safe_kick(client: Client, chat_id, user_id) -> bool:
 
 async def premium_expiry_reminder_loop(client: Client):
     await asyncio.sleep(10)
-    if PREMIUM_LOG:
-        try:
-            await _resolve_premium_log_peer(client)
-            logger.info("✅ PREMIUM_LOG invite/peer resolved successfully.")
-        except Exception as e:
-            logger.warning(f"PREMIUM_LOG startup resolve failed: {e}")
     try:
         now = datetime.utcnow()
         col = get_col()
