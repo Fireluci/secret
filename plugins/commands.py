@@ -439,6 +439,28 @@ async def send_proof_cb(client, callback: CallbackQuery):
     except Exception: pass
     await client.send_message(callback.message.chat.id, "<b>📸 Send Payment Proof!\n\nPlease upload your transaction screenshot to verify!</b>", parse_mode=enums.ParseMode.HTML)
 
+async def update_user_payment_intent(client, user_id: int, action: str, file_id: str = None):
+    col_intent = get_db_collection('user_payment_intents')
+    if col_intent is not None:
+        old_doc = await col_intent.find_one({"user_id": user_id})
+        
+        # If there are old admin messages tracked, delete them completely
+        if old_doc and old_doc.get("admin_msg_ids"):
+            for admin_id, msg_id in old_doc["admin_msg_ids"].items():
+                try:
+                    await client.delete_messages(chat_id=int(admin_id), message_ids=int(msg_id))
+                except Exception:
+                    pass
+
+        data = {
+            "user_id": user_id,
+            "action": action,
+            "file_id": file_id,
+            "timestamp": datetime.utcnow(),
+            "admin_msg_ids": {}
+        }
+        await col_intent.update_one({"user_id": user_id}, {"$set": data}, upsert=True)
+
 @Client.on_message(filters.private & (filters.photo | filters.document) & ~filters.command(["start", "premium"]))
 async def screenshot_handler(client, message):
     user_id = message.from_user.id
@@ -450,8 +472,15 @@ async def screenshot_handler(client, message):
             doc = await col_intent.find_one({"user_id": user_id})
             if doc:
                 is_valid_intent = True
-                await col_intent.delete_one({"user_id": user_id})
-    except Exception: pass
+                # Delete any previous admin notification messages immediately before sending the new one
+                if doc.get("admin_msg_ids"):
+                    for admin_id, msg_id in doc["admin_msg_ids"].items():
+                        try:
+                            await client.delete_messages(chat_id=int(admin_id), message_ids=int(msg_id))
+                        except Exception:
+                            pass
+    except Exception: 
+        pass
 
     if not is_valid_intent:
         return
@@ -465,11 +494,31 @@ async def screenshot_handler(client, message):
     )
     
     fid = message.photo.file_id if message.photo else message.document.file_id
+    admin_msg_ids = {}
+
     for admin_id in ADMINS:
         try:
-            if message.photo: await client.send_photo(int(admin_id), fid, caption=text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
-            else: await client.send_document(int(admin_id), fid, caption=text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
-        except Exception: pass
+            sent_msg = None
+            if message.photo: 
+                sent_msg = await client.send_photo(int(admin_id), fid, caption=text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
+            else: 
+                sent_msg = await client.send_document(int(admin_id), fid, caption=text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
+            
+            if sent_msg:
+                admin_msg_ids[str(admin_id)] = sent_msg.id
+        except Exception: 
+            pass
+
+    try:
+        col_intent = get_db_collection('user_payment_intents')
+        if col_intent is not None:
+            await col_intent.update_one(
+                {"user_id": user_id}, 
+                {"$set": {"admin_msg_ids": admin_msg_ids, "action": "screenshot_sent", "timestamp": datetime.utcnow()}}, 
+                upsert=True
+            )
+    except Exception:
+        pass
 
 @Client.on_callback_query(filters.regex("^min_app_"))
 async def admin_app_cb(client, callback: CallbackQuery):
