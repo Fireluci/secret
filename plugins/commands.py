@@ -9,7 +9,7 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQ
 from pyrogram.errors import FloodWait, MessageNotModified
 from database.ia_filterdb import Media, get_file_details, unpack_new_file_id, get_bad_files
 from database.users_chats_db import db
-from info import CHANNELS, OWNER, LOG_CHANNEL, PICS, CUSTOM_FILE_CAPTION, CHNL_LNK, PREMIUM_GROUP_ID, PREMIUM_PERMANENT_LINK, PREMIUM_LOG
+from info import CHANNELS, ADMINS, LOG_CHANNEL, PICS, CUSTOM_FILE_CAPTION, CHNL_LNK, PREMIUM_GROUP_ID, PREMIUM_PERMANENT_LINK
 from utils import get_size, temp
 from pymongo.errors import PyMongoError
 import re, sys, base64
@@ -82,33 +82,12 @@ async def safe_edit_message(message, text, reply_markup=None):
         except MessageNotModified:
             pass
 
-async def notify_owner(client: Client, text: str):
-    try:
-        await client.send_message(int(OWNER), text, disable_web_page_preview=True, parse_mode=enums.ParseMode.HTML)
-    except Exception:
-        pass
-
-async def safe_premium_log(client: Client, text: str):
-    global PREMIUM_LOG
-    if PREMIUM_LOG:
+async def notify_admins(client: Client, text: str):
+    for admin_id in ADMINS:
         try:
-            log_id = int(PREMIUM_LOG)
-            try:
-                await client.get_chat(log_id)
-            except Exception:
-                await client.resolve_peer(log_id)
-            
-            await client.send_message(
-                log_id,
-                text,
-                parse_mode=enums.ParseMode.HTML,
-                disable_web_page_preview=True
-            )
-            return
-        except Exception as e:
-            logger.warning(f"PREMIUM_LOG failed ({e}), falling back to owner DM.")
-    
-    await notify_owner(client, text)
+            await client.send_message(int(admin_id), text, disable_web_page_preview=True, parse_mode=enums.ParseMode.HTML)
+        except Exception:
+            pass
 
 async def safe_kick(client: Client, chat_id, user_id) -> bool:
     if not chat_id: 
@@ -137,9 +116,9 @@ async def safe_kick(client: Client, chat_id, user_id) -> bool:
     except Exception as e:
         err_str = str(e)
         if "USER_NOT_PARTICIPANT" in err_str or "PEER_ID_INVALID" in err_str:
-            return True
+            return True  # User isn't in group or peer unreachable, safe to drop from DB
 
-        await safe_premium_log(client, f"<b>⚠️ Expired User Kick Failed (1)</b>\n\n{u_link}\n<b>❓ Reason: {e}</b>\n\n")
+        await notify_admins(client, f"<b>⚠️ Expired User Kick Failed (1)</b>\n\n{u_link}\n<b>❓ Reason: {e}</b>\n\n")
 
     await asyncio.sleep(60)
 
@@ -153,10 +132,10 @@ async def safe_kick(client: Client, chat_id, user_id) -> bool:
         await client.ban_chat_member(cid, user_id)
         await asyncio.sleep(0.3)
         await client.unban_chat_member(cid, user_id)
-        await safe_premium_log(client, f"<b>✅ Expired User Kick Successful</b>\n{u_link}")
+        await notify_admins(client, f"<b>✅ Expired User Kick Successful</b>\n{u_link}")
         return True
     except Exception as retry_err:
-        await safe_premium_log(client, f"<b>⚠️ Expired User Kick Failed (2)</b>\n{u_link}\n<b>❓ Reason: {retry_err}\n♻ Retrying in Next Loop</b>")
+        await notify_admins(client, f"<b>⚠️ Expired User Kick Failed (2)</b>\n{u_link}\n<b>❓ Reason: {retry_err}\n♻ Retrying in Next Loop</b>")
         return False
 
 async def premium_expiry_reminder_loop(client: Client):
@@ -174,11 +153,11 @@ async def premium_expiry_reminder_loop(client: Client):
                 if PREMIUM_GROUP_ID: 
                     kicked = await safe_kick(client, PREMIUM_GROUP_ID, uid)
                     if not kicked:
-                        continue
+                        continue  # Retain DB data and retry next loop
                 
                 await col.delete_one({"user_id": uid})
                     
-                await safe_premium_log(client, f"<b>❌ Missed Expiry Catch-Up & Ejected</b>\n\n{user_display}\n<b>• Plan: {doc.get('plan', 'N/A')}</b>\n<b>• Expired On: {fmt_date(exp)}</b>")
+                await notify_admins(client, f"<b>❌ Missed Expiry Catch-Up & Ejected</b>\n\n{user_display}\n<b>• Plan: {doc.get('plan', 'N/A')}</b>\n<b>• Expired On: {fmt_date(exp)}</b>")
                 try:
                     await client.send_message(
                         uid, 
@@ -220,11 +199,11 @@ async def premium_expiry_reminder_loop(client: Client):
                         if PREMIUM_GROUP_ID: 
                             kicked = await safe_kick(client, PREMIUM_GROUP_ID, uid)
                             if not kicked:
-                                continue
+                                continue  # Retain DB data and retry next loop
                         
                         await col.delete_one({"user_id": uid})
                         
-                        await safe_premium_log(client, f"<b>❌ Premium Membership Expired & Ejected</b>\n\n{user_display}\n<b>• Plan: {doc.get('plan', 'N/A')}</b>\n<b>• Expired On: {fmt_date(exp)}</b>")
+                        await notify_admins(client, f"<b>❌ Premium Membership Expired & Ejected</b>\n\n{user_display}\n<b>• Plan: {doc.get('plan', 'N/A')}</b>\n<b>• Expired On: {fmt_date(exp)}</b>")
                         try:
                             await client.send_message(uid, "<b>⚠️ Premium Membership Expired!\n\nRenew your plan to restore your premium status.</b>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Renew Plan", callback_data="buy_premium_start")]]), parse_mode=enums.ParseMode.HTML)
                         except Exception: pass
@@ -233,7 +212,7 @@ async def premium_expiry_reminder_loop(client: Client):
             
         await asyncio.sleep(3600)
 
-@Client.on_message(filters.command("approve") & filters.user(OWNER))
+@Client.on_message(filters.command("approve") & filters.user(ADMINS))
 async def approve_command(client, message):
     if len(message.command) < 2:
         return await message.reply_text("<b>⚠️ Usage: /approve [user_id]</b>", parse_mode=enums.ParseMode.HTML)
@@ -250,7 +229,7 @@ async def approve_command(client, message):
     except Exception as e:
         await message.reply_text(f"<b>❌ Error: {e}</b>", parse_mode=enums.ParseMode.HTML)
 
-@Client.on_message(filters.command("revoke") & filters.user(OWNER))
+@Client.on_message(filters.command("revoke") & filters.user(ADMINS))
 async def revoke_command(client, message):
     if len(message.command) < 2:
         return await message.reply_text("<b>⚠️ Usage: /revoke [user_id]</b>", parse_mode=enums.ParseMode.HTML)
@@ -277,7 +256,7 @@ async def revoke_command(client, message):
     except Exception as e:
         await message.reply_text(f"<b>❌ Error: {e}</b>", parse_mode=enums.ParseMode.HTML)
 
-@Client.on_message(filters.command("premiums") & filters.user(OWNER))
+@Client.on_message(filters.command("premiums") & filters.user(ADMINS))
 async def premiums_command(client, message):
     col = get_col()
     if not col:
@@ -328,7 +307,7 @@ async def start(client, message):
     data = message.command[1]
 
     user_id = message.from_user.id
-    is_admin = (user_id == OWNER)
+    is_admin = str(user_id) in map(str, ADMINS)
     col = get_col()
     is_premium = is_admin or (col and await col.find_one({"user_id": user_id, "active": True}))
     
@@ -465,6 +444,7 @@ async def update_user_payment_intent(client, user_id: int, action: str, file_id:
     if col_intent is not None:
         old_doc = await col_intent.find_one({"user_id": user_id})
         
+        # If there are old admin messages tracked, delete them completely
         if old_doc and old_doc.get("admin_msg_ids"):
             for admin_id, msg_id in old_doc["admin_msg_ids"].items():
                 try:
@@ -492,6 +472,7 @@ async def screenshot_handler(client, message):
             doc = await col_intent.find_one({"user_id": user_id})
             if doc:
                 is_valid_intent = True
+                # Delete any previous admin notification messages immediately before sending the new one
                 if doc.get("admin_msg_ids"):
                     for admin_id, msg_id in doc["admin_msg_ids"].items():
                         try:
@@ -515,17 +496,18 @@ async def screenshot_handler(client, message):
     fid = message.photo.file_id if message.photo else message.document.file_id
     admin_msg_ids = {}
 
-    try:
-        sent_msg = None
-        if message.photo: 
-            sent_msg = await client.send_photo(int(OWNER), fid, caption=text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
-        else: 
-            sent_msg = await client.send_document(int(OWNER), fid, caption=text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
-        
-        if sent_msg:
-            admin_msg_ids[str(OWNER)] = sent_msg.id
-    except Exception: 
-        pass
+    for admin_id in ADMINS:
+        try:
+            sent_msg = None
+            if message.photo: 
+                sent_msg = await client.send_photo(int(admin_id), fid, caption=text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
+            else: 
+                sent_msg = await client.send_document(int(admin_id), fid, caption=text, reply_markup=kb, parse_mode=enums.ParseMode.HTML)
+            
+            if sent_msg:
+                admin_msg_ids[str(admin_id)] = sent_msg.id
+        except Exception: 
+            pass
 
     try:
         col_intent = get_db_collection('user_payment_intents')
@@ -540,7 +522,7 @@ async def screenshot_handler(client, message):
 
 @Client.on_callback_query(filters.regex("^min_app_"))
 async def admin_app_cb(client, callback: CallbackQuery):
-    if callback.from_user.id != OWNER: return await callback.answer("Unauthorized.", show_alert=True)
+    if str(callback.from_user.id) not in map(str, ADMINS): return await callback.answer("Unauthorized.", show_alert=True)
     uid = int(callback.data.split("_")[2])
     
     try:
@@ -556,7 +538,7 @@ async def admin_app_cb(client, callback: CallbackQuery):
 
 @Client.on_callback_query(filters.regex("^selplan_"))
 async def select_plan_cb(client, callback: CallbackQuery):
-    if callback.from_user.id != OWNER: return await callback.answer("Unauthorized.", show_alert=True)
+    if str(callback.from_user.id) not in map(str, ADMINS): return await callback.answer("Unauthorized.", show_alert=True)
     _, uid_str, duration_str, price = callback.data.split("_")
     uid = int(uid_str)
     
@@ -585,7 +567,7 @@ async def select_plan_cb(client, callback: CallbackQuery):
 
 @Client.on_callback_query(filters.regex("^confact_"))
 async def conf_act_cb(client, callback: CallbackQuery):
-    if callback.from_user.id != OWNER: return await callback.answer("Unauthorized.", show_alert=True)
+    if str(callback.from_user.id) not in map(str, ADMINS): return await callback.answer("Unauthorized.", show_alert=True)
     _, uid_str, duration_str, price = callback.data.split("_")
     uid = int(uid_str)
     
@@ -614,10 +596,9 @@ async def conf_act_cb(client, callback: CallbackQuery):
     if col: await col.update_one({"user_id": uid}, {"$set": data}, upsert=True)
     
     try:
-        col_intent = get_db_collection('user_payment_intents')
         col_ses = get_db_collection('admin_approval_sessions')
-        if col_intent is not None: await col_intent.delete_many({"user_id": uid})
-        if col_ses is not None: await col_ses.delete_many({"admin_id": callback.from_user.id})
+        if col_ses is not None:
+            await col_ses.delete_one({"admin_id": callback.from_user.id})
     except Exception: pass
 
     link = PREMIUM_PERMANENT_LINK or "https://t.me/your_group_link"
@@ -635,7 +616,7 @@ async def conf_act_cb(client, callback: CallbackQuery):
     except Exception: pass
     
     log_title = "<b>🌟 Premium Renewed ✅</b>" if is_renewal else "<b>🌟 Premium Activated ✅</b>"
-    await safe_premium_log(client, f"{log_title}\n\n{u_link}\n<b>• 💰 Plan: {plan} | ₹{price}</b>\n<b>• ⌛ Expiry: {fmt_date(exp)}</b>")
+    await notify_admins(client, f"{log_title}\n\n{u_link}\n<b>• 💰 Plan: {plan} | ₹{price}</b>\n<b>• ⌛ Expiry: {fmt_date(exp)}</b>")
     
     success_text = f"<b>✅ Activated Successfully</b>\n{u_link}"
     await safe_edit_message(callback.message, success_text, reply_markup=None)
@@ -675,13 +656,13 @@ async def member_update(client, update: ChatMemberUpdated):
 
 @Client.on_callback_query(filters.regex("^min_rej_"))
 async def admin_reject_cb(client, callback: CallbackQuery):
-    if callback.from_user.id != OWNER: return await callback.answer("Unauthorized.", show_alert=True)
+    if str(callback.from_user.id) not in map(str, ADMINS): return await callback.answer("Unauthorized.", show_alert=True)
     uid = int(callback.data.split("_")[-1])
     try:
         col_intent = get_db_collection('user_payment_intents')
         col_ses = get_db_collection('admin_approval_sessions')
-        if col_intent is not None: await col_intent.delete_many({"user_id": uid})
-        if col_ses is not None: await col_ses.delete_many({"admin_id": callback.from_user.id})
+        if col_intent is not None: await col_intent.delete_one({"user_id": uid})
+        if col_ses is not None: await col_ses.delete_one({"admin_id": callback.from_user.id})
     except Exception: pass
     await callback.answer("Rejected.")
     try:
@@ -690,7 +671,7 @@ async def admin_reject_cb(client, callback: CallbackQuery):
     rej_text = "<b>❌ Status: REJECTED</b>"
     await safe_edit_message(callback.message, rej_text, reply_markup=None)
 
-@Client.on_message(filters.command('channel') & filters.user(OWNER))
+@Client.on_message(filters.command('channel') & filters.user(ADMINS))
 async def channel_info(bot, message):
     channels = [CHANNELS] if isinstance(CHANNELS, (int, str)) else CHANNELS
     text = '<b>📑 Indexed channels/groups\n'
@@ -706,12 +687,12 @@ async def channel_info(bot, message):
         await message.reply_document(file)
         os.remove(file)
 
-@Client.on_message(filters.command('logs') & filters.user(OWNER))
+@Client.on_message(filters.command('logs') & filters.user(ADMINS))
 async def log_file(bot, message):
     try: await message.reply_document('TelegramBot.log')
     except Exception as e: await message.reply(str(e))
 
-@Client.on_message(filters.command('delete') & filters.user(OWNER))
+@Client.on_message(filters.command('delete') & filters.user(ADMINS))
 async def delete(bot, message):
     reply = message.reply_to_message
     if not reply or not reply.media: return await message.reply('Reply to file with /delete', quote=True)
@@ -727,7 +708,7 @@ async def delete(bot, message):
         await msg.edit('🛃 Deleted File!' if res.deleted_count else 'File not found')
     except PyMongoError as e: await msg.edit(f'DB error: {e}')
 
-@Client.on_message(filters.command('deleteall') & filters.user(OWNER))
+@Client.on_message(filters.command('deleteall') & filters.user(ADMINS))
 async def delete_all_index(bot, message):
     await message.reply_text('Delete all indexed files?', reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🛃 Delete", callback_data="autofilter_delete")], [InlineKeyboardButton("💢 Cancel", callback_data="close_data")]]), quote=True)
 
@@ -742,7 +723,7 @@ async def delete_all_index_confirm(bot, callback):
             pass
     except PyMongoError as e: await callback.answer(f'Error: {e}')
 
-@Client.on_message(filters.command("deletefiles") & filters.user(OWNER))
+@Client.on_message(filters.command("deletefiles") & filters.user(ADMINS))
 async def deletemultiplefiles(bot, message):
     if message.chat.type != enums.ChatType.PRIVATE: return await message.reply_text("<b>Only Works in PM !</b>")
     try: kw = message.text.split(" ", 1)[1]
@@ -752,7 +733,7 @@ async def deletemultiplefiles(bot, message):
     await k.delete()
     await message.reply_text(f"<b>{total} Files ➠ {kw}</b>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🛃 Delete", callback_data=f"killfilesdq#{kw}")], [InlineKeyboardButton("💢 Cancel", callback_data="close_data")]]), parse_mode=enums.ParseMode.HTML)
 
-@Client.on_message(filters.command("restart") & filters.user(OWNER))
+@Client.on_message(filters.command("restart") & filters.user(ADMINS))
 async def restart_bot(bot, message):
     msg = await message.reply("<b>🔄 RESTARTING...</b>")
     await asyncio.sleep(1)
