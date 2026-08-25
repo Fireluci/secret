@@ -18,19 +18,6 @@ import re, sys, base64
 logger = logging.getLogger(__name__)
 BATCH_FILES = {}
 
-# ==============================================================================
-# PREMIUM LOG PEER CACHE / SELF-HEALING
-# ==============================================================================
-# Telegram needs an InputPeer (ID + access_hash) for channel/supergroup messages.
-# Keeping only the numeric -100... ID can fail when Pyrogram's peer cache is stale.
-# We resolve the chat once, cache the InputPeer, and send through the resolved peer
-# directly. If Telegram reports PEER_ID_INVALID, the peer is refreshed automatically.
-PREMIUM_LOG_PEER = None
-PREMIUM_LOG_CHAT = None
-PREMIUM_LOG_LOCK = asyncio.Lock()
-PREMIUM_LOG_READY = False
-PREMIUM_LOG_LAST_ERROR = None
-
 def fmt_date(dt: datetime) -> str:
     return (dt + timedelta(hours=5, minutes=30)).strftime('%d %b, %Y') if isinstance(dt, datetime) else "N/A"
 
@@ -102,117 +89,67 @@ async def notify_owner(client: Client, text: str):
     except Exception:
         pass
 
-async def _refresh_premium_log_peer(client: Client, force: bool = False):
-    """Resolve and cache the central premium-log channel/supergroup peer."""
-    global PREMIUM_LOG_PEER, PREMIUM_LOG_CHAT, PREMIUM_LOG_READY, PREMIUM_LOG_LAST_ERROR
+async def _resolve_premium_log_peer(client):
+    """Resolve PREMIUM_LOG as an invite link, username, or numeric chat ID."""
+    global PREMIUM_LOG
 
     if not PREMIUM_LOG:
         return None
 
-    async with PREMIUM_LOG_LOCK:
-        if PREMIUM_LOG_PEER is not None and PREMIUM_LOG_READY and not force:
-            return PREMIUM_LOG_PEER
+    value = str(PREMIUM_LOG).strip()
 
-        try:
-            log_id = int(PREMIUM_LOG) if str(PREMIUM_LOG).lstrip("-").isdigit() else PREMIUM_LOG
+    # Invite links are resolved through Telegram's CheckChatInvite API.
+    if value.startswith("https://t.me/+") or value.startswith("https://telegram.me/+"):
+        invite_hash = value.rsplit("+", 1)[1].split("/", 1)[0]
+        result = await client.invoke(raw.functions.messages.CheckChatInvite(hash=invite_hash))
 
-            # get_chat() fetches fresh chat data and updates Pyrogram's peer storage.
-            chat = await client.get_chat(log_id)
+        if isinstance(result, (raw.types.messages.ChatInviteAlready, raw.types.messages.ChatInvitePeek)):
+            chat = result.chat
+            if isinstance(chat, raw.types.Channel):
+                return raw.types.InputPeerChannel(channel_id=chat.id, access_hash=chat.access_hash)
+            if isinstance(chat, raw.types.Chat):
+                return raw.types.InputPeerChat(chat_id=chat.id)
 
-            # Explicitly resolve after get_chat() so we have the current access_hash.
-            peer = await client.resolve_peer(chat.id)
+        # If the invite is valid but the bot has not joined, the logger cannot
+        # send to it; the configured account must already be a member/admin.
+        raise RuntimeError("PREMIUM_LOG invite resolved, but bot is not a member of that chat")
 
-            PREMIUM_LOG_CHAT = chat
-            PREMIUM_LOG_PEER = peer
-            PREMIUM_LOG_READY = True
-            PREMIUM_LOG_LAST_ERROR = None
-
-            logger.info(
-                f"✅ PREMIUM_LOG ready: {chat.title or chat.username or chat.id} ({chat.id})"
-            )
-            return peer
-
-        except Exception as e:
-            PREMIUM_LOG_PEER = None
-            PREMIUM_LOG_CHAT = None
-            PREMIUM_LOG_READY = False
-            PREMIUM_LOG_LAST_ERROR = str(e)
-            raise
+    # Username or numeric ID. get_chat populates Pyrogram's peer storage.
+    chat = await client.get_chat(int(value) if value.lstrip("-").isdigit() else value)
+    return await client.resolve_peer(chat.id)
 
 
-async def _send_premium_log_raw(client: Client, peer, text: str):
-    """Send using the already-resolved InputPeer, bypassing ID-only resolution."""
-    parsed = await pyrogram_utils.parse_text_entities(
-        client, text, enums.ParseMode.HTML, None
-    )
-
-    return await client.invoke(
-        raw.functions.messages.SendMessage(
-            peer=peer,
-            message=parsed["message"],
-            random_id=client.rnd_id(),
-            no_webpage=True,
-            entities=parsed.get("entities"),
-        )
-    )
-
-
-async def _refresh_premium_log_from_dialogs(client: Client):
-    """Last-resort peer refresh for a private central channel/supergroup."""
-    if not PREMIUM_LOG:
-        return None
-
-    target_id = int(PREMIUM_LOG) if str(PREMIUM_LOG).lstrip("-").isdigit() else None
-    if target_id is None:
-        return await _refresh_premium_log_peer(client, force=True)
-
-    async for dialog in client.get_dialogs():
-        if dialog.chat and dialog.chat.id == target_id:
-            return await _refresh_premium_log_peer(client, force=True)
-
-    return await _refresh_premium_log_peer(client, force=True)
+async def _send_premium_log_raw(client, peer, text: str):
+    parsed = await pyrogram_utils.parse_text_entities(client, text, enums.ParseMode.HTML, None)
+    return await client.invoke(raw.functions.messages.SendMessage(
+        peer=peer,
+        message=parsed["message"],
+        random_id=client.rnd_id(),
+        no_webpage=True,
+        entities=parsed.get("entities")
+    ))
 
 
 async def safe_premium_log(client: Client, text: str):
-    """Reliable central premium logger with automatic peer recovery."""
-    global PREMIUM_LOG_LAST_ERROR
-
     if not PREMIUM_LOG:
         await notify_owner(client, text)
         return
 
-    # Normal path: use the cached InputPeer.
     try:
-        peer = await _refresh_premium_log_peer(client)
+        peer = await _resolve_premium_log_peer(client)
         await _send_premium_log_raw(client, peer, text)
         return
     except Exception as first_error:
-        error_text = str(first_error)
-        is_peer_error = "PEER_ID_INVALID" in error_text.upper() or "PEER ID INVALID" in error_text.upper()
+        logger.warning(f"PREMIUM_LOG failed ({first_error}); retrying peer resolution.")
 
-        if is_peer_error:
-            try:
-                # Re-fetch the peer instead of requiring the bot to be removed/re-added.
-                peer = await _refresh_premium_log_peer(client, force=True)
-                await _send_premium_log_raw(client, peer, text)
-                return
-            except Exception as second_error:
-                try:
-                    peer = await _refresh_premium_log_from_dialogs(client)
-                    await _send_premium_log_raw(client, peer, text)
-                    return
-                except Exception as final_error:
-                    PREMIUM_LOG_LAST_ERROR = str(final_error)
-                    logger.warning(
-                        f"PREMIUM_LOG unavailable ({final_error}); falling back to owner DM."
-                    )
-        else:
-            PREMIUM_LOG_LAST_ERROR = error_text
-            logger.warning(
-                f"PREMIUM_LOG failed ({first_error}); falling back to owner DM."
-            )
+    try:
+        peer = await _resolve_premium_log_peer(client)
+        await _send_premium_log_raw(client, peer, text)
+        return
+    except Exception as final_error:
+        logger.warning(f"PREMIUM_LOG unavailable ({final_error}); falling back to owner DM.")
+        await notify_owner(client, text)
 
-    await notify_owner(client, text)
 
 async def safe_kick(client: Client, chat_id, user_id) -> bool:
     if not chat_id: 
@@ -265,15 +202,12 @@ async def safe_kick(client: Client, chat_id, user_id) -> bool:
 
 async def premium_expiry_reminder_loop(client: Client):
     await asyncio.sleep(10)
-
-    # Resolve the central log channel once at startup. This populates Pyrogram's
-    # peer cache before any premium event needs to write a log.
     if PREMIUM_LOG:
         try:
-            await _refresh_premium_log_peer(client, force=True)
+            await _resolve_premium_log_peer(client)
+            logger.info("✅ PREMIUM_LOG invite/peer resolved successfully.")
         except Exception as e:
             logger.warning(f"PREMIUM_LOG startup resolve failed: {e}")
-
     try:
         now = datetime.utcnow()
         col = get_col()
