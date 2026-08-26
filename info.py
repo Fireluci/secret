@@ -21,7 +21,7 @@ COLLECTION_NAME = environ.get('COLLECTION_NAME', 'index')
 
 CAPTION_INDEX_CHANNEL = int(environ.get('CAPTION_INDEX_CHANNEL', '-1002299214709'))
 CHANNELS = [int(ch) if id_pattern.search(ch) else ch for ch in environ.get('CHANNELS', '-1001638006524').split()] + [CAPTION_INDEX_CHANNEL]
-
+PREMIUM_LOG = environ.get('PREMIUM_LOG', '-1003911194697')
 PICS = environ.get("PICS", "https://te.legra.ph/file/d6a23f16e002e86381656.jpg")
 FORCE = "https://telegram.me/+W6BkAHSGGME3OGY1"
 OWNER = int(environ.get('OWNER', '1058015838'))
