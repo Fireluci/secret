@@ -122,23 +122,25 @@ async def safe_edit_message(message, text, reply_markup=None):
             pass
 
 
-async def notify_owner(client: Client, text: str):
+async def notify_owner(client, text):
     try:
         await client.send_message(
             int(OWNER),
             text,
             disable_web_page_preview=True,
-            parse_mode=enums.ParseMode.HTML,
+            parse_mode=enums.ParseMode.HTML
         )
     except Exception:
-        pass
+        logger.exception("Failed notifying owner")
 
 
-async def safe_premium_log(client: Client, text: str):
+async def safe_premium_log(client, text):
     global PREMIUM_LOG
+
     if PREMIUM_LOG:
         try:
             log_id = int(PREMIUM_LOG)
+
             try:
                 await client.get_chat(log_id)
             except Exception:
@@ -148,11 +150,15 @@ async def safe_premium_log(client: Client, text: str):
                 log_id,
                 text,
                 parse_mode=enums.ParseMode.HTML,
-                disable_web_page_preview=True,
+                disable_web_page_preview=True
             )
             return
+
         except Exception as e:
-            logger.warning(f"PREMIUM_LOG failed ({e}), falling back to owner DM.")
+            logger.warning(
+                "PREMIUM_LOG failed (%s), falling back to owner DM.",
+                e
+            )
 
     await notify_owner(client, text)
 
