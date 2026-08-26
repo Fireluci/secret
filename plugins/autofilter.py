@@ -15,8 +15,9 @@ from pyrogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMa
 
 from database.ia_filterdb import Media, get_bad_files, get_file_details, get_search_results, unpack_new_file_id
 from database.users_chats_db import db
+from plugins.premium import is_premium_user
 from info import *
-from utils import broadcast_messages, connected_group, get_settings, get_shortlink, get_size, is_group_connected, is_subscribed, save_group_settings, search_gagala, temp
+from utils import broadcast_messages, connected_group, get_settings, get_size, is_group_connected, is_subscribed, save_group_settings, search_gagala, temp
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +36,6 @@ USER_COOLDOWN = {}
 EXPIRED = '♻ Link Expired, Please Request in Group Again!'
 ALRT_TXT = '🔒 This option belongs to another user. '
 
-
-def tutorial_url():
-    return TUTORIAL if TUTORIAL.startswith('http') else f'https://telegram.me/{TUTORIAL}'
 
 REMOVES = [
     "in", "series", "4k", "kdrama", "ott", 
@@ -92,19 +90,6 @@ async def get_result_buttons(chat_id, req_user_id, cache_id, offset, next_offset
                 callback_data=f"next_{cache_id}_{offset + max_results}_{req_user_id}"
             )
         )
-
-    settings = await get_settings(chat_id)
-
-    if settings.get("is_shortlink", IS_SHORTLINK):
-        return [
-            btn,
-            [
-                InlineKeyboardButton(
-                    "❓ How To Download ❓",
-                    url=tutorial_url()
-                )
-            ]
-        ]
 
     return [btn]
 
@@ -467,32 +452,6 @@ async def send_file_to_user(client, user_id, file_id):
     )
     return True
 
-async def send_shortlink_page(client, user_id, file_id, chat_id):
-    files = await get_file_details(file_id)
-    if not files:
-        return False
-    file = files[0]
-    title = " ".join(x for x in (file.file_name or "").split() if not x.startswith(("www.", "@")))
-
-    try:
-        short_url = await get_shortlink(
-            chat_id,
-            f"https://telegram.me/{temp.U_NAME}?start=file_{file_id}",
-            client=client,
-        )
-    except Exception:
-        return None
-
-    msg = await client.send_message(
-        chat_id=user_id,
-        text=f'<b>🔆 [ {get_size(file.file_size)} ] <a href="https://telegram.me/{CHNL_LNK}">{title}</a>\n\n📥 Download Link↓\n{short_url}</b>',
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("♻️ Download Link ♻️", url=short_url)],
-            [InlineKeyboardButton("❓ How To Download ❓", url=tutorial_url())],
-        ]),
-    )
-    asyncio.create_task(delete_later(msg))
-    return True
 
 async def delete_later(message, seconds=600):
     await asyncio.sleep(seconds)
@@ -507,9 +466,6 @@ async def start(client, message):
         if not await is_group_connected(message.chat.id):
             return
         buttons = []
-        tut = tutorial_url()
-        if tut:
-            buttons = [[InlineKeyboardButton('❓How To Use Me❓', url=tut)]]
         await message.reply(
             START_TXT.format(
                 message.from_user.mention if message.from_user else message.chat.title,
@@ -580,31 +536,20 @@ async def start(client, message):
     else:
         pre, payload = "file", data
 
-    if pre not in {"file", "files", "short"}:
+    if pre not in {"file", "files"}:
         return
 
-    if pre in {"short", "files"}:
-        file_id = payload
-        cache = await db.get_cache(f"file:{file_id}")
-        if not cache:
-            return await message.reply_text("<b>Link Expired, Search Again in Group!</b>")
+    file_id = payload
 
-        chat_id = cache.get("chat_id")
-        if chat_id is None:
-            return await message.reply_text("<b>Link Expired, Search Again in Group!</b>")
+    if not await is_premium_user(client, message.from_user.id):
+        return await message.reply_text(
+            "<b>🔒 This file is exclusive to Premium members.</b>",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("💎 Buy Premium", callback_data="buy_premium_start")]
+            ]),
+            parse_mode=enums.ParseMode.HTML,
+        )
 
-        settings = await get_settings(chat_id)
-        if settings.get("is_shortlink", IS_SHORTLINK):
-            result = await send_shortlink_page(
-                client, message.from_user.id, file_id, chat_id
-            )
-            if result is None:
-                return await message.reply("❌ Link generation failed. Please try again later.")
-            if result is False:
-                return await message.reply("No such file exist.")
-            return
-
-        if not await send_file_to_user(client, message.from_user.id, file_id):
-            await message.reply("No such file exist.")
-        return
+    if not await send_file_to_user(client, message.from_user.id, file_id):
+        await message.reply("No such file exist.")
 
