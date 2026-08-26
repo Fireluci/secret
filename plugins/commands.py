@@ -256,6 +256,24 @@ async def revoke_command(client, message):
     except Exception as e:
         await message.reply_text(f"<b>❌ Error: {e}</b>", parse_mode=enums.ParseMode.HTML)
 
+@Client.on_message(filters.command("text") & filters.user(OWNER))
+async def send_text_to_user(client: Client, message):
+    if len(message.command) < 3:
+        return await message.reply_text("<b>⚠️ Usage: /text [user_id] [message]</b>", parse_mode=enums.ParseMode.HTML)
+    
+    try:
+        target_uid = int(message.command[1])
+        text_to_send = message.text.split(None, 2)[2]
+        
+        await client.send_message(
+            chat_id=target_uid,
+            text=f"<b>📩 Message from Administration:</b>\n\n{text_to_send}",
+            parse_mode=enums.ParseMode.HTML
+        )
+        await message.reply_text(f"<b>✅ Message sent to <code>{target_uid}</code>!</b>", parse_mode=enums.ParseMode.HTML)
+    except Exception as e:
+        await message.reply_text(f"<b>❌ Failed: {e}</b>", parse_mode=enums.ParseMode.HTML)
+
 @Client.on_message(filters.command("premiums") & filters.user(ADMINS))
 async def premiums_command(client, message):
     col = get_col()
