@@ -614,92 +614,182 @@ async def update_user_payment_intent(client, user_id: int, action: str, file_id:
         )
 
 
-@Client.on_message(filters.private & (filters.photo | filters.document) & ~filters.command(["start", "premium"]))
+@Client.on_message(
+    filters.private
+    & filters.incoming
+    & (filters.photo | filters.document)
+)
 async def screenshot_handler(client, message):
     user_id = message.from_user.id
-    is_valid_intent = False
 
-    try:
-        col_intent = get_db_collection("user_payment_intents")
-        if col_intent is not None:
-            doc = await col_intent.find_one({"user_id": user_id})
-            if doc:
-                is_valid_intent = True
-                if doc.get("admin_msg_ids"):
-                    for admin_id, msg_id in doc["admin_msg_ids"].items():
-                        try:
-                            await client.delete_messages(
-                                chat_id=int(admin_id),
-                                message_ids=int(msg_id),
-                            )
-                        except Exception:
-                            pass
-    except Exception:
-        pass
+    logger.info("PREMIUM: screenshot received from %s", user_id)
 
-    if not is_valid_intent:
+    col_intent = get_db_collection("user_payment_intents")
+
+    if col_intent is None:
+        logger.error("PREMIUM: user_payment_intents collection unavailable")
         return
+
+    intent = await col_intent.find_one({"user_id": user_id})
+
+    if not intent:
+        logger.info(
+            "PREMIUM: screenshot ignored for %s - no payment intent",
+            user_id,
+        )
+        return
+
+    logger.info(
+        "PREMIUM: payment intent found for %s: %s",
+        user_id,
+        intent.get("action"),
+    )
+
+    if intent.get("action") not in {
+        "i_paid_clicked",
+        "screenshot_sent",
+    }:
+        logger.info(
+            "PREMIUM: screenshot ignored for %s - invalid action",
+            user_id,
+        )
+        return
+
+    # Remove previous verification messages
+    for admin_id, msg_id in (intent.get("admin_msg_ids") or {}).items():
+        try:
+            await client.delete_messages(
+                chat_id=int(admin_id),
+                message_ids=int(msg_id),
+            )
+        except Exception:
+            pass
 
     await message.reply_text(
         "<b>✅ Your screenshot has been submitted for verification, please wait!</b>",
         parse_mode=enums.ParseMode.HTML,
     )
 
-    kb = InlineKeyboardMarkup([
+    keyboard = InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("✅ Approve", callback_data=f"min_app_{user_id}"),
-            InlineKeyboardButton("❌ Reject", callback_data=f"min_rej_{user_id}"),
+            InlineKeyboardButton(
+                "✅ Approve",
+                callback_data=f"min_app_{user_id}",
+            ),
+            InlineKeyboardButton(
+                "❌ Reject",
+                callback_data=f"min_rej_{user_id}",
+            ),
         ]
     ])
-    text = (
-        f"<b>🔔 New Payment Verification</b>\n\n"
+
+    caption = (
+        "<b>🔔 New Payment Verification</b>\n\n"
         f"{user_link(message.from_user.first_name, user_id)}"
     )
 
-    fid = message.photo.file_id if message.photo else message.document.file_id
+    file_id = (
+        message.photo.file_id
+        if message.photo
+        else message.document.file_id
+    )
+
     admin_msg_ids = {}
+    sent = False
 
-    try:
-        sent_msg = None
-        if message.photo:
-            sent_msg = await client.send_photo(
-                int(OWNER),
-                fid,
-                caption=text,
-                reply_markup=kb,
-                parse_mode=enums.ParseMode.HTML,
+    # 1. Try PREMIUM_LOG first
+    if PREMIUM_LOG:
+        try:
+            log_id = int(PREMIUM_LOG)
+
+            if message.photo:
+                sent_msg = await client.send_photo(
+                    chat_id=log_id,
+                    photo=file_id,
+                    caption=caption,
+                    reply_markup=keyboard,
+                    parse_mode=enums.ParseMode.HTML,
+                )
+            else:
+                sent_msg = await client.send_document(
+                    chat_id=log_id,
+                    document=file_id,
+                    caption=caption,
+                    reply_markup=keyboard,
+                    parse_mode=enums.ParseMode.HTML,
+                )
+
+            admin_msg_ids[str(log_id)] = sent_msg.id
+            sent = True
+
+            logger.info(
+                "PREMIUM: screenshot sent to PREMIUM_LOG %s",
+                log_id,
             )
-        else:
-            sent_msg = await client.send_document(
-                int(OWNER),
-                fid,
-                caption=text,
-                reply_markup=kb,
-                parse_mode=enums.ParseMode.HTML,
+
+        except Exception:
+            logger.exception(
+                "PREMIUM: failed sending screenshot to PREMIUM_LOG"
             )
 
-        if sent_msg:
-            admin_msg_ids[str(OWNER)] = sent_msg.id
-    except Exception:
-        pass
+    # 2. Always fallback to OWNER if log failed
+    if not sent:
+        try:
+            owner_id = int(OWNER)
 
-    try:
-        col_intent = get_db_collection("user_payment_intents")
-        if col_intent is not None:
-            await col_intent.update_one(
-                {"user_id": user_id},
-                {
-                    "$set": {
-                        "admin_msg_ids": admin_msg_ids,
-                        "action": "screenshot_sent",
-                        "timestamp": datetime.utcnow(),
-                    }
-                },
-                upsert=True,
+            if message.photo:
+                sent_msg = await client.send_photo(
+                    chat_id=owner_id,
+                    photo=file_id,
+                    caption=caption,
+                    reply_markup=keyboard,
+                    parse_mode=enums.ParseMode.HTML,
+                )
+            else:
+                sent_msg = await client.send_document(
+                    chat_id=owner_id,
+                    document=file_id,
+                    caption=caption,
+                    reply_markup=keyboard,
+                    parse_mode=enums.ParseMode.HTML,
+                )
+
+            admin_msg_ids[str(owner_id)] = sent_msg.id
+            sent = True
+
+            logger.info(
+                "PREMIUM: screenshot sent to OWNER %s",
+                owner_id,
             )
-    except Exception:
-        pass
 
+        except Exception:
+            logger.exception(
+                "PREMIUM: failed sending screenshot to OWNER"
+            )
+
+    await col_intent.update_one(
+        {"user_id": user_id},
+        {
+            "$set": {
+                "action": "screenshot_sent",
+                "file_id": file_id,
+                "timestamp": datetime.utcnow(),
+                "admin_msg_ids": admin_msg_ids,
+            }
+        },
+        upsert=True,
+    )
+
+    if not sent:
+        logger.error(
+            "PREMIUM: screenshot could not be delivered anywhere for %s",
+            user_id,
+        )
+        await message.reply_text(
+            "<b>❌ Payment proof could not be delivered to administration.</b>\n"
+            "Please try sending the screenshot again.",
+            parse_mode=enums.ParseMode.HTML,
+        )
 
 @Client.on_callback_query(filters.regex("^min_app_"))
 async def admin_app_cb(client, callback: CallbackQuery):
