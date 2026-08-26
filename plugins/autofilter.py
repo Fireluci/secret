@@ -926,14 +926,6 @@ async def premium_menu(client, update):
     if isinstance(update, CallbackQuery):
         await update.answer()
 
-    try:
-        await safe_premium_log(
-            client,
-            f"<b>💎 Premium Menu Opened</b>\n\n"
-            f"{user_link(update.from_user.first_name, update.from_user.id)}",
-        )
-    except Exception:
-        logger.exception("Failed to log premium menu opened")
 
     text = (
         "<b>🌟 Premium Plans:-\n\n"
@@ -969,14 +961,6 @@ async def premium_menu(client, update):
 async def click_here_to_pay_cb(client, callback: CallbackQuery):
     await callback.answer()
 
-    try:
-        await safe_premium_log(
-            client,
-            f"<b>💳 Premium Payment Page Opened</b>\n\n"
-            f"{user_link(callback.from_user.first_name, callback.from_user.id)}",
-        )
-    except Exception:
-        logger.exception("Failed to log premium payment page opened")
 
     try:
         await callback.message.delete()
@@ -1020,14 +1004,6 @@ async def send_proof_cb(client, callback: CallbackQuery):
 
     await callback.answer()
 
-    try:
-        await safe_premium_log(
-            client,
-            f"<b>📸 Payment Proof Requested</b>\n\n"
-            f"{user_link(callback.from_user.first_name, callback.from_user.id)}",
-        )
-    except Exception:
-        logger.exception("Failed to log payment proof request")
 
     try:
         await callback.message.delete()
