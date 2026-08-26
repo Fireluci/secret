@@ -1,5 +1,5 @@
 import asyncio
-import datetime
+from datetime import datetime, timedelta
 from html import escape
 import logging
 import math
@@ -984,7 +984,7 @@ async def send_proof_cb(client, callback: CallbackQuery):
                 {
                     "$set": {
                         "action": "i_paid_clicked",
-                        "timestamp": datetime.datetime.utcnow(),
+                        "timestamp": datetime.utcnow(),
                     }
                 },
                 upsert=True,
