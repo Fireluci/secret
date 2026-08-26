@@ -24,7 +24,8 @@ CHANNELS = [int(ch) if id_pattern.search(ch) else ch for ch in environ.get('CHAN
 
 PICS = environ.get("PICS", "https://te.legra.ph/file/d6a23f16e002e86381656.jpg")
 FORCE = "https://telegram.me/+W6BkAHSGGME3OGY1"
-ADMINS = [int(admin) if id_pattern.search(admin) else admin for admin in environ.get('ADMINS', '1058015838').split()]
+OWNER = int(environ.get('OWNER', '1058015838'))
+ADMINS = [OWNER]
 
 
 auth_channel = environ.get('AUTH_CHANNEL', '-1002048881772')
