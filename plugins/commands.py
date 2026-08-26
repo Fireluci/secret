@@ -9,7 +9,7 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQ
 from pyrogram.errors import FloodWait, MessageNotModified
 from database.ia_filterdb import Media, get_file_details, unpack_new_file_id, get_bad_files
 from database.users_chats_db import db
-from info import CHANNELS, ADMINS, LOG_CHANNEL, PICS, CUSTOM_FILE_CAPTION, CHNL_LNK, PREMIUM_GROUP_ID, PREMIUM_PERMANENT_LINK
+from info import CHANNELS, ADMINS, LOG_CHANNEL, PICS, CUSTOM_FILE_CAPTION, CHNL_LNK, PREMIUM_GROUP_ID, PREMIUM_PERMANENT_LINK, OWNER
 from utils import get_size, temp
 from pymongo.errors import PyMongoError
 import re, sys, base64
