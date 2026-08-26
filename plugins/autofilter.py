@@ -820,6 +820,13 @@ async def revoke_command(client, message):
         except Exception:
             pass
 
+        await safe_premium_log(
+            client,
+            f"<b>❌ Premium Membership Revoked</b>\n\n"
+            f"{u_link}\n"
+            f"<b>• Revoked by: {message.from_user.mention}</b>",
+        )
+
         await message.reply_text(
             f"<b>✅ Successfully revoked premium for</b>\n{u_link}",
             parse_mode=enums.ParseMode.HTML,
@@ -1079,29 +1086,71 @@ async def screenshot_handler(client, message):
     fid = message.photo.file_id if message.photo else message.document.file_id
     admin_msg_ids = {}
 
+    # PREMIUM_LOG is the primary destination for payment proofs.
+    # OWNER is used only if PREMIUM_LOG delivery fails.
     try:
         sent_msg = None
-        if message.photo:
-            sent_msg = await client.send_photo(
-                int(OWNER),
-                fid,
-                caption=text,
-                reply_markup=kb,
-                parse_mode=enums.ParseMode.HTML,
-            )
-        else:
-            sent_msg = await client.send_document(
-                int(OWNER),
-                fid,
-                caption=text,
-                reply_markup=kb,
-                parse_mode=enums.ParseMode.HTML,
-            )
 
-        if sent_msg:
-            admin_msg_ids[str(OWNER)] = sent_msg.id
-    except Exception:
-        pass
+        if PREMIUM_LOG:
+            log_id = int(PREMIUM_LOG)
+
+            try:
+                await client.get_chat(log_id)
+            except Exception:
+                await client.resolve_peer(log_id)
+
+            if message.photo:
+                sent_msg = await client.send_photo(
+                    log_id,
+                    fid,
+                    caption=text,
+                    reply_markup=kb,
+                    parse_mode=enums.ParseMode.HTML,
+                )
+            else:
+                sent_msg = await client.send_document(
+                    log_id,
+                    fid,
+                    caption=text,
+                    reply_markup=kb,
+                    parse_mode=enums.ParseMode.HTML,
+                )
+
+            if sent_msg:
+                admin_msg_ids[str(log_id)] = sent_msg.id
+
+        else:
+            raise ValueError("PREMIUM_LOG is not configured")
+
+    except Exception as e:
+        logger.exception(
+            "PREMIUM_LOG failed for payment proof, falling back to OWNER: %s",
+            e,
+        )
+
+        try:
+            if message.photo:
+                sent_msg = await client.send_photo(
+                    int(OWNER),
+                    fid,
+                    caption=text,
+                    reply_markup=kb,
+                    parse_mode=enums.ParseMode.HTML,
+                )
+            else:
+                sent_msg = await client.send_document(
+                    int(OWNER),
+                    fid,
+                    caption=text,
+                    reply_markup=kb,
+                    parse_mode=enums.ParseMode.HTML,
+                )
+
+            if sent_msg:
+                admin_msg_ids[str(OWNER)] = sent_msg.id
+
+        except Exception:
+            logger.exception("OWNER fallback failed for payment proof")
 
     try:
         col_intent = get_db_collection("user_payment_intents")
@@ -1365,6 +1414,16 @@ async def admin_reject_cb(client, callback: CallbackQuery):
         pass
 
     await callback.answer("Rejected.")
+
+    u_link = await get_user_display(client, uid)
+
+    await safe_premium_log(
+        client,
+        f"<b>❌ Premium Payment Rejected</b>\n\n"
+        f"{u_link}\n"
+        f"<b>• Reason: Payment proof rejected by administration.</b>",
+    )
+
     try:
         await client.send_message(
             uid,
