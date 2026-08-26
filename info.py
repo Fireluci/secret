@@ -13,9 +13,9 @@ def is_enabled(value, default):
 SESSION = environ.get('SESSION', 'Media_search')
 API_ID = int(environ.get('API_ID', '1736204'))
 API_HASH = environ.get('API_HASH', '890d40e0f91a4de32dec2965444b2cbe')
-BOT_TOKEN = environ.get('BOT_TOKEN', '8586754770:AAHx7v0yI-NIP-QKzgcBxRfbGk_RaNt7JZM')
+BOT_TOKEN = environ.get('BOT_TOKEN', '8586754770:AAF8lcZRg-4fLdK6Pu7tdRlLYC5wt7JdQb4')
 
-DATABASE_URI = environ.get('DATABASE_URI', "")
+DATABASE_URI = environ.get('DATABASE_URI', "mongodb+srv://ariana:ariana@ariana.vxqvh5x.mongodb.net/?appName=ariana")
 DATABASE_NAME = environ.get('DATABASE_NAME', "heroflix")
 COLLECTION_NAME = environ.get('COLLECTION_NAME', 'index')
 
@@ -33,8 +33,8 @@ AUTH_CHANNEL = int(auth_channel) if auth_channel and id_pattern.search(auth_chan
 PORT = environ.get("PORT", "8080")
 CHNL_LNK = environ.get('CHNL_LNK', 'HEROFLiX')
 LOG_CHANNEL = int(environ.get('LOG_CHANNEL', '-1001652564383'))
-PREMIUM_GROUP_ID = environ.get('PREMIUM_GROUP_ID', '')
-PREMIUM_PERMANENT_LINK = environ.get('PREMIUM_PERMANENT_LINK', '')
+PREMIUM_GROUP_ID = environ.get('PREMIUM_GROUP_ID', '-1004463577278')
+PREMIUM_PERMANENT_LINK = environ.get('PREMIUM_PERMANENT_LINK', 'https://t.me/+so_K9gogSiE1OTk1')
 PREMIUM_UPI_ID = environ.get('PREMIUM_UPI_ID', 'karthik.slice@ibl')
 PREMIUM_QR = environ.get('PREMIUM_QR', 'https://ibb.co/KHqPKqg')
 SUPPORT_CHAT = environ.get('SUPPORT_CHAT', 'herofeedbot')
