@@ -16,7 +16,6 @@ import requests
 import aiohttp
 from rapidfuzz import fuzz
 import urllib.parse
-from shortzy import Shortzy
 import regex
 import http.client
 import json
@@ -29,7 +28,6 @@ BTN_URL_REGEX = re.compile(
 )
 
 BANNED = {}
-SECOND_SHORTENER = {}
 SMART_OPEN = '“'
 SMART_CLOSE = '”'
 START_CHAR = ('\'', '"', SMART_OPEN)
@@ -161,65 +159,25 @@ async def get_settings(group_id):
     overrides = await db.get_group_settings(group_id)
     settings = {
         "spell_check": _as_bool(overrides.get("spell_check"), SPELL_CHECK_REPLY),
-        "is_shortlink": _as_bool(overrides.get("is_shortlink"), IS_SHORTLINK),
-        "shortlink": overrides.get("shortlink") or SHORT1_URL,
-        "shortlink_api": overrides.get("shortlink_api") or SHORT1_API,
-        "second_shortlink": overrides.get("second_shortlink") or SHORT2_URL,
-        "second_shortlink_api": overrides.get("second_shortlink_api") or SHORT2_API,
     }
     temp.SETTINGS[group_id] = settings
     return settings
 
 
 async def save_group_settings(group_id, key, value):
-    allowed = {
-        "spell_check",
-        "is_shortlink",
-        "shortlink",
-        "shortlink_api",
-        "second_shortlink",
-        "second_shortlink_api",
-    }
-    if key not in allowed:
+    if key != "spell_check":
         return
 
     group_id = int(group_id)
-    settings = await get_settings(group_id)
-
-    if key == "spell_check":
-        default = SPELL_CHECK_REPLY
-        value = _as_bool(value, default)
-        if value == default:
-            await db.remove_group_setting(group_id, key)
-        else:
-            await db.set_group_setting(group_id, key, value)
-        settings[key] = value
-        return
-
-    if key == "is_shortlink":
-        default = IS_SHORTLINK
-        value = _as_bool(value, default)
-        if value == default:
-            await db.remove_group_setting(group_id, key)
-        else:
-            await db.set_group_setting(group_id, key, value)
-        settings[key] = value
-        return
-
-    # Shortener configuration is per-group. If it matches the global default,
-    # remove the override so future info.py changes automatically apply.
-    defaults = {
-        "shortlink": SHORT1_URL,
-        "shortlink_api": SHORT1_API,
-        "second_shortlink": SHORT2_URL,
-        "second_shortlink_api": SHORT2_API,
-    }
-    value = str(value).strip()
-    if value == str(defaults[key]):
+    value = _as_bool(value, SPELL_CHECK_REPLY)
+    if value == SPELL_CHECK_REPLY:
         await db.remove_group_setting(group_id, key)
     else:
         await db.set_group_setting(group_id, key, value)
-    settings[key] = value or defaults[key]
+
+    settings = await get_settings(group_id)
+    settings[key] = value
+
 
 async def is_group_connected(chat_id):
     chat_id = int(chat_id)
@@ -376,48 +334,6 @@ def humanbytes(size):
         size /= power
         n += 1
     return str(round(size, 2)) + " " + Dic_powerN[n] + 'B'
-
-async def get_shortlink(chat_id, link, client=None):
-    settings = await get_settings(chat_id)
-    primary_site = settings.get("shortlink") or SHORT1_URL
-    primary_api = settings.get("shortlink_api") or SHORT1_API
-    secondary_site = settings.get("second_shortlink") or SHORT2_URL
-    secondary_api = settings.get("second_shortlink_api") or SHORT2_API
-    timeout = aiohttp.ClientTimeout(total=6)
-
-    async def _request_shorten(base_site, api_key):
-        if not base_site or not api_key:
-            raise RuntimeError("Shortener is not configured")
-        if base_site == "api.shareus.io":
-            url = f"https://{base_site}/api"
-            params = {"key": api_key, "link": link}
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(url, params=params) as response:
-                    response.raise_for_status()
-                    return await response.text()
-
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            shortzy = Shortzy(api_key=api_key, base_site=base_site)
-            return await shortzy.convert(link)
-
-    try:
-        return await _request_shorten(primary_site, primary_api)
-    except Exception as first_error:
-        logger.warning("Primary shortener failed: %s", first_error)
-
-    try:
-        return await _request_shorten(secondary_site, secondary_api)
-    except Exception as second_error:
-        logger.error("Secondary shortener failed: %s", second_error)
-        if client and LOG_CHANNEL:
-            try:
-                await client.send_message(
-                    LOG_CHANNEL,
-                    f"⚠️ Shortener failure\nChat: `{chat_id}`\nError: `{second_error}`",
-                )
-            except Exception:
-                pass
-        raise RuntimeError("All shorteners are down.") from second_error
 
 
 async def extract_v2(text):

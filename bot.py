@@ -8,6 +8,7 @@ logging.getLogger().setLevel(logging.INFO)
 logging.getLogger("pyrogram").setLevel(logging.ERROR)
  
 from plugins.index import check_pending_index_on_startup
+from plugins.premium import start_premium_tasks
 from pyrogram import Client, __version__
 from pyrogram.raw.all import layer
 from database.ia_filterdb import Media
@@ -97,6 +98,7 @@ class Bot(Client):
         
         # Trigger check for pending index tasks right after bot starts up successfully
         await check_pending_index_on_startup(self)
+        await start_premium_tasks(self)
 
     async def stop(self, *args):
         await super().stop()

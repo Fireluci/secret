@@ -30,15 +30,13 @@ ADMINS = [int(admin) if id_pattern.search(admin) else admin for admin in environ
 auth_channel = environ.get('AUTH_CHANNEL', '-1002048881772')
 AUTH_CHANNEL = int(auth_channel) if auth_channel and id_pattern.search(auth_channel) else None
 
-SHORT1_URL = environ.get('SHORT1_URL', 'cpmshort.com')
-SHORT1_API = environ.get('SHORT1_API', '4edd2741cf55b86fd7306942fd25bb163c8f8cd6')
-SHORT2_URL = environ.get('SHORT2_URL', 'easysky.in')
-SHORT2_API = environ.get('SHORT2_API', 'f3753546bce8faa1a5e9ef961431c0b57e4d26a9')
-IS_SHORTLINK = is_enabled(environ.get("IS_SHORTLINK", "True"), True)
 PORT = environ.get("PORT", "8080")
 CHNL_LNK = environ.get('CHNL_LNK', 'HEROFLiX')
-TUTORIAL = environ.get('TUTORIAL', 'HeroFlixx/54')
 LOG_CHANNEL = int(environ.get('LOG_CHANNEL', '-1001652564383'))
+PREMIUM_GROUP_ID = environ.get('PREMIUM_GROUP_ID', '')
+PREMIUM_PERMANENT_LINK = environ.get('PREMIUM_PERMANENT_LINK', '')
+PREMIUM_UPI_ID = environ.get('PREMIUM_UPI_ID', 'karthik.slice@ibl')
+PREMIUM_QR = environ.get('PREMIUM_QR', 'https://ibb.co/KHqPKqg')
 SUPPORT_CHAT = environ.get('SUPPORT_CHAT', 'herofeedbot')
  
 
