@@ -926,6 +926,15 @@ async def premium_menu(client, update):
     if isinstance(update, CallbackQuery):
         await update.answer()
 
+    try:
+        await safe_premium_log(
+            client,
+            f"<b>💎 Premium Menu Opened</b>\n\n"
+            f"{user_link(update.from_user.first_name, update.from_user.id)}",
+        )
+    except Exception:
+        logger.exception("Failed to log premium menu opened")
+
     text = (
         "<b>🌟 Premium Plans:-\n\n"
         "✨ 1 Month: ₹40\n"
@@ -959,6 +968,16 @@ async def premium_menu(client, update):
 @Client.on_callback_query(filters.regex("^click_here_to_pay$"))
 async def click_here_to_pay_cb(client, callback: CallbackQuery):
     await callback.answer()
+
+    try:
+        await safe_premium_log(
+            client,
+            f"<b>💳 Premium Payment Page Opened</b>\n\n"
+            f"{user_link(callback.from_user.first_name, callback.from_user.id)}",
+        )
+    except Exception:
+        logger.exception("Failed to log premium payment page opened")
+
     try:
         await callback.message.delete()
     except Exception:
@@ -1000,6 +1019,16 @@ async def send_proof_cb(client, callback: CallbackQuery):
         pass
 
     await callback.answer()
+
+    try:
+        await safe_premium_log(
+            client,
+            f"<b>📸 Payment Proof Requested</b>\n\n"
+            f"{user_link(callback.from_user.first_name, callback.from_user.id)}",
+        )
+    except Exception:
+        logger.exception("Failed to log payment proof request")
+
     try:
         await callback.message.delete()
     except Exception:
@@ -1086,45 +1115,36 @@ async def screenshot_handler(client, message):
     fid = message.photo.file_id if message.photo else message.document.file_id
     admin_msg_ids = {}
 
-    # PREMIUM_LOG is the primary destination for payment proofs.
-    # OWNER is used only if PREMIUM_LOG delivery fails.
+    # PREMIUM_LOG is the primary destination for all premium proof messages.
+    # OWNER is used only as a fallback when PREMIUM_LOG delivery fails.
     try:
-        sent_msg = None
-
-        if PREMIUM_LOG:
-            log_id = int(PREMIUM_LOG)
-
-            try:
-                await client.get_chat(log_id)
-            except Exception:
-                await client.resolve_peer(log_id)
-
-            if message.photo:
-                sent_msg = await client.send_photo(
-                    log_id,
-                    fid,
-                    caption=text,
-                    reply_markup=kb,
-                    parse_mode=enums.ParseMode.HTML,
-                )
-            else:
-                sent_msg = await client.send_document(
-                    log_id,
-                    fid,
-                    caption=text,
-                    reply_markup=kb,
-                    parse_mode=enums.ParseMode.HTML,
-                )
-
-            if sent_msg:
-                admin_msg_ids[str(log_id)] = sent_msg.id
-
-        else:
+        log_id = int(PREMIUM_LOG) if PREMIUM_LOG else None
+        if not log_id:
             raise ValueError("PREMIUM_LOG is not configured")
+
+        if message.photo:
+            sent_msg = await client.send_photo(
+                log_id,
+                fid,
+                caption=text,
+                reply_markup=kb,
+                parse_mode=enums.ParseMode.HTML,
+            )
+        else:
+            sent_msg = await client.send_document(
+                log_id,
+                fid,
+                caption=text,
+                reply_markup=kb,
+                parse_mode=enums.ParseMode.HTML,
+            )
+
+        if sent_msg:
+            admin_msg_ids[str(log_id)] = sent_msg.id
 
     except Exception as e:
         logger.exception(
-            "PREMIUM_LOG failed for payment proof, falling back to OWNER: %s",
+            "PREMIUM_LOG screenshot delivery failed; falling back to OWNER: %s",
             e,
         )
 
@@ -1150,7 +1170,7 @@ async def screenshot_handler(client, message):
                 admin_msg_ids[str(OWNER)] = sent_msg.id
 
         except Exception:
-            logger.exception("OWNER fallback failed for payment proof")
+            logger.exception("OWNER fallback failed for payment screenshot")
 
     try:
         col_intent = get_db_collection("user_payment_intents")
@@ -1415,14 +1435,14 @@ async def admin_reject_cb(client, callback: CallbackQuery):
 
     await callback.answer("Rejected.")
 
-    u_link = await get_user_display(client, uid)
-
-    await safe_premium_log(
-        client,
-        f"<b>❌ Premium Payment Rejected</b>\n\n"
-        f"{u_link}\n"
-        f"<b>• Reason: Payment proof rejected by administration.</b>",
-    )
+    try:
+        await safe_premium_log(
+            client,
+            f"<b>❌ Premium Payment Rejected</b>\n\n"
+            f"{await get_user_display(client, uid)}",
+        )
+    except Exception:
+        logger.exception("Failed to log premium rejection")
 
     try:
         await client.send_message(
@@ -1534,7 +1554,7 @@ async def start(client, message):
                 {
                     "$set": {
                         "action": "i_paid_clicked",
-                        "timestamp": datetime.datetime.utcnow(),
+                        "timestamp": datetime.utcnow(),
                     }
                 },
                 upsert=True,
