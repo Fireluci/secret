@@ -984,7 +984,7 @@ async def send_proof_cb(client, callback: CallbackQuery):
                 {
                     "$set": {
                         "action": "i_paid_clicked",
-                        "timestamp": datetime.utcnow(),
+                        "timestamp": datetime.datetime.utcnow(),
                     }
                 },
                 upsert=True,
