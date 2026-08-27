@@ -194,7 +194,7 @@ async def next_page(bot, query):
             query.message.chat.id, req, key, offset, next_offset, total
         )
         await store_file_links(query.message.chat.id, files)
-        cap = build_results_caption(message.chat.id, search, files)
+        cap = build_results_caption(query.message.chat.id, search, files)
 
         try:
             await query.message.edit_text(
