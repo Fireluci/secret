@@ -1,20 +1,16 @@
 import asyncio
-import datetime
 import logging
 import math
-import os
 import re
-import sys
-import time
 import time as _time
 from html import escape
 from pyrogram import Client, enums, filters
-from pyrogram.errors import FloodWait, MessageNotModified, MessageTooLong, PeerIdInvalid, UserIsBlocked
-from pyrogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
-from database.ia_filterdb import Media, get_bad_files, get_file_details, get_search_results, unpack_new_file_id
+from pyrogram.errors import MessageNotModified
+from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from database.ia_filterdb import Media, get_bad_files, get_file_details, get_search_results
 from database.users_chats_db import db
 from info import *
-from utils import broadcast_messages, connected_group, get_settings, get_shortlink, get_size, is_group_connected, is_subscribed, save_group_settings, search_gagala, temp
+from utils import get_settings, get_shortlink, get_size, is_group_connected, is_subscribed, search_gagala, temp
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.ERROR)
@@ -116,7 +112,7 @@ async def store_file_links(chat_id, files):
         await db.set_cache(
             f"file:{file.file_id}",
             {"chat_id": chat_id},
-            ttl=600,
+            ttl=660,
         )
 
 async def store_pagination(key, chat_id, search, user_id):
@@ -125,9 +121,8 @@ async def store_pagination(key, chat_id, search, user_id):
         {
             "chat_id": chat_id,
             "search": search,
-            "user_id": user_id or 0,
         },
-        ttl=600,
+        ttl=660,
     )
 
 async def handle_auto_delete(message_obj):
@@ -156,7 +151,7 @@ async def give_filter(client, message):
 
     await auto_filter(client, message)
 
-@Client.on_callback_query(filters.regex(r"^next"))
+@Client.on_callback_query(filters.regex(r"^next_"))
 async def next_page(bot, query):
     if not query.message or query.message.chat.type not in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP):
         return await query.answer(ALRT_TXT, show_alert=True)
@@ -418,8 +413,7 @@ async def advantage_spell_chok(client, msg):
     k = await msg.reply("<b>🎬 Select Your Pick ↡</b>", reply_markup=InlineKeyboardMarkup(btn))
     await asyncio.sleep(60)
     await k.delete()
-
-logger = logging.getLogger(__name__)
+    SPELL_CHECK.pop(msg.id, None)
 
 async def send_file_to_user(client, user_id, file_id):
     files = await get_file_details(file_id)
@@ -462,6 +456,7 @@ async def send_shortlink_page(client, user_id, file_id, chat_id):
             client=client,
         )
     except Exception:
+        logger.exception("Shortlink generation failed for %s", file_id)
         return None
 
     msg = await client.send_message(
