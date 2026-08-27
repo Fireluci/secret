@@ -34,6 +34,19 @@ SMART_OPEN = '“'
 SMART_CLOSE = '”'
 START_CHAR = ('\'', '"', SMART_OPEN)
 SHORT = {}
+HTTP_SESSION = None
+
+async def get_http_session():
+    global HTTP_SESSION
+    if HTTP_SESSION is None or HTTP_SESSION.closed:
+        HTTP_SESSION = aiohttp.ClientSession()
+    return HTTP_SESSION
+
+async def close_http_session():
+    global HTTP_SESSION
+    if HTTP_SESSION is not None and not HTTP_SESSION.closed:
+        await HTTP_SESSION.close()
+        HTTP_SESSION = None
 
 class temp(object):
     BANNED_USERS = []
@@ -97,17 +110,15 @@ async def search_gagala(text):
     timeout = aiohttp.ClientTimeout(total=8)
 
     try:
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-
-            async with session.get(
-                url,
-                headers=headers
-            ) as response:
-
-                if response.status != 200:
-                    return []
-
-                html = await response.text()
+        session = await get_http_session()
+        async with session.get(
+            url,
+            headers=headers,
+            timeout=timeout,
+        ) as response:
+            if response.status != 200:
+                return []
+            html = await response.text()
 
         soup = BeautifulSoup(html, "html.parser")
 
@@ -391,14 +402,13 @@ async def get_shortlink(chat_id, link, client=None):
         if base_site == "api.shareus.io":
             url = f"https://{base_site}/api"
             params = {"key": api_key, "link": link}
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(url, params=params) as response:
-                    response.raise_for_status()
-                    return await response.text()
+            session = await get_http_session()
+            async with session.get(url, params=params, timeout=timeout) as response:
+                response.raise_for_status()
+                return await response.text()
 
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            shortzy = Shortzy(api_key=api_key, base_site=base_site)
-            return await shortzy.convert(link)
+        shortzy = Shortzy(api_key=api_key, base_site=base_site)
+        return await shortzy.convert(link)
 
     try:
         return await _request_shorten(primary_site, primary_api)
