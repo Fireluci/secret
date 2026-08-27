@@ -484,59 +484,98 @@ async def delete_later(message, seconds=600):
 
 @Client.on_message(filters.command("start") & filters.incoming)
 async def start(client, message):
+
+    # Group / supergroup
     if message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
         if not await is_group_connected(message.chat.id):
             return
 
-    buttons = [[
-        InlineKeyboardButton(
-            '❓How To Use Me❓',
-            url=f"https://telegram.me/{TUTORIAL}"
-        )
-    ]]
-    
-    await message.reply(
-        START_TXT.format(
-            message.from_user.mention if message.from_user else message.chat.title,
-            temp.U_NAME,
-            temp.B_NAME,
-        ),
-        reply_markup=InlineKeyboardMarkup(buttons) if buttons else None,
-        disable_web_page_preview=True,
-    )
-    return
+        buttons = [[
+            InlineKeyboardButton(
+                "❓How To Use Me❓",
+                url=f"https://telegram.me/{TUTORIAL}"
+            )
+        ]]
 
+        return await message.reply(
+            START_TXT.format(
+                message.from_user.mention if message.from_user else message.chat.title,
+                temp.U_NAME,
+                temp.B_NAME,
+            ),
+            reply_markup=InlineKeyboardMarkup(buttons),
+            disable_web_page_preview=True,
+        )
+
+    # Private
     if not message.from_user:
         return
 
     ban_status = await db.get_ban_status(message.from_user.id)
     if ban_status.get("is_banned"):
         return await message.reply_text(
-            f'Sorry Dude, You are Banned to use Me.\nBan Reason: {ban_status.get("ban_reason", "No Reason")}'
+            f'Sorry Dude, You are Banned to use Me.\n'
+            f'Ban Reason: {ban_status.get("ban_reason", "No Reason")}'
         )
 
     if not await db.is_user_exist(message.from_user.id):
-        await db.add_user(message.from_user.id, message.from_user.first_name)
+        await db.add_user(
+            message.from_user.id,
+            message.from_user.first_name
+        )
         try:
-            await client.send_message(LOG_CHANNEL, LOG_TEXT_P.format(message.from_user.id, message.from_user.mention))
+            await client.send_message(
+                LOG_CHANNEL,
+                LOG_TEXT_P.format(
+                    message.from_user.id,
+                    message.from_user.mention
+                )
+            )
         except Exception:
             pass
 
-    if len(message.command) != 2:
-        buttons = [
-            [InlineKeyboardButton("🌟 Paid (No Ads)", url="https://telegram.me/HeroFlixx/49"), InlineKeyboardButton("🍿 Free (With Ads)", url="https://telegram.me/addlist/X5k2lnJLIGAyZjQ1")],
-            [InlineKeyboardButton("👤 Admin", url=f"https://telegram.me/{SUPPORT_CHAT}"), InlineKeyboardButton("⚜ Updates", url=FORCE)],
+    # Common start buttons
+    start_buttons = [
+        [
+            InlineKeyboardButton(
+                "🌟 Paid (No Ads)",
+                url="https://telegram.me/HeroFlixx/49"
+            ),
+            InlineKeyboardButton(
+                "🍿 Free (With Ads)",
+                url="https://telegram.me/addlist/X5k2lnJLIGAyZjQ1"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "👤 Admin",
+                url=f"https://telegram.me/{SUPPORT_CHAT}"
+            ),
+            InlineKeyboardButton(
+                "⚜ Updates",
+                url=FORCE
+            )
         ]
+    ]
+
+    # Plain /start
+    if len(message.command) != 2:
         return await message.reply_photo(
             photo=PICS,
-            caption=START_TXT.format(message.from_user.mention, temp.U_NAME, temp.B_NAME),
-            reply_markup=InlineKeyboardMarkup(buttons),
+            caption=START_TXT.format(
+                message.from_user.mention,
+                temp.U_NAME,
+                temp.B_NAME
+            ),
+            reply_markup=InlineKeyboardMarkup(start_buttons),
             parse_mode=enums.ParseMode.HTML,
         )
 
+    # Force subscription
     if AUTH_CHANNEL and not await is_subscribed(client, message):
         payload = message.text.split(" ", 1)[1] if " " in message.text else "subscribe"
         retry = f"https://telegram.me/{temp.U_NAME}?start={payload}"
+
         return await client.send_message(
             message.from_user.id,
             "**🔆 First Join Our Main Channel & Click Try Again ♻**",
@@ -548,18 +587,21 @@ async def start(client, message):
         )
 
     data = message.command[1]
+
+    # Non-file start payloads
     if data in {"subscribe", "error", "okay", "help"}:
-        buttons = [
-            [InlineKeyboardButton("🌟 Paid (No Ads)", url="https://telegram.me/HeroFlixx/49"), InlineKeyboardButton("🍿 Free (With Ads)", url="https://telegram.me/addlist/X5k2lnJLIGAyZjQ1")],
-            [InlineKeyboardButton("👤 Admin", url=f"https://telegram.me/{SUPPORT_CHAT}"), InlineKeyboardButton("⚜ Updates", url=FORCE)],
-        ]
         return await message.reply_photo(
             photo=PICS,
-            caption=START_TXT.format(message.from_user.mention, temp.U_NAME, temp.B_NAME),
-            reply_markup=InlineKeyboardMarkup(buttons),
+            caption=START_TXT.format(
+                message.from_user.mention,
+                temp.U_NAME,
+                temp.B_NAME
+            ),
+            reply_markup=InlineKeyboardMarkup(start_buttons),
             parse_mode=enums.ParseMode.HTML,
         )
 
+    # File / shortlink payload
     if "_" in data:
         pre, payload = data.split("_", 1)
     else:
@@ -570,26 +612,46 @@ async def start(client, message):
 
     if pre in {"short", "files"}:
         file_id = payload
+
         cache = await db.get_cache(f"file:{file_id}")
         if not cache:
-            return await message.reply_text("<b>Link Expired, Search Again in Group!</b>")
+            return await message.reply_text(
+                "<b>Link Expired, Search Again in Group!</b>"
+            )
 
         chat_id = cache.get("chat_id")
         if chat_id is None:
-            return await message.reply_text("<b>Link Expired, Search Again in Group!</b>")
+            return await message.reply_text(
+                "<b>Link Expired, Search Again in Group!</b>"
+            )
 
         settings = await get_settings(chat_id)
+
         if settings.get("is_shortlink", IS_SHORTLINK):
             result = await send_shortlink_page(
-                client, message.from_user.id, file_id, chat_id
+                client,
+                message.from_user.id,
+                file_id,
+                chat_id
             )
+
             if result is None:
-                return await message.reply("❌ Link generation failed. Please try again later.")
+                return await message.reply(
+                    "❌ Link generation failed. Please try again later."
+                )
+
             if result is False:
-                return await message.reply("No such file exist.")
+                return await message.reply(
+                    "No such file exist."
+                )
+
             return
 
-        if not await send_file_to_user(client, message.from_user.id, file_id):
+        if not await send_file_to_user(
+            client,
+            message.from_user.id,
+            file_id
+        ):
             await message.reply("No such file exist.")
-        return
 
+        return
