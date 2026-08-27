@@ -1,6 +1,5 @@
 import asyncio
 import datetime
-from html import escape
 import logging
 import math
 import os
@@ -8,37 +7,24 @@ import re
 import sys
 import time
 import time as _time
-
+from html import escape
 from pyrogram import Client, enums, filters
 from pyrogram.errors import FloodWait, MessageNotModified, MessageTooLong, PeerIdInvalid, UserIsBlocked
 from pyrogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
-
 from database.ia_filterdb import Media, get_bad_files, get_file_details, get_search_results, unpack_new_file_id
 from database.users_chats_db import db
 from info import *
 from utils import broadcast_messages, connected_group, get_settings, get_shortlink, get_size, is_group_connected, is_subscribed, save_group_settings, search_gagala, temp
 
 logger = logging.getLogger(__name__)
-
 logger.setLevel(logging.ERROR)
-
 lock = asyncio.Lock()
-
-
 SPELL_CHECK = {}
-
-
 GLOBAL_SEM = asyncio.Semaphore(12)
-
 USER_COOLDOWN = {}
 
 EXPIRED = '♻ Link Expired, Please Request in Group Again!'
 ALRT_TXT = '🔒 This option belongs to another user. '
-
-
-def tutorial_url():
-    return TUTORIAL if TUTORIAL.startswith('http') else f'https://telegram.me/{TUTORIAL}'
-
 REMOVES = [
     "in", "series", "4k", "kdrama", "ott", 
     "movies", "webseries", "language", "hd", "hollywood", 
@@ -101,7 +87,7 @@ async def get_result_buttons(chat_id, req_user_id, cache_id, offset, next_offset
             [
                 InlineKeyboardButton(
                     "❓ How To Download ❓",
-                    url=tutorial_url()
+                    url=f"https://telegram.me/{TUTORIAL}"
                 )
             ]
         ]
@@ -243,9 +229,9 @@ async def advantage_spoll_choker(bot, query):
         if user != 0 and query.from_user.id != user:
             return await query.answer(ALRT_TXT, show_alert=True)
 
-        if movie_ == "close_spellcheck":
+        if movie_ == "close":
             await query.message.delete()
-            return await query.answer("Closed !")
+            return await query.answer()
 
         movies = SPELL_CHECK.get(query.message.reply_to_message.id if query.message.reply_to_message else 0)
         if not movies:
@@ -282,9 +268,6 @@ async def cb_handler(client, query):
         except Exception:
             pass
         return await query.answer("Closed!")
-
-    if query.data == "pages":
-        return await query.answer("You are on the page navigation.", show_alert=True)
 
     if query.data.startswith("killfilesdq"):
         user_id = query.from_user.id
@@ -355,13 +338,13 @@ async def auto_filter(client, msg, spoll=False):
         ]:
             search = search.replace(lang, code)
 
-        # Nothing remains after normalization
         if not search.strip():
             k = await message.reply_text(
                 NO_RESULTS,
                 disable_web_page_preview=True
             )
-            asyncio.create_task(handle_auto_delete(k))
+            await asyncio.sleep(60)
+            await k.delete()
             return
 
         files, offset, total_results = await get_search_results(
@@ -373,8 +356,6 @@ async def auto_filter(client, msg, spoll=False):
                 return await advantage_spell_chok(client, msg)
             return
     else:
-        # Keep the original user message as the reply target, then remove
-        # the spellcheck selection message so users do not confuse results.
         message = msg.message.reply_to_message
         if not message:
             return await msg.answer(EXPIRED, show_alert=True)
@@ -433,9 +414,9 @@ async def advantage_spell_chok(client, msg):
 
     SPELL_CHECK[msg.id] = movielist
     btn = [[InlineKeyboardButton(text=movie, callback_data=f"spolling#{reqstr1}#{idx}")] for idx, movie in enumerate(movielist)]
-    btn.append([InlineKeyboardButton("×××× ⟨ Close ⟩ ××××", callback_data="close_data")])
+    btn.append([InlineKeyboardButton("×××× ⟨ Close ⟩ ××××", callback_data=f"spolling#{reqstr1}#close")])
     k = await msg.reply("<b>🎬 Select Your Pick ↡</b>", reply_markup=InlineKeyboardMarkup(btn))
-    await asyncio.sleep(30)
+    await asyncio.sleep(60)
     await k.delete()
 
 logger = logging.getLogger(__name__)
@@ -506,20 +487,24 @@ async def start(client, message):
     if message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
         if not await is_group_connected(message.chat.id):
             return
-        buttons = []
-        tut = tutorial_url()
-        if tut:
-            buttons = [[InlineKeyboardButton('❓How To Use Me❓', url=tut)]]
-        await message.reply(
-            START_TXT.format(
-                message.from_user.mention if message.from_user else message.chat.title,
-                temp.U_NAME,
-                temp.B_NAME,
-            ),
-            reply_markup=InlineKeyboardMarkup(buttons) if buttons else None,
-            disable_web_page_preview=True,
+
+    buttons = [[
+        InlineKeyboardButton(
+            '❓How To Use Me❓',
+            url=f"https://telegram.me/{TUTORIAL}"
         )
-        return
+    ]]
+    
+    await message.reply(
+        START_TXT.format(
+            message.from_user.mention if message.from_user else message.chat.title,
+            temp.U_NAME,
+            temp.B_NAME,
+        ),
+        reply_markup=InlineKeyboardMarkup(buttons) if buttons else None,
+        disable_web_page_preview=True,
+    )
+    return
 
     if not message.from_user:
         return
