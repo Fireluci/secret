@@ -44,7 +44,8 @@ SUPPORT_CHAT = environ.get('SUPPORT_CHAT', 'herofeedbot')
 # ==================== BOT TEXT ====================
 START_TXT = """<b>🌀 Unlimited Movies, Series, Anime
 🔆 New Releases Upload Every Day
-♻️ 24 x 7 Service 📆 Daily Updates</b>"""
+♻️ 24 x 7 Service 📆 Daily Updates
+🔗 No Ads or Links 🗃 Direct Files</b>"""
 
 STATUS_TXT = """<b>★ Tᴏᴛᴀʟ Fɪʟᴇs: <code>{}</code>
 ★ Tᴏᴛᴀʟ Usᴇʀs: <code>{}</code>
