@@ -32,7 +32,7 @@ from info import (
     ADMINS,
 )
 
-OWNER_ID = ADMINS[0]
+OWNER = ADMINS[0]
 class Bot(Client):
 
     def __init__(self):
@@ -68,7 +68,7 @@ class Bot(Client):
         if manual_restart:
             try:
                 restart_msg = await self.send_message(
-                    chat_id=OWNER_ID,
+                    chat_id=OWNER,
                     text=RESTART_TXT.format(today, time),
                 )
 
