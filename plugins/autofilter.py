@@ -464,7 +464,7 @@ async def send_shortlink_page(client, user_id, file_id, chat_id):
         text=f'<b>🔆 [ {get_size(file.file_size)} ] <a href="https://telegram.me/{CHNL_LNK}">{title}</a>\n\n📥 Download Link↓\n{short_url}</b>',
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("♻️ Download Link ♻️", url=short_url)],
-            [InlineKeyboardButton("❓ How To Download ❓", url=tutorial_url())],
+            [InlineKeyboardButton("❓ How To Download ❓", url=f"https://telegram.me/{TUTORIAL}")],
         ]),
     )
     asyncio.create_task(delete_later(msg))
