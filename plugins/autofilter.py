@@ -1511,8 +1511,7 @@ async def start(client, message):
             pass
 
     if len(message.command) != 2:
-        return await message.reply_photo(photo=PICS, caption=script.START_TXT.format(message.from_user.mention, temp.U_NAME, temp.B_NAME), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Buy Premium", callback_data="buy_premium_start")]]), parse_mode=enums.ParseMode.HTML)
-    
+        return await message.reply_photo(photo=PICS, caption=START_TXT, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Buy Premium", callback_data="buy_premium_start")]]), parse_mode=enums.ParseMode.HTML)    
     if len(message.command) == 2 and message.command[1] == "i_paid":
         col_intent = get_db_collection("user_payment_intents")
         if col_intent is not None:
@@ -1546,14 +1545,10 @@ async def start(client, message):
 
     data = message.command[1]
     if data in {"subscribe", "error", "okay", "help"}:
-        buttons = [
-            [InlineKeyboardButton("🌟 Paid (No Ads)", url="https://telegram.me/HeroFlixx/49"), InlineKeyboardButton("🍿 Free (With Ads)", url="https://telegram.me/addlist/X5k2lnJLIGAyZjQ1")],
-            [InlineKeyboardButton("👤 Admin", url=f"https://telegram.me/{SUPPORT_CHAT}"), InlineKeyboardButton("⚜ Updates", url=FORCE)],
-        ]
         return await message.reply_photo(
             photo=PICS,
-            caption=START_TXT.format(message.from_user.mention, temp.U_NAME, temp.B_NAME),
-            reply_markup=InlineKeyboardMarkup(buttons),
+            caption=START_TXT,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Buy Premium", callback_data="buy_premium_start")]]),
             parse_mode=enums.ParseMode.HTML,
         )
 
