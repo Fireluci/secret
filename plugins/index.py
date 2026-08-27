@@ -191,6 +191,20 @@ async def set_skip_number(bot, message):
     else:
         await message.reply("Give me a skip number.")
 
+
+async def iter_index_messages(bot, chat_id, limit, offset=0):
+    current = offset
+    while True:
+        new_diff = min(200, limit - current)
+        if new_diff <= 0:
+            return
+        messages = await bot.get_messages(
+            chat_id, list(range(current, current + new_diff + 1))
+        )
+        for message in messages:
+            yield message
+            current += 1
+
 async def index_files_to_db(lst_msg_id, chat, msg, bot, resume_current=None, resume_saved=0, resume_dup=0, resume_del=0):
     total_files = resume_saved
     duplicate = resume_dup
@@ -221,7 +235,7 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, resume_current=None, res
 
             current = temp.CURRENT
             last_edit = current
-            async for message in bot.iter_messages(chat, lst_msg_id, temp.CURRENT):
+            async for message in iter_index_messages(bot, chat, lst_msg_id, temp.CURRENT):
                 if temp.CANCEL:
                     try:
                         await msg.edit(

@@ -19,6 +19,14 @@ SPELL_CHECK = {}
 GLOBAL_SEM = asyncio.Semaphore(12)
 USER_COOLDOWN = {}
 
+def tutorial_url():
+    return TUTORIAL if TUTORIAL.startswith("http") else f"https://telegram.me/{TUTORIAL}"
+
+TUTORIAL_BUTTON = InlineKeyboardButton(
+    "❓ How To Download ❓",
+    url=tutorial_url()
+)
+
 EXPIRED = '♻ Link Expired, Please Request in Group Again!'
 ALRT_TXT = '🔒 This option belongs to another user. '
 REMOVES = [
@@ -81,16 +89,13 @@ async def get_result_buttons(chat_id, req_user_id, cache_id, offset, next_offset
         return [
             btn,
             [
-                InlineKeyboardButton(
-                    "❓ How To Download ❓",
-                    url=f"https://telegram.me/{TUTORIAL}"
-                )
+                TUTORIAL_BUTTON
             ]
         ]
 
     return [btn]
 
-def build_results_caption(search, files):
+def build_results_caption(chat_id, search, files):
     cap = (
         f"<b>🔆 Results For ➔ ‛{escape(search)}’👇\n\n"
         f"🎬 Select Your Pick ↡\n\n"
@@ -110,7 +115,7 @@ def build_results_caption(search, files):
 async def store_file_links(chat_id, files):
     for file in files:
         await db.set_cache(
-            f"file:{file.file_id}",
+            f"file:{chat_id}:{file.file_id}",
             {"chat_id": chat_id},
             ttl=660,
         )
@@ -189,7 +194,7 @@ async def next_page(bot, query):
             query.message.chat.id, req, key, offset, next_offset, total
         )
         await store_file_links(query.message.chat.id, files)
-        cap = build_results_caption(search, files)
+        cap = build_results_caption(message.chat.id, search, files)
 
         try:
             await query.message.edit_text(
@@ -367,7 +372,7 @@ async def auto_filter(client, msg, spoll=False):
         message.chat.id, req, key, 0, offset, total_results
     )
     await store_file_links(message.chat.id, files)
-    cap = build_results_caption(search, files)
+    cap = build_results_caption(message.chat.id, search, files)
 
     result = await message.reply_text(
         cap,
@@ -452,7 +457,7 @@ async def send_shortlink_page(client, user_id, file_id, chat_id):
     try:
         short_url = await get_shortlink(
             chat_id,
-            f"https://telegram.me/{temp.U_NAME}?start=file_{file_id}",
+            f"https://telegram.me/{temp.U_NAME}?start=files_{chat_id}_{file_id}",
             client=client,
         )
     except Exception:
@@ -464,7 +469,7 @@ async def send_shortlink_page(client, user_id, file_id, chat_id):
         text=f'<b>🔆 [ {get_size(file.file_size)} ] <a href="https://telegram.me/{CHNL_LNK}">{title}</a>\n\n📥 Download Link↓\n{short_url}</b>',
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("♻️ Download Link ♻️", url=short_url)],
-            [InlineKeyboardButton("❓ How To Download ❓", url=f"https://telegram.me/{TUTORIAL}")],
+            [TUTORIAL_BUTTON],
         ]),
     )
     asyncio.create_task(delete_later(msg))
@@ -486,10 +491,7 @@ async def start(client, message):
             return
 
         buttons = [[
-            InlineKeyboardButton(
-                "❓How To Use Me❓",
-                url=f"https://telegram.me/{TUTORIAL}"
-            )
+            TUTORIAL_BUTTON
         ]]
 
         return await message.reply(
@@ -597,18 +599,26 @@ async def start(client, message):
         )
 
     # File / shortlink payload
-    if "_" in data:
+    if data.startswith("files_"):
+        parts = data.split("_", 2)
+        if len(parts) == 3:
+            pre, payload_chat_id, file_id = parts
+            cache = await db.get_cache(f"file:{payload_chat_id}:{file_id}")
+        else:
+            pre, file_id = "files", data.split("_", 1)[1]
+            cache = await db.get_cache(f"file:{file_id}")
+    elif "_" in data:
         pre, payload = data.split("_", 1)
+        file_id = payload
+        cache = await db.get_cache(f"file:{file_id}")
     else:
-        pre, payload = "file", data
+        pre, file_id = "file", data
+        cache = None
 
     if pre not in {"file", "files", "short"}:
         return
 
     if pre in {"short", "files"}:
-        file_id = payload
-
-        cache = await db.get_cache(f"file:{file_id}")
         if not cache:
             return await message.reply_text(
                 "<b>Link Expired, Search Again in Group!</b>"
