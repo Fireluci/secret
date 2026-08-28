@@ -20,7 +20,7 @@ from datetime import date, datetime
 import pytz
 from aiohttp import web
 from plugins import web_server
-from info * 
+from info import *
 import pyrogram.utils
 pyrogram.utils.MIN_CHANNEL_ID = -1007852516352
 OWNER = ADMINS[0]
