@@ -75,7 +75,7 @@ class Bot(Client):
         else:
             try:
                 await self.send_message(
-                    chat_id=LOG_CHANNEL,
+                    chat_id=PREMIUM_LOG,
                     text=RESTART_TXT.format(today, time),
                 )
             except Exception:
