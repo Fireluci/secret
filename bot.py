@@ -1,12 +1,6 @@
 import logging
 import logging.config
 import asyncio
-
-# Get logging configurations
-logging.config.fileConfig('logging.conf')
-logging.getLogger().setLevel(logging.INFO)
-logging.getLogger("pyrogram").setLevel(logging.ERROR)
- 
 from plugins.index import check_pending_index_on_startup
 from plugins.autofilter import start_premium_tasks
 from pyrogram import Client, __version__
@@ -23,6 +17,11 @@ from plugins import web_server
 from info import *
 import pyrogram.utils
 pyrogram.utils.MIN_CHANNEL_ID = -1007852516352
+
+logging.config.fileConfig('logging.conf')
+logging.getLogger().setLevel(logging.INFO)
+logging.getLogger("pyrogram").setLevel(logging.ERROR)
+
 OWNER = ADMINS[0]
 class Bot(Client):
 
