@@ -28,7 +28,7 @@ def get_settings_keyboard(settings: dict):
     ])
 
 @Client.on_message(
-    filters.command("broadcast") & filters.user(ADMINS) & filters.reply & connected_group
+    filters.command("broadcast") & filters.user(OWNER) & filters.reply & connected_group
 )
 async def broadcast_users(bot, message):
     b_msg = message.reply_to_message
@@ -112,7 +112,7 @@ async def cancel_broadcast(bot, query):
     
 
 
-@Client.on_message(filters.command("stats") & filters.incoming & filters.user(ADMINS) & connected_group)
+@Client.on_message(filters.command("stats") & filters.incoming & filters.user(OWNER) & connected_group)
 async def get_stats(bot, message):
     reply = await message.reply("Fetching stats...")
     total_users = await db.total_users_count()
@@ -129,7 +129,7 @@ async def get_stats(bot, message):
         )
     )
 
-@Client.on_message(filters.command("ban") & filters.user(ADMINS) & connected_group)
+@Client.on_message(filters.command("ban") & filters.user(OWNER) & connected_group)
 async def ban_user(bot, message):
     if len(message.command) == 1:
         return await message.reply("Give me a user id / username")
@@ -154,7 +154,7 @@ async def ban_user(bot, message):
     except Exception:
         pass
 
-@Client.on_message(filters.command("unban") & filters.user(ADMINS) & connected_group)
+@Client.on_message(filters.command("unban") & filters.user(OWNER) & connected_group)
 async def unban_user(bot, message):
     if len(message.command) == 1:
         return await message.reply("Give me a user id / username")
@@ -172,7 +172,7 @@ async def unban_user(bot, message):
     await db.remove_ban(user.id)
     await message.reply(f"Successfully unbanned {user.mention}")
 
-@Client.on_message(filters.command("users") & filters.user(ADMINS) & connected_group)
+@Client.on_message(filters.command("users") & filters.user(OWNER) & connected_group)
 async def list_users(bot, message):
     reply = await message.reply("Getting user list...")
     out = "Users Saved In DB Are:\n\n"
@@ -191,7 +191,7 @@ async def list_users(bot, message):
             outfile.write(out)
         await message.reply_document("users.txt", caption="List Of Users")
 
-@Client.on_message(filters.command("chats") & filters.user(ADMINS) & connected_group)
+@Client.on_message(filters.command("chats") & filters.user(OWNER) & connected_group)
 async def list_chats(bot, message):
     reply = await message.reply("Getting list of chats...")
     out = "Connected Chats:\n\n"
@@ -207,7 +207,7 @@ async def list_chats(bot, message):
             outfile.write(out)
         await message.reply_document("chats.txt", caption="Connected Chats")
 
-@Client.on_message(filters.command('channel') & filters.user(ADMINS))
+@Client.on_message(filters.command('channel') & filters.user(OWNER))
 async def channel_info(bot, message):
     channels = CHANNELS if isinstance(CHANNELS, list) else [CHANNELS]
     text = '📑 **Indexed channels/groups**\n'
@@ -220,7 +220,7 @@ async def channel_info(bot, message):
     text += f'\n\n**Total:** {len(channels)}'
     await message.reply(text)
 
-@Client.on_message(filters.command('delete') & filters.user(ADMINS))
+@Client.on_message(filters.command('delete') & filters.user(OWNER))
 async def delete(bot, message):
     reply = message.reply_to_message
     if not reply or not reply.media:
@@ -247,7 +247,7 @@ async def delete(bot, message):
     result = await Media.collection.delete_many({'file_name': media.file_name, 'file_size': media.file_size, 'mime_type': media.mime_type})
     await msg.edit('🛃 Deleted File!' if result.deleted_count else 'File not found in database')
 
-@Client.on_message(filters.command("deletefiles") & filters.user(ADMINS))
+@Client.on_message(filters.command("deletefiles") & filters.user(OWNER))
 async def deletemultiplefiles(bot, message):
     if message.chat.type != enums.ChatType.PRIVATE:
         return await message.reply_text("<b>Only Works in PM !</b>")
@@ -269,7 +269,7 @@ async def deletemultiplefiles(bot, message):
 
 @Client.on_callback_query(filters.regex(r'^setgs#'))
 async def settings_callback(client, callback):
-    if callback.from_user.id not in ADMINS:
+    if callback.from_user.id not in OWNER:
         return await callback.answer("Only bot admins can change settings.", show_alert=True)
     try:
         _, setting, _ = callback.data.split("#")
@@ -292,7 +292,7 @@ async def settings_callback(client, callback):
         pass
     await callback.answer("Updated")
 
-@Client.on_message(filters.command('settings') & filters.user(ADMINS))
+@Client.on_message(filters.command('settings') & filters.user(OWNER))
 async def settings(client, message):
     if message.chat.type not in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
         return await message.reply_text("Use /settings inside a connected group.")
@@ -307,14 +307,14 @@ async def settings(client, message):
     )
 
 
-@Client.on_message(filters.command('logs') & filters.user(ADMINS))
+@Client.on_message(filters.command('logs') & filters.user(OWNER))
 async def log_file(bot, message):
     try:
         await message.reply_document('TelegramBot.log')
     except Exception as e:
         await message.reply(str(e))
 
-@Client.on_message(filters.command('clearindex') & filters.user(ADMINS))
+@Client.on_message(filters.command('clearindex') & filters.user(OWNER))
 async def delete_all_index(bot, message):
     await message.reply_text(
         'This will delete all indexed files.\nDo you want to continue??',
@@ -327,13 +327,13 @@ async def delete_all_index(bot, message):
 
 @Client.on_callback_query(filters.regex(r'^clear_index$'))
 async def delete_all_index_confirm(bot, callback):
-    if callback.from_user.id not in ADMINS:
+    if callback.from_user.id not in OWNER:
         return await callback.answer("Unauthorized!", show_alert=True)
     await Media.collection.drop()
     await callback.answer('Done')
     await callback.message.edit('Successfully deleted all the indexed files.')
 
-@Client.on_message(filters.command("restart") & filters.user(ADMINS))
+@Client.on_message(filters.command("restart") & filters.user(OWNER))
 async def stop_button(bot, message):
     await bot.send_message(
         chat_id=message.chat.id,
