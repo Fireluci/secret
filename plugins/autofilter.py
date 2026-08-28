@@ -146,7 +146,7 @@ async def handle_auto_delete(message_obj):
 async def give_filter(client, message):
 
     try:
-        connected = await db.is_group_connected(message.chat.id)
+        connected = await is_group_connected(message.chat.id)
     except Exception:
         logger.exception("Failed to check connected status for group %s", message.chat.id)
         return
@@ -160,7 +160,7 @@ async def give_filter(client, message):
 async def next_page(bot, query):
     if not query.message or query.message.chat.type not in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP):
         return await query.answer(ALRT_TXT, show_alert=True)
-    if not await db.is_group_connected(query.message.chat.id):
+    if not await is_group_connected(query.message.chat.id):
         return await query.answer("This group is not connected.", show_alert=True)
     if is_spam(query.from_user.id):
         return
