@@ -76,7 +76,7 @@ def premium_admin_only(_, __, message):
             )
             or (
                 message.chat.id == PREMIUM_LOG
-                and message.from_user.id in ADMINS
+                and message.from_user.id in OWNER
             )
         )
     )
