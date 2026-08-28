@@ -555,11 +555,11 @@ async def notify_owner(client, text):
 
 
 async def safe_premium_log(client, text):
-    global PREMIUM_LOG
+    global LOG_CHANNEL
 
-    if PREMIUM_LOG:
+    if LOG_CHANNEL:
         try:
-            log_id = int(PREMIUM_LOG)
+            log_id = int(LOG_CHANNEL)
 
             try:
                 await client.get_chat(log_id)
@@ -576,7 +576,7 @@ async def safe_premium_log(client, text):
 
         except Exception as e:
             logger.warning(
-                "PREMIUM_LOG failed (%s), falling back to owner DM.",
+                "LOG_CHANNEL failed (%s), falling back to owner DM.",
                 e
             )
 
@@ -1091,12 +1091,12 @@ async def screenshot_handler(client, message):
     fid = message.photo.file_id if message.photo else message.document.file_id
     admin_msg_ids = {}
 
-    # PREMIUM_LOG is the primary destination for all premium proof messages.
-    # OWNER is used only as a fallback when PREMIUM_LOG delivery fails.
+    # LOG_CHANNEL is the primary destination for all premium proof messages.
+    # OWNER is used only as a fallback when LOG_CHANNEL delivery fails.
     try:
-        log_id = int(PREMIUM_LOG) if PREMIUM_LOG else None
+        log_id = int(LOG_CHANNEL) if LOG_CHANNEL else None
         if not log_id:
-            raise ValueError("PREMIUM_LOG is not configured")
+            raise ValueError("LOG_CHANNEL is not configured")
 
         if message.photo:
             sent_msg = await client.send_photo(
@@ -1120,7 +1120,7 @@ async def screenshot_handler(client, message):
 
     except Exception as e:
         logger.exception(
-            "PREMIUM_LOG screenshot delivery failed; falling back to OWNER: %s",
+            "LOG_CHANNEL screenshot delivery failed; falling back to OWNER: %s",
             e,
         )
 
