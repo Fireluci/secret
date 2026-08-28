@@ -33,7 +33,7 @@ AUTH_CHANNEL = int(auth_channel) if auth_channel and id_pattern.search(auth_chan
 
 PORT = environ.get("PORT", "8080")
 CHNL_LNK = environ.get('CHNL_LNK', 'HEROFLiX')
-LOG_CHANNEL = int(environ.get('LOG_CHANNEL', '-1003911194697'))
+LOG_CHANNEL = int(environ.get('LOG_CHANNEL', '-1001652564383'))
 PREMIUM_GROUP_ID = environ.get('PREMIUM_GROUP_ID', '-1004463577278')
 PREMIUM_PERMANENT_LINK = environ.get('PREMIUM_PERMANENT_LINK', 'https://t.me/+b9x5RFpJdCJlM2Vl')
 PREMIUM_UPI_ID = environ.get('PREMIUM_UPI_ID', 'karthik.slice@ibl')
