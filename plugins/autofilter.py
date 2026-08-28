@@ -770,7 +770,7 @@ async def premium_expiry_reminder_loop(client: Client):
         await asyncio.sleep(3600)
 
 
-@Client.on_message(filters.command("approve") & filters.create(premium_admin_only))
+@Client.on_message(filters.command("approve") & filters.user(OWNER))
 async def approve_command(client, message):
     if len(message.command) < 2:
         return await message.reply_text(
@@ -802,7 +802,7 @@ async def approve_command(client, message):
         )
 
 
-@Client.on_message(filters.command("revoke") & filters.create(premium_admin_only))
+@Client.on_message(filters.command("revoke") & filters.user(OWNER))
 async def revoke_command(client, message):
     if len(message.command) < 2:
         return await message.reply_text(
@@ -853,7 +853,7 @@ async def revoke_command(client, message):
         )
 
 
-@Client.on_message(filters.command("premiums") & filters.create(premium_admin_only))
+@Client.on_message(filters.command("premiums") & filters.user(OWNER))
 async def premiums_command(client, message):
     col = get_col()
     if not col:
