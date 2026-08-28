@@ -66,6 +66,21 @@ def is_spam(uid, cooldown=2):
     USER_COOLDOWN[uid] = now
     return False
 
+def premium_admin_only(_, __, message):
+    return (
+        message.from_user
+        and (
+            (
+                message.chat.type == enums.ChatType.PRIVATE
+                and message.from_user.id == OWNER
+            )
+            or (
+                message.chat.id == PREMIUM_LOG
+                and message.from_user.id in ADMINS
+            )
+        )
+    )
+
 async def get_result_buttons(chat_id, req_user_id, cache_id, offset, next_offset, total_results):
     max_results = 10
     current_page = (offset // max_results) + 1
@@ -555,11 +570,11 @@ async def notify_owner(client, text):
 
 
 async def safe_premium_log(client, text):
-    global LOG_CHANNEL
+    global PREMIUM_LOG
 
-    if LOG_CHANNEL:
+    if PREMIUM_LOG:
         try:
-            log_id = int(LOG_CHANNEL)
+            log_id = int(PREMIUM_LOG)
 
             try:
                 await client.get_chat(log_id)
@@ -576,7 +591,7 @@ async def safe_premium_log(client, text):
 
         except Exception as e:
             logger.warning(
-                "LOG_CHANNEL failed (%s), falling back to owner DM.",
+                "PREMIUM_LOG failed (%s), falling back to owner DM.",
                 e
             )
 
@@ -755,7 +770,7 @@ async def premium_expiry_reminder_loop(client: Client):
         await asyncio.sleep(3600)
 
 
-@Client.on_message(filters.command("approve") & filters.user(OWNER))
+@Client.on_message(filters.command("approve") & filters.create(premium_admin_only))
 async def approve_command(client, message):
     if len(message.command) < 2:
         return await message.reply_text(
@@ -787,7 +802,7 @@ async def approve_command(client, message):
         )
 
 
-@Client.on_message(filters.command("revoke") & filters.user(OWNER))
+@Client.on_message(filters.command("revoke") & filters.create(premium_admin_only))
 async def revoke_command(client, message):
     if len(message.command) < 2:
         return await message.reply_text(
@@ -838,7 +853,7 @@ async def revoke_command(client, message):
         )
 
 
-@Client.on_message(filters.command("premiums") & filters.user(OWNER))
+@Client.on_message(filters.command("premiums") & filters.create(premium_admin_only))
 async def premiums_command(client, message):
     col = get_col()
     if not col:
@@ -1091,12 +1106,10 @@ async def screenshot_handler(client, message):
     fid = message.photo.file_id if message.photo else message.document.file_id
     admin_msg_ids = {}
 
-    # LOG_CHANNEL is the primary destination for all premium proof messages.
-    # OWNER is used only as a fallback when LOG_CHANNEL delivery fails.
     try:
-        log_id = int(LOG_CHANNEL) if LOG_CHANNEL else None
+        log_id = int(PREMIUM_LOG) if PREMIUM_LOG else None
         if not log_id:
-            raise ValueError("LOG_CHANNEL is not configured")
+            raise ValueError("PREMIUM_LOG is not configured")
 
         if message.photo:
             sent_msg = await client.send_photo(
@@ -1120,7 +1133,7 @@ async def screenshot_handler(client, message):
 
     except Exception as e:
         logger.exception(
-            "LOG_CHANNEL screenshot delivery failed; falling back to OWNER: %s",
+            "PREMIUM_LOG screenshot delivery failed; falling back to OWNER: %s",
             e,
         )
 
@@ -1217,7 +1230,7 @@ async def select_plan_cb(client, callback: CallbackQuery):
     kb = InlineKeyboardMarkup([
         [
             InlineKeyboardButton("✅ Confirm", callback_data=f"confact_{uid}_{duration_str}_{price}"),
-            InlineKeyboardButton("◀ Back", callback_data=f"min_app_{uid}"),
+            InlineKeyboardButton("⏪ Back", callback_data=f"min_app_{uid}"),
         ],
         [InlineKeyboardButton("❌ Cancel", callback_data=f"min_rej_{uid}")],
     ])
@@ -1506,7 +1519,7 @@ async def start(client, message):
     if not await db.is_user_exist(message.from_user.id):
         await db.add_user(message.from_user.id, message.from_user.first_name)
         try:
-            await client.send_message(LOG_CHANNEL, LOG_TEXT_P.format(message.from_user.id, message.from_user.mention))
+            await client.send_message(PREMIUM_LOG, LOG_TEXT_P.format(message.from_user.id, message.from_user.mention))
         except Exception:
             pass
 
