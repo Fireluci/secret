@@ -27,13 +27,13 @@ FORCE = "https://telegram.me/+W6BkAHSGGME3OGY1"
 ADMINS = [int(admin) if id_pattern.search(admin) else admin for admin in environ.get('ADMINS', '1058015838').split()]
 
 
-auth_channel = environ.get('AUTH_CHANNEL', '-1002048881772')
+auth_channel = environ.get('AUTH_CHANNEL', '-1002215944038')
 AUTH_CHANNEL = int(auth_channel) if auth_channel and id_pattern.search(auth_channel) else None
 
-SHORT1_URL = environ.get('SHORT1_URL', 'cpmshort.com')
-SHORT1_API = environ.get('SHORT1_API', '4edd2741cf55b86fd7306942fd25bb163c8f8cd6')
-SHORT2_URL = environ.get('SHORT2_URL', 'easysky.in')
-SHORT2_API = environ.get('SHORT2_API', 'f3753546bce8faa1a5e9ef961431c0b57e4d26a9')
+SHORT1_URL = environ.get('SHORT1_URL', 'softurl.in')
+SHORT1_API = environ.get('SHORT1_API', '65676573da083f670527098369bf4417fae2b457')
+SHORT2_URL = environ.get('SHORT2_URL', 'softurl.in')
+SHORT2_API = environ.get('SHORT2_API', '65676573da083f670527098369bf4417fae2b457')
 IS_SHORTLINK = is_enabled(environ.get("IS_SHORTLINK", "True"), True)
 PORT = environ.get("PORT", "8080")
 CHNL_LNK = environ.get('CHNL_LNK', 'HEROFLiX')
@@ -59,11 +59,7 @@ Nᴀᴍᴇ - {}"""
 
 
 
-NO_RESULTS = """<b><i>💢 No Results For Your Search❗️
-
-⚠️ The Reason❓[<a href="https://telegram.me/HeroFlixx/3">Click Here</a>]
-🌀 Please Follow Request Tips!
-🔆 Request Tips ➔ [<a href="https://telegram.me/HeroFlixx/2">Click Here</a>]</i></b>"""
+NO_RESULTS = """<b>💢 No Results For Your Search❗️</b>"""
 
 CAPTION = '<a href="https://telegram.me/HeroFlix"><b>{file_name}</b></a>'
 
