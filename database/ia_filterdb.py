@@ -41,6 +41,7 @@ class Media(Document):
     file_size = fields.IntField(required=True)
     file_type = fields.StrField(allow_none=True)
     mime_type = fields.StrField(allow_none=True)
+    caption = fields.StrField(allow_none=True)
 
     class Meta:
         collection_name = COLLECTION_NAME
@@ -70,6 +71,7 @@ async def save_file(media):
             file_size=media.file_size,
             file_type=media.file_type,
             mime_type=media.mime_type,
+            caption=getattr(media, "caption", None),
         )
         await file.commit()
     except ValidationError:
@@ -104,10 +106,23 @@ async def get_search_results(
     query = (await extract_v2(query)).strip()
     words = normalize(query)
 
-    mongo_filter = (
-        {"$and": [{"file_name": {"$regex": re.escape(word), "$options": "i"}} for word in words]}
-        if words else {}
-    )
+    if words:
+        # Support both the current schema and the legacy MongoDB documents.
+        # Legacy files store the searchable title in file_name and often have
+        # caption=None; caption must therefore never be required.
+        mongo_filter = {
+            "$and": [
+                {
+                    "$or": [
+                        {"file_name": {"$regex": re.escape(word), "$options": "i"}},
+                        {"caption": {"$regex": re.escape(word), "$options": "i"}},
+                    ]
+                }
+                for word in words
+            ]
+        }
+    else:
+        mongo_filter = {}
 
     if file_type:
         mongo_filter["file_type"] = file_type
@@ -130,10 +145,23 @@ async def get_search_results(
 
 async def get_bad_files(query, file_type=None, **kwargs):
     words = normalize(query)
-    mongo_filter = (
-        {"$and": [{"file_name": {"$regex": re.escape(word), "$options": "i"}} for word in words]}
-        if words else {}
-    )
+    if words:
+        # Support both the current schema and the legacy MongoDB documents.
+        # Legacy files store the searchable title in file_name and often have
+        # caption=None; caption must therefore never be required.
+        mongo_filter = {
+            "$and": [
+                {
+                    "$or": [
+                        {"file_name": {"$regex": re.escape(word), "$options": "i"}},
+                        {"caption": {"$regex": re.escape(word), "$options": "i"}},
+                    ]
+                }
+                for word in words
+            ]
+        }
+    else:
+        mongo_filter = {}
     if file_type:
         mongo_filter["file_type"] = file_type
 
