@@ -442,7 +442,7 @@ async def send_file_to_user(client, user_id, file_id):
         file_id=file_id,
         caption=caption,
         reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton('🔆彡⟨ HEROFLiX ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}')]
+            [InlineKeyboardButton('🔆彡⟨ CiNEPLEX1 ⟩彡🔆', url=f'https://telegram.me/{CHNL_LNK}')]
         ]),
     )
     return True
@@ -531,17 +531,10 @@ async def start(client, message):
         except Exception:
             pass
 
-    # Common start buttons
+# Common start buttons
     start_buttons = [
         [
-            InlineKeyboardButton(
-                "🌟 Paid (No Ads)",
-                url="https://telegram.me/HeroFlixx/49"
-            ),
-            InlineKeyboardButton(
-                "🍿 Free (With Ads)",
-                url="https://telegram.me/addlist/X5k2lnJLIGAyZjQ1"
-            )
+            InlineKeyboardButton('❓How To Use Me', url=f'https://telegram.me/{TUTORIAL}')
         ],
         [
             InlineKeyboardButton(
