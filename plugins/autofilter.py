@@ -471,7 +471,7 @@ async def send_shortlink_page(client, user_id, file_id, chat_id):
     try:
         short_url = await get_shortlink(
             chat_id,
-            f"https://telegram.me/{temp.U_NAME}?start=files_{chat_id}_{file_id}",
+            f"https://telegram.me/{temp.U_NAME}?start=short_{chat_id}_{file_id}",
             client=client,
         )
     except Exception:
@@ -611,17 +611,65 @@ async def start(client, message):
         )
 
     # File / shortlink payload
-    if data.startswith("files_"):
+    if data.startswith(("files_", "short_")):
         parts = data.split("_", 2)
-        if len(parts) == 3:
-            pre, payload_chat_id, file_id = parts
-            cache = await db.get_cache(f"file:{payload_chat_id}:{file_id}")
-        else:
-            pre, file_id = "files", data.split("_", 1)[1]
-            cache = await db.get_cache(f"file:{file_id}")
-    elif "_" in data:
-        pre, payload = data.split("_", 1)
-        file_id = payload
+        if len(parts) != 3:
+            return await message.reply_text(EXPIRED)
+
+        pre, payload_chat_id, file_id = parts
+        cache = await db.get_cache(
+            f"file:{payload_chat_id}:{file_id}"
+        )
+
+        if not cache:
+            return await message.reply_text(EXPIRED)
+
+        chat_id = cache.get("chat_id")
+        if chat_id is None:
+            return await message.reply_text(EXPIRED)
+
+        # short_* is the destination after the shortener.
+        # Never generate another shortlink here.
+        if pre == "short":
+            if not await send_file_to_user(
+                client,
+                message.from_user.id,
+                file_id
+            ):
+                return await message.reply("No such file exist.")
+            return
+
+        settings = await get_settings(chat_id)
+
+        if settings.get("is_shortlink", IS_SHORTLINK):
+            result = await send_shortlink_page(
+                client,
+                message.from_user.id,
+                file_id,
+                chat_id
+            )
+
+            if result is None:
+                return await message.reply(
+                    "❌ Link generation failed. Please try again later."
+                )
+
+            if result is False:
+                return await message.reply("No such file exist.")
+
+            return
+
+        if not await send_file_to_user(
+            client,
+            message.from_user.id,
+            file_id
+        ):
+            await message.reply("No such file exist.")
+
+        return
+
+    if "_" in data:
+        pre, file_id = data.split("_", 1)
         cache = await db.get_cache(f"file:{file_id}")
     else:
         pre, file_id = "file", data
