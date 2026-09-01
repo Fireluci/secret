@@ -37,7 +37,7 @@ SHORT2_API = environ.get('SHORT2_API', '65676573da083f670527098369bf4417fae2b457
 IS_SHORTLINK = is_enabled(environ.get("IS_SHORTLINK", "True"), True)
 PORT = environ.get("PORT", "8080")
 CHNL_LNK = environ.get('CHNL_LNK', 'CinepleX1')
-TUTORIAL = environ.get('TUTORIAL', 'publicth01/24')
+TUTORIAL = environ.get('TUTORIAL', 'publicth001/2')
 LOG_CHANNEL = int(environ.get('LOG_CHANNEL', '-1002196916445'))
 SUPPORT_CHAT = environ.get('SUPPORT_CHAT', 'link_report')
  
