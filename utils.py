@@ -60,17 +60,43 @@ class temp(object):
     SETTINGS = {}
 
 async def is_subscribed(bot, query):
-    try:
-        user = await bot.get_chat_member(AUTH_CHANNEL, query.from_user.id)
-    except UserNotParticipant:
-        pass
-    except Exception as e:
-        logger.exception(e)
-    else:
-        if user.status != enums.ChatMemberStatus.BANNED:
-            return True
+    """Check force-subscription without failing when a numeric channel peer
+    is not present in this bot's Pyrogram peer cache.
+    """
+    if not AUTH_CHANNEL:
+        return True
 
-    return False
+    user_id = query.from_user.id
+
+    try:
+        user = await bot.get_chat_member(AUTH_CHANNEL, user_id)
+        return user.status != enums.ChatMemberStatus.BANNED
+    except UserNotParticipant:
+        return False
+    except (PeerIdInvalid, ValueError, KeyError) as e:
+        logger.warning(
+            "AUTH_CHANNEL %s is not resolved in the bot peer cache: %s. "
+            "Trying the public channel username from FORCE.",
+            AUTH_CHANNEL, e
+        )
+
+    # Pyrogram cannot resolve an unseen numeric -100... peer from the local
+    # storage alone.  FORCE already identifies the same public channel, so
+    # use its username as a resolvable peer.
+    try:
+        force = str(FORCE).strip()
+        match = re.search(r"(?:https?://)?(?:t\.me|telegram\.me)/([A-Za-z0-9_]+)", force)
+        if not match:
+            return False
+
+        channel = "@" + match.group(1)
+        user = await bot.get_chat_member(channel, user_id)
+        return user.status != enums.ChatMemberStatus.BANNED
+    except UserNotParticipant:
+        return False
+    except Exception as e:
+        logger.exception("Force-subscription check failed for %s: %s", AUTH_CHANNEL, e)
+        return False
 
 async def broadcast_messages(user_id, message):
     try:
