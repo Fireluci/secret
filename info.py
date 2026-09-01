@@ -11,20 +11,20 @@ def is_enabled(value, default):
         return default
 
 SESSION = environ.get('SESSION', 'Media_search')
-API_ID = int(environ.get('API_ID', '1736204'))
-API_HASH = environ.get('API_HASH', '890d40e0f91a4de32dec2965444b2cbe')
-BOT_TOKEN = environ.get('BOT_TOKEN', '858675477lcZRg-4fLdK6Pu7tdRlLYC5wt7JdQb4')
+API_ID = int(environ.get('API_ID', '24314601'))
+API_HASH = environ.get('API_HASH', 'ede341e2d490a0fad5469866dedf8a95')
+BOT_TOKEN = environ.get('BOT_TOKEN', '')
 
-DATABASE_URI = environ.get('DATABASE_URI', "mongodb+srriana@ariana.vxqvh5x.mongodb.net/?appName=ariana")
-DATABASE_NAME = environ.get('DATABASE_NAME', "heroflix")
-COLLECTION_NAME = environ.get('COLLECTION_NAME', 'index')
+DATABASE_URI = environ.get('DATABASE_URI', "")
+DATABASE_NAME = environ.get('DATABASE_NAME', "database")
+COLLECTION_NAME = environ.get('COLLECTION_NAME', 'database')
 
 CAPTION_INDEX_CHANNEL = int(environ.get('CAPTION_INDEX_CHANNEL', '-1002299214709'))
 CHANNELS = [int(ch) if id_pattern.search(ch) else ch for ch in environ.get('CHANNELS', '-1001638006524').split()] + [CAPTION_INDEX_CHANNEL]
 
-PICS = environ.get("PICS", "https://te.legra.ph/file/d6a23f16e002e86381656.jpg")
-FORCE = "https://telegram.me/+W6BkAHSGGME3OGY1"
-ADMINS = [int(admin) if id_pattern.search(admin) else admin for admin in environ.get('ADMINS', '1058015838').split()]
+PICS = environ.get("PICS", "https://te.legra.ph/file/7bece5ddc3e001805c02f.jpg")
+FORCE = "https://t.me/kannadacineplex2"
+ADMINS = [int(admin) if id_pattern.search(admin) else admin for admin in environ.get('ADMINS', '1058015838 6178075056 640617767').split()]
 
 
 auth_channel = environ.get('AUTH_CHANNEL', '-1002215944038')
@@ -36,10 +36,10 @@ SHORT2_URL = environ.get('SHORT2_URL', 'softurl.in')
 SHORT2_API = environ.get('SHORT2_API', '65676573da083f670527098369bf4417fae2b457')
 IS_SHORTLINK = is_enabled(environ.get("IS_SHORTLINK", "True"), True)
 PORT = environ.get("PORT", "8080")
-CHNL_LNK = environ.get('CHNL_LNK', 'HEROFLiX')
-TUTORIAL = environ.get('TUTORIAL', 'HeroFlixx/54')
-LOG_CHANNEL = int(environ.get('LOG_CHANNEL', '-1001652564383'))
-SUPPORT_CHAT = environ.get('SUPPORT_CHAT', 'herofeedbot')
+CHNL_LNK = environ.get('CHNL_LNK', 'CinepleX1')
+TUTORIAL = environ.get('TUTORIAL', 'publicth01/24')
+LOG_CHANNEL = int(environ.get('LOG_CHANNEL', '-1002196916445'))
+SUPPORT_CHAT = environ.get('SUPPORT_CHAT', 'link_report')
  
 
 # ==================== BOT TEXT ====================
@@ -61,7 +61,7 @@ Nᴀᴍᴇ - {}"""
 
 NO_RESULTS = """<b>💢 No Results For Your Search❗️</b>"""
 
-CAPTION = '<a href="https://telegram.me/HeroFlix"><b>{file_name}</b></a>'
+CAPTION = '<a href="https://telegram.me/CinepleX1"><b>{file_name}</b></a>'
 
 RESTART_TXT = """
 <b>Bᴏᴛ Rᴇsᴛᴀʀᴛᴇᴅ !
@@ -71,7 +71,7 @@ RESTART_TXT = """
 🌐 Tɪᴍᴇᴢᴏɴᴇ : <code>Asia/Kolkata</code>
 🛠️ Bᴜɪʟᴅ Sᴛᴀᴛᴜs: <code>v2.7.1 [ Sᴛᴀʙʟᴇ ]</code></b>"""
 
-LOGO = '🔆彡[ HEROFLiX ]彡🔆'
+LOGO = '🔆彡[ CiNEPLEX1 ]彡🔆'
 
  
  
