@@ -457,7 +457,7 @@ async def send_shortlink_page(client, user_id, file_id, chat_id):
     try:
         short_url = await get_shortlink(
             chat_id,
-            f"https://telegram.me/{temp.U_NAME}?start=files_{chat_id}_{file_id}",
+            f"https://telegram.me/{temp.U_NAME}?start=short_{chat_id}_{file_id}",
             client=client,
         )
     except Exception:
@@ -569,9 +569,12 @@ async def start(client, message):
         )
 
     # Force subscription
+    # Preserve the exact start payload so file links and shortlink
+    # destination links survive the "Try Again" flow unchanged.
+    data = message.command[1]
+
     if AUTH_CHANNEL and not await is_subscribed(client, message):
-        payload = message.text.split(" ", 1)[1] if " " in message.text else "subscribe"
-        retry = f"https://telegram.me/{temp.U_NAME}?start={payload}"
+        retry = f"https://telegram.me/{temp.U_NAME}?start={data}"
 
         return await client.send_message(
             message.from_user.id,
@@ -582,8 +585,6 @@ async def start(client, message):
             ]),
             parse_mode=enums.ParseMode.MARKDOWN,
         )
-
-    data = message.command[1]
 
     # Non-file start payloads
     if data in {"subscribe", "error", "okay", "help"}:
@@ -599,13 +600,13 @@ async def start(client, message):
         )
 
     # File / shortlink payload
-    if data.startswith("files_"):
+    if data.startswith(("files_", "short_")):
         parts = data.split("_", 2)
         if len(parts) == 3:
             pre, payload_chat_id, file_id = parts
             cache = await db.get_cache(f"file:{payload_chat_id}:{file_id}")
         else:
-            pre, file_id = "files", data.split("_", 1)[1]
+            pre, file_id = data.split("_", 1)
             cache = await db.get_cache(f"file:{file_id}")
     elif "_" in data:
         pre, payload = data.split("_", 1)
@@ -629,6 +630,12 @@ async def start(client, message):
             return await message.reply_text(
                 "<b>Link Expired, Search Again in Group!</b>"
             )
+
+        # The shortener destination must deliver the file directly.
+        if pre == "short":
+            if not await send_file_to_user(client, message.from_user.id, file_id):
+                await message.reply("No such file exist.")
+            return
 
         settings = await get_settings(chat_id)
 
