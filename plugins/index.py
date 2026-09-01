@@ -14,6 +14,8 @@ from utils import temp, connected_group
 from info import CAPTION_INDEX_CHANNEL
 from database.ia_filterdb import Media, normalize_for_search, unpack_new_file_id
 
+# ==================== CHANNEL.PY ====================
+
 media_filter = filters.document | filters.video
 
 index_channels = list(dict.fromkeys([*CHANNELS, CAPTION_INDEX_CHANNEL]))
@@ -32,6 +34,8 @@ async def media(bot, message):
     media.caption = message.caption
     media.chat_id = message.chat.id
     await save_file(media)
+
+# ==================== INDEX.PY ====================
 
 logger = logging.getLogger(__name__)
 
@@ -186,6 +190,7 @@ async def set_skip_number(bot, message):
         temp.CURRENT = int(skip)
     else:
         await message.reply("Give me a skip number.")
+
 
 async def iter_index_messages(bot, chat_id, limit, offset=0):
     current = offset
@@ -350,6 +355,8 @@ async def check_pending_index_on_startup(client):
                 break
             except Exception:
                 continue
+
+# ==================== CAPTION_EDIT.PY ====================
 
 logger = logging.getLogger(__name__)
 
