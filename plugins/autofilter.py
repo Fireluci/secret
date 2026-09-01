@@ -561,10 +561,15 @@ async def start(client, message):
             parse_mode=enums.ParseMode.HTML,
         )
 
-    # Force subscription
+# Force subscription
     if AUTH_CHANNEL and not await is_subscribed(client, message):
-        payload = message.text.split(" ", 1)[1] if " " in message.text else "subscribe"
-        retry = f"https://telegram.me/{temp.U_NAME}?start={payload}"
+        try:
+            # Extract the full payload safely from command arguments if available
+            payload = message.command[1] if len(message.command) > 1 else "subscribe"
+        except IndexError:
+            payload = "subscribe"
+            
+        retry = f"https://t.me/{temp.U_NAME}?start={payload}"
 
         return await client.send_message(
             message.from_user.id,
