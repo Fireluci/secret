@@ -221,9 +221,10 @@ async def advantage_spoll_choker(bot, query):
 
     async with GLOBAL_SEM:
         try:
-            _, user, movie_ = query.data.split('#')
+            _, user, search_msg_id, movie_ = query.data.split('#')
             user = int(user)
-        except:
+            search_msg_id = int(search_msg_id)
+        except (ValueError, TypeError):
             return await query.answer(ALRT_TXT, show_alert=True)
 
         if user != 0 and query.from_user.id != user:
@@ -233,7 +234,7 @@ async def advantage_spoll_choker(bot, query):
             await query.message.delete()
             return await query.answer()
 
-        movies = SPELL_CHECK.get(query.message.reply_to_message.id if query.message.reply_to_message else 0)
+        movies = SPELL_CHECK.get(search_msg_id)
         if not movies:
             await query.answer(EXPIRED, show_alert=True)
             try:
@@ -350,6 +351,19 @@ async def auto_filter(client, msg, spoll=False):
         files, offset, total_results = await get_search_results(
             message.chat.id, search, offset=0
         )
+
+        # Some titles are altered by remove_words/season-language normalization.
+        # If that produces no match, retry with the user's original text before
+        # falling through to spell-check. This keeps the shared DB search logic intact.
+        if not files:
+            raw_search = re.sub(r"\s+", " ", message.text).strip()
+            if raw_search and raw_search.casefold() != search.casefold():
+                files, offset, total_results = await get_search_results(
+                    message.chat.id, raw_search, offset=0
+                )
+                if files:
+                    search = raw_search
+
         if not files:
             settings = await get_settings(message.chat.id)
             if settings.get("spell_check", False):
@@ -413,8 +427,8 @@ async def advantage_spell_chok(client, msg):
         return await k.delete()
 
     SPELL_CHECK[msg.id] = movielist
-    btn = [[InlineKeyboardButton(text=movie, callback_data=f"spolling#{reqstr1}#{idx}")] for idx, movie in enumerate(movielist)]
-    btn.append([InlineKeyboardButton("×××× ⟨ Close ⟩ ××××", callback_data=f"spolling#{reqstr1}#close")])
+    btn = [[InlineKeyboardButton(text=movie, callback_data=f"spolling#{reqstr1}#{msg.id}#{idx}")] for idx, movie in enumerate(movielist)]
+    btn.append([InlineKeyboardButton("×××× ⟨ Close ⟩ ××××", callback_data=f"spolling#{reqstr1}#{msg.id}#close")])
     k = await msg.reply("<b>🎬 Select Your Pick ↡</b>", reply_markup=InlineKeyboardMarkup(btn))
     await asyncio.sleep(60)
     await k.delete()
