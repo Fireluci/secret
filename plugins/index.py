@@ -14,8 +14,6 @@ from utils import temp, connected_group
 from info import CAPTION_INDEX_CHANNEL
 from database.ia_filterdb import Media, normalize_for_search, unpack_new_file_id
 
-# ==================== CHANNEL.PY ====================
-
 media_filter = filters.document | filters.video
 
 index_channels = list(dict.fromkeys([*CHANNELS, CAPTION_INDEX_CHANNEL]))
@@ -34,8 +32,6 @@ async def media(bot, message):
     media.caption = message.caption
     media.chat_id = message.chat.id
     await save_file(media)
-
-# ==================== INDEX.PY ====================
 
 logger = logging.getLogger(__name__)
 
@@ -191,19 +187,24 @@ async def set_skip_number(bot, message):
     else:
         await message.reply("Give me a skip number.")
 
-
 async def iter_index_messages(bot, chat_id, limit, offset=0):
-    current = offset
-    while True:
-        new_diff = min(200, limit - current)
-        if new_diff <= 0:
-            return
-        messages = await bot.get_messages(
-            chat_id, list(range(current, current + new_diff + 1))
-        )
+    """Yield real Telegram messages from offset+1 through limit.
+
+    The previous implementation requested message IDs starting at 0 and used
+    the processed count as if it were a Telegram message ID. That makes resume
+    unreliable and can leave the index incomplete.
+    """
+    current = max(int(offset), 0) + 1
+    limit = int(limit)
+
+    while current <= limit:
+        end = min(current + 199, limit)
+        ids = list(range(current, end + 1))
+        messages = await bot.get_messages(chat_id, ids)
         for message in messages:
             yield message
-            current += 1
+        current = end + 1
+
 
 async def index_files_to_db(lst_msg_id, chat, msg, bot, resume_current=None, resume_saved=0, resume_dup=0, resume_del=0):
     total_files = resume_saved
@@ -213,10 +214,9 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, resume_current=None, res
     temp.SAVED = total_files
     temp.DUP = duplicate
     temp.DEL = deleted
-    
-    # Ensure it respects what was set via /setskip if no explicit resume value is passed
+
     if resume_current is not None:
-        temp.CURRENT = resume_current
+        temp.CURRENT = int(resume_current)
     elif not hasattr(temp, 'CURRENT'):
         temp.CURRENT = 0
 
@@ -235,6 +235,7 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, resume_current=None, res
 
             current = temp.CURRENT
             last_edit = current
+
             async for message in iter_index_messages(bot, chat, lst_msg_id, temp.CURRENT):
                 if temp.CANCEL:
                     try:
@@ -245,17 +246,18 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, resume_current=None, res
                             f"● Deleted Messages: {deleted}"
                         )
                     except FloodWait as e:
-                        logger.warning(f"FloodWait while cancelling: {e.value} seconds.")
+                        logger.warning("FloodWait while cancelling: %s seconds.", e.value)
                     await clear_index_state()
-                    break
+                    return
 
-                current += 1
+                # Resume state is the actual Telegram message ID, not a count.
+                current = message.id
                 temp.CURRENT = current
 
                 if current % 50 == 0:
                     await save_index_state(chat, lst_msg_id, current, total_files, duplicate, deleted)
 
-                if (current >= 10 and last_edit == temp.CURRENT) or (current - last_edit >= 2000):
+                if current - last_edit >= 2000:
                     last_edit = current
                     await save_index_state(chat, lst_msg_id, current, total_files, duplicate, deleted)
                     try:
@@ -270,18 +272,11 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, resume_current=None, res
                             )
                         )
                     except FloodWait as e:
-                        logger.warning(f"FloodWait while updating progress: {e.value} seconds.")
+                        logger.warning("FloodWait while updating progress: %s seconds.", e.value)
 
-                if message.empty:
-                    deleted += 1
-                    temp.DEL = deleted
+                if message.empty or not message.media:
                     continue
-                elif not message.media:
-                    continue
-                elif message.media not in [
-                    enums.MessageMediaType.VIDEO,
-                    enums.MessageMediaType.DOCUMENT
-                ]:
+                if message.media not in (enums.MessageMediaType.VIDEO, enums.MessageMediaType.DOCUMENT):
                     continue
 
                 media = getattr(message, message.media.value, None)
@@ -291,21 +286,24 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, resume_current=None, res
                 media.file_type = message.media.value
                 media.caption = message.caption
                 media.chat_id = message.chat.id
-                aynav, vnay = await save_file(media)
 
-                if aynav:
+                saved, status = await save_file(media)
+                if saved:
                     total_files += 1
                     temp.SAVED = total_files
-                elif vnay == 0:
+                elif status == 0:
                     duplicate += 1
                     temp.DUP = duplicate
+
+            await save_index_state(chat, lst_msg_id, lst_msg_id, total_files, duplicate, deleted)
 
         except Exception as e:
             logger.exception(e)
             try:
                 await msg.edit(f'Error: {e}')
-            except FloodWait as e:
-                logger.warning(f"FloodWait while sending error: {e.value} seconds.")
+            except FloodWait as fw:
+                logger.warning("FloodWait while sending error: %s seconds.", fw.value)
+            return
         else:
             temp.CURRENT = 0
             await clear_index_state()
@@ -316,7 +314,7 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, resume_current=None, res
                     f'● Deleted: {deleted}'
                 )
             except FloodWait as e:
-                logger.warning(f"FloodWait while sending final result: {e.value} seconds.")
+                logger.warning("FloodWait while sending final result: %s seconds.", e.value)
 
 async def check_pending_index_on_startup(client):
     state = await get_index_state()
@@ -355,8 +353,6 @@ async def check_pending_index_on_startup(client):
                 break
             except Exception:
                 continue
-
-# ==================== CAPTION_EDIT.PY ====================
 
 logger = logging.getLogger(__name__)
 
