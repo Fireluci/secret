@@ -25,7 +25,6 @@ PREMIUM_LOG = int(environ.get('PREMIUM_LOG', '-1003911194697'))
 PICS = environ.get("PICS", "https://te.legra.ph/file/d6a23f16e002e86381656.jpg")
 FORCE = "https://telegram.me/+W6BkAHSGGME3OGY1"
 OWNER = int(environ.get('OWNER', '1058015838'))
-ADMINS = [OWNER]
 
 
 auth_channel = environ.get('AUTH_CHANNEL', '-1002048881772')
@@ -38,7 +37,7 @@ PREMIUM_PERMANENT_LINK = environ.get('PREMIUM_PERMANENT_LINK', 'https://t.me/+b9
 PREMIUM_UPI_ID = environ.get('PREMIUM_UPI_ID', 'karthik.slice@ibl')
 PREMIUM_QR = environ.get('PREMIUM_QR', 'https://ibb.co/KHqPKqg')
 SUPPORT_CHAT = environ.get('SUPPORT_CHAT', 'herofeedbot')
- 
+SPELL_CHECK_REPLY = is_enabled(environ.get("SPELL_CHECK_REPLY", "True"), True)
 
 # ==================== BOT TEXT ====================
 START_TXT = """<b>🌀 Unlimited Movies, Series, Anime
@@ -78,6 +77,6 @@ LOGO = '🔆彡[ HEROFLiX ]彡🔆'
 
  
  
-SPELL_CHECK_REPLY = is_enabled(environ.get("SPELL_CHECK_REPLY", "True"), True)
+
  
  
