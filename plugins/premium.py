@@ -105,49 +105,105 @@ async def notify_owner(client, text):
         logger.exception("Failed notifying OWNER")
         return None
 
+async def resolve_log_peer(client):
+    try:
+        await client.get_chat(PREMIUM_LOG_ID)
+        return True
+    except Exception:
+        logger.exception("Failed to resolve PREMIUM_LOG %s", PREMIUM_LOG_ID)
+        return False
+
 async def safe_premium_log(client, text):
     if PREMIUM_LOG_ID is not None:
         try:
-            return await client.send_message(PREMIUM_LOG_ID, text, parse_mode=enums.ParseMode.HTML, disable_web_page_preview=True)
+            await client.get_chat(PREMIUM_LOG_ID)
+        except Exception:
+            pass
+            
+        try:
+            return await client.send_message(
+                PREMIUM_LOG_ID, 
+                text, 
+                parse_mode=enums.ParseMode.HTML, 
+                disable_web_page_preview=True
+            )
         except Exception:
             logger.exception("PREMIUM_LOG text delivery failed to %s", PREMIUM_LOG_ID)
+    
     return await notify_owner(client, text)
 
 async def safe_premium_proof(client, message, caption, keyboard):
-    file_id = message.photo.file_id if message.photo else message.document.file_id
     if PREMIUM_LOG_ID is not None:
         try:
-            if message.photo:
-                sent = await client.send_photo(PREMIUM_LOG_ID, file_id, caption=caption, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
-            else:
-                sent = await client.send_document(PREMIUM_LOG_ID, file_id, caption=caption, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
+            await client.get_chat(PREMIUM_LOG_ID)
+        except Exception:
+            pass
+            
+        try:
+            sent = await message.copy(
+                PREMIUM_LOG_ID,
+                caption=caption,
+                reply_markup=keyboard,
+                parse_mode=enums.ParseMode.HTML,
+            )
             return {str(PREMIUM_LOG_ID): sent.id}
         except Exception:
-            logger.exception("PREMIUM_LOG payment proof delivery failed to %s", PREMIUM_LOG_ID)
+            logger.exception("PREMIUM_LOG screenshot copy failed to %s", PREMIUM_LOG_ID)
+
     try:
-        if message.photo:
-            sent = await client.send_photo(OWNER_ID, file_id, caption=caption, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
-        else:
-            sent = await client.send_document(OWNER_ID, file_id, caption=caption, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
+        sent = await message.copy(
+            OWNER_ID,
+            caption=caption,
+            reply_markup=keyboard,
+            parse_mode=enums.ParseMode.HTML,
+        )
         return {str(OWNER_ID): sent.id}
     except Exception:
-        logger.exception("OWNER payment proof fallback delivery failed")
+        logger.exception("OWNER screenshot fallback failed")
         return {}
 
 async def safe_kick(client, user_id):
     if not PREMIUM_GROUP_ID:
         return True
+        
+    cid = int(PREMIUM_GROUP_ID)
+    user_disp = await get_user_display(client, user_id)
+    
     try:
-        cid = int(PREMIUM_GROUP_ID)
+        await client.get_chat(cid)
+    except Exception:
+        pass
+
+    try:
         await client.ban_chat_member(cid, int(user_id))
         await asyncio.sleep(0.3)
         await client.unban_chat_member(cid, int(user_id))
         return True
     except Exception as exc:
-        if "USER_NOT_PARTICIPANT" in str(exc):
+        err_str = str(exc)
+        if "USER_NOT_PARTICIPANT" in err_str or "PEER_ID_INVALID" in err_str:
             return True
-        logger.exception("Premium member removal failed for %s: %s", user_id, exc)
-        await safe_premium_log(client, f"<b>⚠️ Premium member removal failed</b>\n{await get_user_display(client, user_id)}\n<b>Reason:</b> {exc}")
+            
+        logger.exception("Premium member removal failed (1) for %s: %s", user_id, exc)
+        await safe_premium_log(client, f"<b>⚠️ Expired User Kick Failed (1)</b>\n\n{user_disp}\n<b>❓ Reason:</b> {exc}")
+
+    await asyncio.sleep(60)
+
+    try:
+        try:
+            await client.get_chat(cid)
+        except Exception:
+            pass
+            
+        await client.ban_chat_member(cid, int(user_id))
+        await asyncio.sleep(0.3)
+        await client.unban_chat_member(cid, int(user_id))
+        
+        await safe_premium_log(client, f"<b>✅ Expired User Kick Successful</b>\n{user_disp}")
+        return True
+    except Exception as retry_err:
+        logger.exception("Premium member removal failed (2) for %s: %s", user_id, retry_err)
+        await safe_premium_log(client, f"<b>⚠️ Expired User Kick Failed (2)</b>\n\n{user_disp}\n<b>❓ Reason:</b> {retry_err}\n<b>♻ Retrying in Next Loop</b>")
         return False
 
 PREMIUM_MENU_TEXT = (
@@ -436,6 +492,24 @@ async def my_plan(client, message):
     except Exception:
         logger.exception("Premium /myplan failed")
 
+@Client.on_message(filters.command("text") & filters.create(premium_admin_chat))
+async def send_text_to_user(client: Client, message):
+    if len(message.command) < 3:
+        return await message.reply_text("<b>⚠️ Usage: /text [user_id] [message]</b>", parse_mode=enums.ParseMode.HTML)
+    
+    try:
+        target_uid = int(message.command[1])
+        text_to_send = message.text.split(None, 2)[2]
+        
+        await client.send_message(
+            chat_id=target_uid,
+            text=f"<b>📩 Message from Administration:</b>\n\n{text_to_send}",
+            parse_mode=enums.ParseMode.HTML
+        )
+        await message.reply_text(f"<b>✅ Message sent to <code>{target_uid}</code>!</b>", parse_mode=enums.ParseMode.HTML)
+    except Exception as e:
+        await message.reply_text(f"<b>❌ Failed: {e}</b>", parse_mode=enums.ParseMode.HTML)
+
 @Client.on_chat_join_request()
 async def premium_join_request(client, request: ChatJoinRequest):
     if not PREMIUM_GROUP_ID:
@@ -455,11 +529,42 @@ async def premium_member_update(client, update: ChatMemberUpdated):
     try:
         if update.chat.id != int(PREMIUM_GROUP_ID):
             return
+            
         new_member = update.new_chat_member.user if update.new_chat_member else None
-        if not new_member or new_member.is_bot or await is_premium_user(client, new_member.id):
+        if not new_member or new_member.is_bot:
             return
-        if update.new_chat_member.status in {enums.ChatMemberStatus.MEMBER, enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER}:
-            await safe_kick(client, new_member.id)
+
+        new_status = update.new_chat_member.status if update.new_chat_member else None
+        old_status = update.old_chat_member.status if update.old_chat_member else None
+
+        # Detect a newly joined user transitioning to MEMBER
+        if new_status == enums.ChatMemberStatus.MEMBER and old_status != enums.ChatMemberStatus.MEMBER:
+            
+            # Pull their subscription logic immediately
+            doc = await premium_col().find_one({"user_id": new_member.id, "active": True})
+            
+            if doc:
+                exp = doc.get("expires_at")
+                rem = exp - now_utc() if isinstance(exp, datetime) else None
+                remaining = f"{rem.days} Days" if rem and rem.days > 0 else (f"{rem.seconds // 3600} Hours" if rem and rem.total_seconds() > 0 else "Expired")
+                
+                welcome_text = (
+                    f"<b>🎉 Welcome to the Premium Group!</b>\n\n"
+                    f"{user_link(new_member.first_name, new_member.id)}\n"
+                    f"<b>💰 Plan:</b> {doc.get('plan')} | ₹{doc.get('price')}\n"
+                    f"<b>⌛ Expiry:</b> {fmt_date(exp)}\n"
+                    f"<b>⏳ Remaining:</b> {remaining}"
+                )
+                
+                try:
+                    await client.send_message(update.chat.id, welcome_text, parse_mode=enums.ParseMode.HTML)
+                except Exception:
+                    logger.exception("Failed to send welcome message to group for %s", new_member.id)
+            else:
+                # Eject non-premium users, except the OWNER
+                if new_member.id != OWNER_ID:
+                    await safe_kick(client, new_member.id)
+                
     except Exception:
         logger.exception("Premium member update processing failed")
 
