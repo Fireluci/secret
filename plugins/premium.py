@@ -133,34 +133,26 @@ async def safe_premium_log(client, text):
     return await notify_owner(client, text)
 
 async def safe_premium_proof(client, message, caption, keyboard):
-    # Extract raw file ID to strip forward headers and avoid copy() restrictions
-    file_id = None
-    is_doc = False
-    
-    if message.photo:
-        file_id = message.photo.file_id
-    elif message.document:
-        file_id = message.document.file_id
-        is_doc = True
-        
-    if not file_id:
-        return {} # Fallback safety if no media is found
+    # Extract raw file_id to strip forward headers and bypass privacy restrictions
+    is_doc = bool(message.document)
+    fid = message.document.file_id if is_doc else message.photo.file_id
         
     if PREMIUM_LOG_ID and await resolve_log_peer(client):
         try:
             if is_doc:
-                sent = await client.send_document(PREMIUM_LOG_ID, file_id, caption=caption, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
+                sent = await client.send_document(PREMIUM_LOG_ID, fid, caption=caption, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
             else:
-                sent = await client.send_photo(PREMIUM_LOG_ID, file_id, caption=caption, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
+                sent = await client.send_photo(PREMIUM_LOG_ID, fid, caption=caption, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
             return {str(PREMIUM_LOG_ID): sent.id}
         except Exception:
-            logger.exception("PREMIUM_LOG screenshot delivery failed to %s", PREMIUM_LOG_ID)
+            logger.exception("PREMIUM_LOG screenshot delivery failed")
 
+    # Fallback to OWNER_ID
     try:
         if is_doc:
-            sent = await client.send_document(OWNER_ID, file_id, caption=caption, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
+            sent = await client.send_document(OWNER_ID, fid, caption=caption, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
         else:
-            sent = await client.send_photo(OWNER_ID, file_id, caption=caption, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
+            sent = await client.send_photo(OWNER_ID, fid, caption=caption, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
         return {str(OWNER_ID): sent.id}
     except Exception:
         logger.exception("OWNER screenshot fallback failed")
@@ -548,10 +540,8 @@ async def premium_member_update(client, update: ChatMemberUpdated):
         new_status = update.new_chat_member.status if update.new_chat_member else None
         old_status = update.old_chat_member.status if update.old_chat_member else None
 
-        # Detect a newly joined user transitioning to MEMBER
         if new_status == enums.ChatMemberStatus.MEMBER and old_status != enums.ChatMemberStatus.MEMBER:
             
-            # DB is already updated from confirm_activation
             doc = await premium_col().find_one({"user_id": new_member.id, "active": True})
             
             if doc:
@@ -568,11 +558,12 @@ async def premium_member_update(client, update: ChatMemberUpdated):
                 )
                 
                 try:
+                    # Delay to allow the user's UI to load the group chat
+                    await asyncio.sleep(2)
                     await client.send_message(update.chat.id, welcome_text, parse_mode=enums.ParseMode.HTML)
                 except Exception:
                     logger.exception("Failed to send welcome message to group for %s", new_member.id)
             else:
-                # Eject non-premium users, except the OWNER
                 if new_member.id != OWNER_ID:
                     await safe_kick(client, new_member.id)
                 
