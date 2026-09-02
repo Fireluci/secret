@@ -1,6 +1,3 @@
-from pyrogram import Client, filters
-from info import CHANNELS, CAPTION_INDEX_CHANNEL
-from database.ia_filterdb import save_file
 import asyncio
 import logging
 import re
@@ -8,13 +5,10 @@ from pyrogram import Client, filters, enums
 from pyrogram.errors import FloodWait, PeerIdInvalid
 from pyrogram.errors.exceptions.bad_request_400 import ChannelInvalid, ChatAdminRequired, UsernameInvalid, UsernameNotModified
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from info import ADMINS
 from database.ia_filterdb import save_file, db
 from utils import temp, connected_group
-from info import CAPTION_INDEX_CHANNEL
+from info *
 from database.ia_filterdb import Media, normalize_for_search, unpack_new_file_id
-
-# ==================== CHANNEL.PY ====================
 
 media_filter = filters.document | filters.video
 
@@ -69,7 +63,7 @@ async def clear_index_state():
 
 @Client.on_callback_query(filters.regex(r'^index'))
 async def index_files(bot, query):
-    if not query.from_user or query.from_user.id not in ADMINS:
+    if not query.from_user or query.from_user.id not in OWNER:
         return await query.answer("Unauthorized!", show_alert=True)
     if query.data.startswith('index_cancel'):
         temp.CANCEL = True
@@ -121,7 +115,7 @@ async def index_files(bot, query):
     )) & filters.text) & filters.private & filters.incoming
 )
 async def send_for_index(bot, message):
-    if message.from_user.id not in ADMINS:
+    if message.from_user.id not in OWNER:
         return
 
     if message.text:
@@ -178,7 +172,7 @@ async def send_for_index(bot, message):
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 
-@Client.on_message(filters.command('setskip') & filters.user(ADMINS) & connected_group)
+@Client.on_message(filters.command('setskip') & filters.user(OWNER) & connected_group)
 async def set_skip_number(bot, message):
     if ' ' in message.text:
         _, skip = message.text.split(" ")
@@ -326,7 +320,7 @@ async def check_pending_index_on_startup(client):
             logger.exception("Could not verify pending indexing chat %s; leaving state intact", chat_id)
             return
 
-        for admin_id in ADMINS:
+        for admin_id in OWNER:
             try:
                 msg = await client.send_message(
                     admin_id, 
