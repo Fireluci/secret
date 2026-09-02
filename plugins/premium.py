@@ -133,7 +133,7 @@ async def safe_premium_log(client, text):
     return await notify_owner(client, text)
 
 async def safe_premium_proof(client, message, caption, keyboard):
-    async def _send(chat_id):
+    async def _copy(chat_id):
         try:
             return await message.copy(
                 chat_id,
@@ -142,20 +142,70 @@ async def safe_premium_proof(client, message, caption, keyboard):
                 parse_mode=enums.ParseMode.HTML,
             )
         except Exception:
-            logger.exception("Screenshot delivery failed to %s", chat_id)
+            logger.exception("Screenshot copy failed to %s", chat_id)
             return None
 
+    async def _upload(chat_id, local_path):
+        try:
+            if message.document:
+                return await client.send_document(
+                    chat_id,
+                    local_path,
+                    caption=caption,
+                    reply_markup=keyboard,
+                    parse_mode=enums.ParseMode.HTML,
+                )
+
+            return await client.send_photo(
+                chat_id,
+                local_path,
+                caption=caption,
+                reply_markup=keyboard,
+                parse_mode=enums.ParseMode.HTML,
+            )
+        except Exception:
+            logger.exception("Screenshot upload failed to %s", chat_id)
+            return None
+
+    # 1. Try server-side copy to PREMIUM_LOG
     if PREMIUM_LOG_ID and await resolve_log_peer(client):
-        sent = await _send(PREMIUM_LOG_ID)
+        sent = await _copy(PREMIUM_LOG_ID)
         if sent:
             return {str(PREMIUM_LOG_ID): sent.id}
 
-    sent = await _send(OWNER_ID)
+    # 2. Try server-side copy to OWNER
+    sent = await _copy(OWNER_ID)
     if sent:
         return {str(OWNER_ID): sent.id}
 
-    logger.error("Screenshot delivery failed to PREMIUM_LOG and OWNER")
-    return {}
+    # 3. Copy failed — download the actual media
+    local_path = None
+    try:
+        local_path = await message.download()
+    except Exception:
+        logger.exception("Failed downloading payment screenshot")
+        return {}
+
+    try:
+        # 4. Try uploaded file to PREMIUM_LOG
+        if PREMIUM_LOG_ID and await resolve_log_peer(client):
+            sent = await _upload(PREMIUM_LOG_ID, local_path)
+            if sent:
+                return {str(PREMIUM_LOG_ID): sent.id}
+
+        # 5. Final OWNER fallback
+        sent = await _upload(OWNER_ID, local_path)
+        if sent:
+            return {str(OWNER_ID): sent.id}
+
+        logger.error("Screenshot delivery failed to PREMIUM_LOG and OWNER")
+        return {}
+
+    finally:
+        try:
+            os.remove(local_path)
+        except OSError:
+            logger.exception("Failed removing downloaded screenshot %s", local_path)
 
 async def safe_kick(client, user_id):
     if not PREMIUM_GROUP_ID:
