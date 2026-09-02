@@ -13,10 +13,18 @@ OWNER_ID = int(OWNER)
 PREMIUM_LOG_ID = int(PREMIUM_LOG) if PREMIUM_LOG else None
 
 def premium_col():
-    return db.db.premium_users
+    if hasattr(db, 'premium_users') and getattr(db, 'premium_users') is not None:
+        return getattr(db, 'premium_users')
+    if hasattr(db, 'db') and hasattr(db.db, 'premium_users'):
+        return getattr(db.db, 'premium_users')
+    return db.get_collection('premium_users')
 
 def aux_col(name):
-    return db.db[name]
+    if hasattr(db, name) and getattr(db, name) is not None:
+        return getattr(db, name)
+    if hasattr(db, 'db') and hasattr(db.db, name):
+        return getattr(db.db, name)
+    return db.get_collection(name)
 
 def now_utc():
     return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -132,81 +140,6 @@ async def safe_premium_log(client, text):
     
     return await notify_owner(client, text)
 
-async def safe_premium_proof(client, message, caption, keyboard):
-    async def _copy(chat_id):
-        try:
-            return await message.copy(
-                chat_id,
-                caption=caption,
-                reply_markup=keyboard,
-                parse_mode=enums.ParseMode.HTML,
-            )
-        except Exception:
-            logger.exception("Screenshot copy failed to %s", chat_id)
-            return None
-
-    async def _upload(chat_id, local_path):
-        try:
-            if message.document:
-                return await client.send_document(
-                    chat_id,
-                    local_path,
-                    caption=caption,
-                    reply_markup=keyboard,
-                    parse_mode=enums.ParseMode.HTML,
-                )
-
-            return await client.send_photo(
-                chat_id,
-                local_path,
-                caption=caption,
-                reply_markup=keyboard,
-                parse_mode=enums.ParseMode.HTML,
-            )
-        except Exception:
-            logger.exception("Screenshot upload failed to %s", chat_id)
-            return None
-
-    # 1. Try server-side copy to PREMIUM_LOG
-    if PREMIUM_LOG_ID and await resolve_log_peer(client):
-        sent = await _copy(PREMIUM_LOG_ID)
-        if sent:
-            return {str(PREMIUM_LOG_ID): sent.id}
-
-    # 2. Try server-side copy to OWNER
-    sent = await _copy(OWNER_ID)
-    if sent:
-        return {str(OWNER_ID): sent.id}
-
-    # 3. Copy failed — download the actual media
-    local_path = None
-    try:
-        local_path = await message.download()
-    except Exception:
-        logger.exception("Failed downloading payment screenshot")
-        return {}
-
-    try:
-        # 4. Try uploaded file to PREMIUM_LOG
-        if PREMIUM_LOG_ID and await resolve_log_peer(client):
-            sent = await _upload(PREMIUM_LOG_ID, local_path)
-            if sent:
-                return {str(PREMIUM_LOG_ID): sent.id}
-
-        # 5. Final OWNER fallback
-        sent = await _upload(OWNER_ID, local_path)
-        if sent:
-            return {str(OWNER_ID): sent.id}
-
-        logger.error("Screenshot delivery failed to PREMIUM_LOG and OWNER")
-        return {}
-
-    finally:
-        try:
-            os.remove(local_path)
-        except OSError:
-            logger.exception("Failed removing downloaded screenshot %s", local_path)
-
 async def safe_kick(client, user_id):
     if not PREMIUM_GROUP_ID:
         return True
@@ -214,6 +147,7 @@ async def safe_kick(client, user_id):
     cid = int(PREMIUM_GROUP_ID)
     user_disp = await get_user_display(client, user_id)
     
+    # --- ATTEMPT 1 ---
     try:
         await client.get_chat(cid)
     except Exception:
@@ -232,8 +166,10 @@ async def safe_kick(client, user_id):
         logger.exception("Premium member removal failed (1) for %s: %s", user_id, exc)
         await safe_premium_log(client, f"<b>⚠️ Expired User Kick Failed (1)</b>\n\n{user_disp}\n<b>❓ Reason:</b> {exc}")
 
+    # --- 60 SECOND DELAY ---
     await asyncio.sleep(60)
 
+    # --- ATTEMPT 2 ---
     try:
         try:
             await client.get_chat(cid)
@@ -302,80 +238,114 @@ async def click_here_to_pay_cb(client, callback):
 
 @Client.on_callback_query(filters.regex(r"^minimal_send_proof$"))
 async def send_proof_cb(client, callback):
+    # 1. Attempt Database Update Safely
     try:
-        await aux_col("user_payment_intents").update_one(
-            {"user_id": callback.from_user.id},
-            {"$set": {"action": "i_paid_clicked", "timestamp": now_utc(), "admin_msg_ids": {}}},
-            upsert=True,
-        )
-        await callback.answer()
-        try:
-            await callback.message.delete()
-        except Exception:
-            logger.exception("Failed deleting payment page for user %s", callback.from_user.id)
-        await client.send_message(
-            callback.message.chat.id,
-            "<b>📸 Send Payment Proof!\n\nPlease upload your transaction screenshot to verify!</b>",
-            parse_mode=enums.ParseMode.HTML,
-        )
+        col = aux_col("user_payment_intents")
+        if col is not None:
+            await col.update_one(
+                {"user_id": callback.from_user.id},
+                {"$set": {"action": "i_paid_clicked", "timestamp": now_utc(), "admin_msg_ids": {}}},
+                upsert=True,
+            )
     except Exception:
-        logger.exception("Failed starting payment proof flow for user %s", callback.from_user.id)
+        logger.exception("Failed to save intent for user %s", callback.from_user.id)
+        
+    # 2. Progress the UI regardless of DB warnings
+    await callback.answer()
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+        
+    await client.send_message(
+        callback.message.chat.id,
+        "<b>📸 Send Payment Proof!\n\nPlease upload your transaction screenshot to verify!</b>",
+        parse_mode=enums.ParseMode.HTML,
+    )
 
 @Client.on_message(filters.private & (filters.photo | filters.document) & ~filters.command(["start", "premium"]))
 async def screenshot_handler(client, message):
-    user_id = message.chat.id
-    intent_col = aux_col("user_payment_intents")
+    user_id = message.from_user.id
+    is_valid_intent = False
+    
+    # 1. Safely check the user_payment_intents collection
     try:
-        intent = await intent_col.find_one({"user_id": user_id})
-        if not intent:
-            return
-        timestamp = intent.get("timestamp")
-        if not isinstance(timestamp, datetime) or now_utc() - timestamp > timedelta(days=1):
-            await intent_col.delete_one({"user_id": user_id})
-            await message.reply_text(
-                "<b>⚠️ Payment Verification Failed.</b>\n\nPlease pay again and send a valid screenshot.",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Try Again", callback_data="buy_premium_start2")]]),
-                parse_mode=enums.ParseMode.HTML,
-            )
-            return
-        if intent.get("action") not in {"i_paid_clicked", "screenshot_sent"}:
-            return
-        for admin_id, msg_id in (intent.get("admin_msg_ids") or {}).items():
-            try:
-                await client.delete_messages(int(admin_id), int(msg_id))
-            except Exception:
-                logger.exception("Failed deleting previous payment proof %s for user %s", msg_id, user_id)
-        keyboard = InlineKeyboardMarkup([[
-            InlineKeyboardButton("✅ Approve", callback_data=f"min_app_{user_id}"),
-            InlineKeyboardButton("❌ Reject", callback_data=f"min_rej_{user_id}")
-        ]])
-        name = message.from_user.first_name if message.from_user else "User"
-        caption = f"<b>🔔 New Payment Verification</b>\n\n{user_link(name, user_id)}"
-        admin_msg_ids = await safe_premium_proof(client, message, caption, keyboard)
-        if not admin_msg_ids:
-            logger.error("Payment proof could not be delivered to PREMIUM_LOG or OWNER for user %s", user_id)
-            await message.reply_text(
-                "<b>⚠️ Payment Verification Failed.</b>\n\nPlease try again.",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Try Again", callback_data="buy_premium_start2")]]),
-                parse_mode=enums.ParseMode.HTML,
-            )
-            return
-        await intent_col.update_one(
-            {"user_id": user_id},
-            {"$set": {"admin_msg_ids": admin_msg_ids, "action": "screenshot_sent", "timestamp": now_utc()}},
-            upsert=True,
-        )
-        await message.reply_text("<b>✅ Payment proof submitted for verification.</b>", parse_mode=enums.ParseMode.HTML)
+        col_intent = aux_col("user_payment_intents")
+        if col_intent is not None:
+            doc = await col_intent.find_one({"user_id": user_id})
+            if doc:
+                timestamp = doc.get("timestamp")
+                # Ensure the intent hasn't expired (24 hours)
+                if isinstance(timestamp, datetime) and now_utc() - timestamp <= timedelta(days=1):
+                    is_valid_intent = True
+                
+                # Clean up previous admin messages if they exist
+                if doc.get("admin_msg_ids"):
+                    for admin_id, msg_id in doc["admin_msg_ids"].items():
+                        try:
+                            await client.delete_messages(chat_id=int(admin_id), message_ids=int(msg_id))
+                        except Exception:
+                            pass
     except Exception:
-        logger.exception("Payment screenshot workflow failed for user %s", user_id)
+        pass
+
+    # If no valid intent, silently ignore
+    if not is_valid_intent:
+        return
+
+    # 2. Extract raw file ID directly (Original Working Method)
+    fid = message.photo.file_id if message.photo else message.document.file_id
+    name = message.from_user.first_name if message.from_user else "User"
+    caption = f"<b>🔔 New Payment Verification</b>\n\n{user_link(name, user_id)}"
+    
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("✅ Approve", callback_data=f"min_app_{user_id}"),
+        InlineKeyboardButton("❌ Reject", callback_data=f"min_rej_{user_id}")
+    ]])
+
+    admin_msg_ids = {}
+
+    # 3. Try sending to PREMIUM_LOG first
+    if PREMIUM_LOG_ID and await resolve_log_peer(client):
         try:
-            await message.reply_text(
-                "<b>⚠️ Payment Verification Failed.</b>\n\nPlease try again.",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Try Again", callback_data="buy_premium_start2")]]),
-                parse_mode=enums.ParseMode.HTML,
-            )
+            if message.photo:
+                sent_msg = await client.send_photo(PREMIUM_LOG_ID, fid, caption=caption, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
+            else:
+                sent_msg = await client.send_document(PREMIUM_LOG_ID, fid, caption=caption, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
+            
+            if sent_msg:
+                admin_msg_ids[str(PREMIUM_LOG_ID)] = sent_msg.id
         except Exception:
-            logger.exception("Failed sending screenshot failure message to user %s", user_id)
+            logger.exception("Failed sending to PREMIUM_LOG, falling back to OWNER")
+
+    # 4. Fallback to OWNER if log delivery failed or is not set
+    if not admin_msg_ids:
+        try:
+            if message.photo:
+                sent_msg = await client.send_photo(OWNER_ID, fid, caption=caption, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
+            else:
+                sent_msg = await client.send_document(OWNER_ID, fid, caption=caption, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
+            
+            if sent_msg:
+                admin_msg_ids[str(OWNER_ID)] = sent_msg.id
+        except Exception:
+            logger.exception("OWNER screenshot fallback failed")
+
+    # 5. If successful, notify user and update DB
+    if admin_msg_ids:
+        await message.reply_text("<b>✅ Payment proof submitted for verification.</b>", parse_mode=enums.ParseMode.HTML)
+        try:
+            if col_intent is not None:
+                await col_intent.update_one(
+                    {"user_id": user_id},
+                    {"$set": {"admin_msg_ids": admin_msg_ids, "action": "screenshot_sent", "timestamp": now_utc()}},
+                    upsert=True
+                )
+        except Exception:
+            pass
+    else:
+        await message.reply_text("<b>⚠️ Payment Verification Failed.</b>\n\nPlease try again.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Try Again", callback_data="buy_premium_start2")]]), parse_mode=enums.ParseMode.HTML)
+
 
 @Client.on_message(filters.command("approve") & filters.create(premium_admin_chat))
 async def approve_command(client, message):
@@ -589,8 +559,10 @@ async def premium_member_update(client, update: ChatMemberUpdated):
         new_status = update.new_chat_member.status if update.new_chat_member else None
         old_status = update.old_chat_member.status if update.old_chat_member else None
 
+        # Detect a newly joined user transitioning to MEMBER
         if new_status == enums.ChatMemberStatus.MEMBER and old_status != enums.ChatMemberStatus.MEMBER:
             
+            # DB is already updated from confirm_activation
             doc = await premium_col().find_one({"user_id": new_member.id, "active": True})
             
             if doc:
@@ -607,12 +579,13 @@ async def premium_member_update(client, update: ChatMemberUpdated):
                 )
                 
                 try:
-                    # Delay to allow the user's UI to load the group chat
+                    # Added a slight delay to allow the user's Telegram UI to load the group chat
                     await asyncio.sleep(2)
                     await client.send_message(update.chat.id, welcome_text, parse_mode=enums.ParseMode.HTML)
                 except Exception:
                     logger.exception("Failed to send welcome message to group for %s", new_member.id)
             else:
+                # Eject non-premium users, except the OWNER
                 if new_member.id != OWNER_ID:
                     await safe_kick(client, new_member.id)
                 
@@ -627,30 +600,59 @@ async def premium_expiry_loop(client):
             col = premium_col()
             intent_cutoff = now - timedelta(days=1)
             result = await aux_col("user_payment_intents").delete_many({"timestamp": {"$lt": intent_cutoff}})
+            
             if result.deleted_count:
                 logger.info("Removed %s expired payment intents", result.deleted_count)
+                
             async for doc in col.find({"active": True}):
-                uid, exp = doc.get("user_id"), doc.get("expires_at")
+                uid = doc.get("user_id")
+                exp = doc.get("expires_at")
+                plan_name = doc.get("plan", "N/A")
+                
                 if not uid or not isinstance(exp, datetime):
                     continue
+                    
                 if now >= exp:
                     if PREMIUM_GROUP_ID and not await safe_kick(client, uid):
                         continue
+                        
                     await col.delete_one({"user_id": uid})
+                    
                     try:
-                        await client.send_message(uid, "<b>⚠️ Premium Membership Expired.</b>\n\nRenew your plan to restore access.", parse_mode=enums.ParseMode.HTML)
+                        await client.send_message(
+                            uid, 
+                            "<b>⚠️ Premium Membership Expired.</b>\n\nRenew your plan to restore access.", 
+                            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Renew Plan", callback_data="buy_premium_start")]]),
+                            parse_mode=enums.ParseMode.HTML
+                        )
                     except Exception:
                         logger.exception("Failed notifying expired premium user %s", uid)
-                    await safe_premium_log(client, f"<b>⚠️ Premium Expired</b>\n\n{await get_user_display(client, uid)}")
+                        
+                    await safe_premium_log(
+                        client, 
+                        f"<b>❌ Premium Membership Expired & Ejected</b>\n\n"
+                        f"{await get_user_display(client, uid)}\n"
+                        f"<b>• Plan:</b> {plan_name}\n"
+                        f"<b>• Expired On:</b> {fmt_date(exp)}"
+                    )
+                    
                 elif not doc.get("reminders", {}).get("1_day") and timedelta(0) < exp - now <= timedelta(days=1):
                     try:
-                        await client.send_message(uid, "<b>⚠️ Your Premium Membership expires in 1 day.</b>\n\nRenew now to keep access.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Renew Now", callback_data="buy_premium_start")]]), parse_mode=enums.ParseMode.HTML)
+                        await client.send_message(
+                            uid, 
+                            "<b>⚠️ Your Premium Membership expires in 1 day.</b>\n\nRenew now to keep access.", 
+                            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Renew Now", callback_data="buy_premium_start")]]), 
+                            parse_mode=enums.ParseMode.HTML
+                        )
                         await col.update_one({"user_id": uid}, {"$set": {"reminders.1_day": True}})
                     except Exception:
                         logger.exception("Failed sending premium expiry reminder to %s", uid)
+                        
         except Exception:
             logger.exception("Premium expiry loop error")
+            
         await asyncio.sleep(3600)
+
 
 async def start_premium_tasks(client):
     asyncio.create_task(premium_expiry_loop(client))
