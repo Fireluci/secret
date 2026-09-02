@@ -1,7 +1,7 @@
 from pyrogram import Client, enums, filters
 
 from database.users_chats_db import db
-from info import ADMINS
+from info *
 from utils import connected_group, temp
 
 
@@ -15,7 +15,7 @@ def is_bot_admin_status(status):
 @Client.on_message(
     filters.group
     & filters.command("connect")
-    & filters.user(ADMINS)
+    & filters.user(OWNER)
 )
 async def connect_group(client, message):
     bot_member = await client.get_chat_member(message.chat.id, "me")
@@ -33,7 +33,7 @@ async def connect_group(client, message):
 @Client.on_message(
     filters.group
     & filters.command("disconnect")
-    & filters.user(ADMINS)
+    & filters.user(OWNER)
     & connected_group
 )
 async def disconnect_group(client, message):
