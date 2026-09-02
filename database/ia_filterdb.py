@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 import base64
@@ -101,31 +102,76 @@ async def get_search_results(
     **kwargs,
 ):
     max_results = 10
+
+    try:
+        offset = int(offset)
+    except (TypeError, ValueError):
+        offset = 0
+    offset = max(0, offset)
+
     query = (await extract_v2(query)).strip()
     words = normalize(query)
 
-    mongo_filter = (
-        {"$and": [{"file_name": {"$regex": re.escape(word), "$options": "i"}} for word in words]}
-        if words else {}
+    if not words:
+        return [], 0, 0
+
+    base_filter = {}
+    if file_type:
+        base_filter["file_type"] = file_type
+
+    # Strict: every search term must exist as a complete filename word.
+    strict_conditions = [
+        {
+            "file_name": {
+                "$regex": rf"\b{re.escape(word)}\b",
+                "$options": "i",
+            }
+        }
+        for word in words
+    ]
+    strict_filter = {**base_filter, "$and": strict_conditions}
+
+    # Fuzzy: every search term only needs to occur somewhere inside the filename.
+    fuzzy_conditions = [
+        {
+            "file_name": {
+                "$regex": re.escape(word),
+                "$options": "i",
+            }
+        }
+        for word in words
+    ]
+    fuzzy_filter = {**base_filter, "$and": fuzzy_conditions}
+
+    # Run both searches independently, then prioritize strict matches.
+    strict_cursor = Media.find(strict_filter).sort("$natural", -1)
+    fuzzy_cursor = Media.find(fuzzy_filter).sort("$natural", -1)
+    strict_files, fuzzy_files = await asyncio.gather(
+        strict_cursor.to_list(length=100),
+        fuzzy_cursor.to_list(length=100),
     )
 
-    if file_type:
-        mongo_filter["file_type"] = file_type
+    seen_ids = set()
+    combined_files = []
 
-    total_results = await Media.count_documents(mongo_filter)
+    for file in strict_files + fuzzy_files:
+        file_id = getattr(file, "file_id", None)
+        if not file_id:
+            file_id = str(getattr(file, "_id", ""))
+        if file_id and file_id not in seen_ids:
+            seen_ids.add(file_id)
+            combined_files.append(file)
 
-    next_offset = offset + max_results
+    total_results = len(combined_files)
+    if total_results == 0:
+        return [], 0, 0
+
+    paginated_files = combined_files[offset:offset + max_results]
+    next_offset = offset + len(paginated_files)
     if next_offset >= total_results:
         next_offset = ""
 
-    cursor = (
-        Media.find(mongo_filter)
-        .sort("$natural", -1)
-        .skip(offset)
-        .limit(max_results)
-    )
-    files = await cursor.to_list(length=max_results)
-    return files, next_offset, total_results
+    return paginated_files, next_offset, total_results
 
 
 async def get_bad_files(query, file_type=None, **kwargs):
