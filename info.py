@@ -66,12 +66,7 @@ NO_RESULTS = """<b><i>💢 No Results For Your Search❗️
 CAPTION = '<a href="https://telegram.me/HeroFlix"><b>{file_name}</b></a>'
 
 RESTART_TXT = """
-<b>Bᴏᴛ Rᴇsᴛᴀʀᴛᴇᴅ !
-
-📅 Dᴀᴛᴇ : <code>{}</code>
-⏰ Tɪᴍᴇ : <code>{}</code>
-🌐 Tɪᴍᴇᴢᴏɴᴇ : <code>Asia/Kolkata</code>
-🛠️ Bᴜɪʟᴅ Sᴛᴀᴛᴜs: <code>v2.7.1 [ Sᴛᴀʙʟᴇ ]</code></b>"""
+<b>♻️ Bot Restarted</b>"""
 
 LOGO = '🔆彡[ HEROFLiX ]彡🔆'
 
