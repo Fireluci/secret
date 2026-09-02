@@ -1,101 +1,69 @@
-import asyncio
-import logging
 import os
+import logging
+import asyncio
 from datetime import datetime, timedelta
 
-from pyrogram import Client, enums, filters
+from pyrogram import Client, filters, enums
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, ChatJoinRequest, ChatMemberUpdated
 from pyrogram.errors import MessageNotModified
-from pyrogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, ChatJoinRequest, ChatMemberUpdated
 
 from database.users_chats_db import db
 from info import *
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
 
-def premium_admin_only(_, __, message):
-    return bool(
-        message.from_user
-        and message.from_user.id == int(OWNER)
-        and (
-            message.chat.type == enums.ChatType.PRIVATE
-            or message.chat.id == int(PREMIUM_LOG)
-        )
+def premium_col():
+    return db.db.premium_users
+
+
+def aux_col(name):
+    return db.db[name]
+
+
+def fmt_date(dt):
+    return (
+        (dt + timedelta(hours=5, minutes=30)).strftime("%d %b, %Y")
+        if isinstance(dt, datetime)
+        else "N/A"
     )
 
 
-def fmt_date(dt: datetime) -> str:
-    return (dt + timedelta(hours=5, minutes=30)).strftime('%d %b, %Y') if isinstance(dt, datetime) else "N/A"
-
-
-def get_col():
-    try:
-        return (
-            db.premium_users
-            if hasattr(db, 'premium_users') and db.premium_users is not None
-            else (
-                db.db.premium_users
-                if hasattr(db, 'db')
-                else db.get_collection('premium_users')
-            )
-        )
-    except Exception:
-        logger.exception("Failed to get premium collection")
-        return None
-
-
-def get_db_collection(col_name: str):
-    try:
-        if hasattr(db, col_name) and getattr(db, col_name) is not None:
-            return getattr(db, col_name)
-        if hasattr(db, 'db') and hasattr(db.db, col_name):
-            return getattr(db.db, col_name)
-        return db.get_collection(col_name)
-    except Exception:
-        logger.exception("Failed to get database collection: %s", col_name)
-        return None
-
-
-async def fetch_user_name(client, uid: int) -> str:
+async def fetch_user_name(client, uid):
     try:
         user = await client.get_users(uid)
         return user.first_name or "User"
     except Exception:
-        logger.exception("Failed to fetch Telegram user %s", uid)
         return "User"
 
 
-def user_link(name: str, uid: int) -> str:
+def user_link(name, uid):
     return f"<b>👤 User: <a href='tg://user?id={uid}'>{name}</a></b> (<code>{uid}</code>)"
 
 
-async def get_user_display(client, uid: int, fallback_name: str = "User") -> str:
+async def get_user_display(client, uid, fallback_name="User"):
     name = await fetch_user_name(client, uid)
     if name == "User" and fallback_name != "User":
         name = fallback_name
     return user_link(name, uid)
 
 
-async def is_premium_user(client, user_id: int) -> bool:
-    try:
-        if int(user_id) == int(OWNER):
-            return True
-        col = get_col()
-        if not col:
-            logger.error("Premium collection unavailable while checking user %s", user_id)
-            return False
-        return bool(await col.find_one({
-            "user_id": int(user_id),
-            "active": True,
-            "expires_at": {"$gt": datetime.utcnow()},
-        }))
-    except Exception:
-        logger.exception("Failed to check premium status for user %s", user_id)
-        return False
+async def is_premium_user(client, user_id):
+    if int(user_id) in {int(x) for x in OWNER}:
+        return True
+
+    return bool(
+        await premium_col().find_one(
+            {
+                "user_id": int(user_id),
+                "active": True,
+                "expires_at": {"$gt": datetime.utcnow()},
+            }
+        )
+    )
 
 
-def get_plan_keyboard(uid: int) -> InlineKeyboardMarkup:
+def get_plan_keyboard(uid):
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton("1 Month - ₹40", callback_data=f"selplan_{uid}_30d_40"),
@@ -105,24 +73,38 @@ def get_plan_keyboard(uid: int) -> InlineKeyboardMarkup:
             InlineKeyboardButton("6 Months - ₹240", callback_data=f"selplan_{uid}_180d_240"),
             InlineKeyboardButton("1 Year - ₹480", callback_data=f"selplan_{uid}_365d_480"),
         ],
-        [InlineKeyboardButton("❌ Cancel", callback_data=f"min_rej_{uid}")]
+        [InlineKeyboardButton("❌ Cancel", callback_data=f"min_rej_{uid}")],
     ])
 
 
-def parse_plan_duration(duration_str: str):
-    if duration_str == "30d":
-        return timedelta(days=30), "1 Month"
-    elif duration_str == "60d":
-        return timedelta(days=60), "2 Months"
-    elif duration_str == "180d":
-        return timedelta(days=180), "6 Months"
-    elif duration_str == "365d":
-        return timedelta(days=365), "1 Year"
-    else:
+def parse_plan_duration(duration_str):
+    plans = {
+        "30d": (30, "1 Month"),
+        "60d": (60, "2 Months"),
+        "180d": (180, "6 Months"),
+        "365d": (365, "1 Year"),
+    }
+
+    if duration_str not in plans:
         raise ValueError("Invalid or expired plan duration selected.")
+
+    days, name = plans[duration_str]
+    return timedelta(days=days), name
 
 
 async def safe_edit_message(message, text, reply_markup=None):
+    try:
+        await message.edit_text(
+            text,
+            reply_markup=reply_markup,
+            parse_mode=enums.ParseMode.HTML,
+        )
+        return
+    except MessageNotModified:
+        return
+    except Exception:
+        pass
+
     try:
         await message.edit_caption(
             text,
@@ -132,681 +114,305 @@ async def safe_edit_message(message, text, reply_markup=None):
     except MessageNotModified:
         pass
     except Exception:
-        logger.exception("Failed to edit premium message caption")
-        try:
-            await message.edit_text(
-                text,
-                reply_markup=reply_markup,
-                parse_mode=enums.ParseMode.HTML,
-            )
-        except MessageNotModified:
-            pass
-        except Exception:
-            logger.exception("Failed to edit premium message text")
+        logger.exception("Premium message edit failed")
 
 
 async def notify_owner(client, text):
     try:
         await client.send_message(
-            int(OWNER), text, disable_web_page_preview=True,
+            int(OWNER),
+            text,
+            disable_web_page_preview=True,
             parse_mode=enums.ParseMode.HTML,
         )
-        return True
     except Exception:
         logger.exception("Failed notifying owner")
-        return False
 
 
 async def safe_premium_log(client, text):
-    try:
-        await client.send_message(
-            int(PREMIUM_LOG), text,
-            parse_mode=enums.ParseMode.HTML,
-            disable_web_page_preview=True,
-        )
-        return True
-    except Exception as e:
-        logger.exception("PREMIUM_LOG failed; falling back to OWNER: %s", e)
-
-    try:
-        await client.send_message(
-            int(OWNER), text,
-            parse_mode=enums.ParseMode.HTML,
-            disable_web_page_preview=True,
-        )
-        return False
-    except Exception:
-        logger.exception("OWNER fallback failed for premium log event")
-        return False
-
-
-async def safe_kick(client: Client, chat_id, user_id) -> bool:
-    if not chat_id:
-        return True
-
-    try:
-        cid = int(chat_id)
-    except (TypeError, ValueError):
-        logger.exception("Invalid premium group chat ID: %r", chat_id)
-        return False
-
-    u_link = await get_user_display(client, user_id)
-
-    try:
-        await client.resolve_peer(cid)
-    except Exception:
+    if PREMIUM_LOG:
         try:
-            await client.get_chat(cid)
+            log_id = int(PREMIUM_LOG)
+            await client.get_chat(log_id)
+            await client.send_message(
+                log_id,
+                text,
+                parse_mode=enums.ParseMode.HTML,
+                disable_web_page_preview=True,
+            )
+            return True
         except Exception:
-            logger.exception("Premium workflow error")
+            logger.exception("PREMIUM_LOG text delivery failed")
+
+    await notify_owner(client, text)
+    return False
+
+
+async def safe_premium_proof(client, message, caption, keyboard):
+    """Send the actual payment proof to PREMIUM_LOG, with OWNER fallback."""
+    file_id = message.photo.file_id if message.photo else message.document.file_id
+
+    if PREMIUM_LOG:
+        try:
+            log_id = int(PREMIUM_LOG)
+            await client.get_chat(log_id)
+
+            if message.photo:
+                sent = await client.send_photo(
+                    log_id, file_id, caption=caption,
+                    reply_markup=keyboard, parse_mode=enums.ParseMode.HTML
+                )
+            else:
+                sent = await client.send_document(
+                    log_id, file_id, caption=caption,
+                    reply_markup=keyboard, parse_mode=enums.ParseMode.HTML
+                )
+            return {str(log_id): sent.id}
+        except Exception:
+            logger.exception("PREMIUM_LOG payment proof delivery failed")
+
+    # PREMIUM_LOG failed: preserve the original working OWNER fallback.
+    try:
+        if message.photo:
+            sent = await client.send_photo(
+                int(OWNER), file_id, caption=caption,
+                reply_markup=keyboard, parse_mode=enums.ParseMode.HTML
+            )
+        else:
+            sent = await client.send_document(
+                int(OWNER), file_id, caption=caption,
+                reply_markup=keyboard, parse_mode=enums.ParseMode.HTML
+            )
+        return {str(OWNER): sent.id}
+    except Exception:
+        logger.exception("OWNER payment proof fallback delivery failed")
+        return {}
+
+
+async def safe_kick(client, user_id):
+    if not PREMIUM_GROUP_ID:
+        return True
 
     try:
-        await client.ban_chat_member(cid, user_id)
+        cid = int(PREMIUM_GROUP_ID)
+        await client.ban_chat_member(cid, int(user_id))
         await asyncio.sleep(0.3)
-        await client.unban_chat_member(cid, user_id)
+        await client.unban_chat_member(cid, int(user_id))
         return True
-    except Exception as e:
-        err_str = str(e)
-        if "USER_NOT_PARTICIPANT" in err_str:
+    except Exception as exc:
+        if "USER_NOT_PARTICIPANT" in str(exc) or "PEER_ID_INVALID" in str(exc):
             return True
 
-        logger.exception("Premium kick attempt 1 failed for %s: %s", user_id, e)
+        user_display = await get_user_display(client, user_id)
         await safe_premium_log(
             client,
-            f"<b>⚠️ Expired User Kick Failed (1)</b>\n\n{u_link}\n"
-            f"<b>❓ Reason: {e}</b>\n\n",
-        )
-
-    await asyncio.sleep(60)
-
-    try:
-        try:
-            await client.resolve_peer(cid)
-        except Exception:
-            try:
-                await client.get_chat(cid)
-            except Exception:
-                logger.exception("Premium workflow error")
-
-        await client.ban_chat_member(cid, user_id)
-        await asyncio.sleep(0.3)
-        await client.unban_chat_member(cid, user_id)
-        await safe_premium_log(
-            client,
-            f"<b>✅ Expired User Kick Successful</b>\n{u_link}",
-        )
-        return True
-    except Exception as retry_err:
-        logger.exception("Premium kick attempt 2 failed for %s: %s", user_id, retry_err)
-        await safe_premium_log(
-            client,
-            f"<b>⚠️ Expired User Kick Failed (2)</b>\n{u_link}\n"
-            f"<b>❓ Reason: {retry_err}\n♻ Retrying in Next Loop</b>",
+            f"<b>⚠️ Premium member removal failed</b>\n"
+            f"{user_display}\n"
+            f"<b>Reason:</b> {exc}",
         )
         return False
 
 
-async def premium_expiry_reminder_loop(client: Client):
-    await asyncio.sleep(10)
+@Client.on_message(filters.command("premium") & filters.private)
+async def premium_command(client, message):
+    await message.reply_text(
+        "<b>🌟 Premium Plans</b>\n\n"
+        "✨ 1 Month: ₹40\n"
+        "✨ 2 Months: ₹80\n"
+        "✨ 6 Months: ₹240\n"
+        "✨ 1 Year: ₹480",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔗 Continue", callback_data="buy_premium_start")]
+        ]),
+        parse_mode=enums.ParseMode.HTML,
+    )
+
+
+@Client.on_callback_query(filters.regex(r"^buy_premium_start$"))
+async def premium_menu_callback(client, callback):
+    await callback.answer()
+    await safe_edit_message(
+        callback.message,
+        "<b>🌟 Premium Plans</b>\n\n"
+        "✨ 1 Month: ₹40\n"
+        "✨ 2 Months: ₹80\n"
+        "✨ 6 Months: ₹240\n"
+        "✨ 1 Year: ₹480",
+        InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔗 Click Here To Pay", callback_data="click_here_to_pay")]
+        ]),
+    )
+
+
+@Client.on_callback_query(filters.regex(r"^click_here_to_pay$"))
+async def click_here_to_pay_cb(client, callback):
+    await callback.answer()
 
     try:
-        now = datetime.utcnow()
-        col = get_col()
-        if col:
-            async for doc in col.find({"active": True, "expires_at": {"$lte": now}}):
-                uid = doc.get("user_id")
-                name = doc.get("username", "User")
-                exp = doc.get("expires_at")
-                user_display = user_link(name, uid)
+        await callback.message.delete()
+    except Exception:
+        pass
 
-                if PREMIUM_GROUP_ID:
-                    kicked = await safe_kick(client, PREMIUM_GROUP_ID, uid)
-                    if not kicked:
-                        continue
+    qr_caption = (
+        "<b>📸 Scan QR CODE or use UPI ID to Pay:\n\n"
+        "UPI ID:</b> <code>karthik.slice@ibl</code>"
+    )
 
-                await col.delete_one({"user_id": uid})
+    await client.send_photo(
+        chat_id=callback.message.chat.id,
+        photo="https://ibb.co/KHqPKqg",
+        caption=qr_caption,
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("✅ I Paid", callback_data="minimal_send_proof")]
+        ]),
+        parse_mode=enums.ParseMode.HTML,
+    )
 
-                await safe_premium_log(
-                    client,
-                    f"<b>❌ Missed Expiry Catch-Up & Ejected</b>\n\n"
-                    f"{user_display}\n"
-                    f"<b>• Plan: {doc.get('plan', 'N/A')}</b>\n"
-                    f"<b>• Expired On: {fmt_date(exp)}</b>",
-                )
-                try:
-                    await client.send_message(
-                        uid,
-                        "<b>⚠️ Premium Membership Expired!</b>",
-                        reply_markup=InlineKeyboardMarkup([
-                            [InlineKeyboardButton("🔄 Renew Plan", callback_data="buy_premium_start")]
-                        ]),
-                        parse_mode=enums.ParseMode.HTML,
-                    )
-                except Exception:
-                    logger.exception("Premium workflow error")
-    except Exception as e:
-        logger.error(f"Startup expiry check error: {e}")
 
-    while True:
+@Client.on_callback_query(filters.regex(r"^minimal_send_proof$"))
+async def send_proof_cb(client, callback):
+    await aux_col("user_payment_intents").update_one(
+        {"user_id": callback.from_user.id},
+        {
+            "$set": {
+                "action": "i_paid_clicked",
+                "timestamp": datetime.utcnow(),
+            }
+        },
+        upsert=True,
+    )
+
+    await callback.answer()
+
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+
+    await client.send_message(
+        callback.message.chat.id,
+        "<b>📸 Send Payment Proof!\n\n"
+        "Please upload your transaction screenshot to verify!</b>",
+        parse_mode=enums.ParseMode.HTML,
+    )
+
+
+@Client.on_message(
+    filters.private
+    & (filters.photo | filters.document)
+    & ~filters.command(["start", "premium"])
+)
+async def screenshot_handler(client, message):
+    user_id = message.from_user.id
+    intent_col = aux_col("user_payment_intents")
+
+    try:
+        intent = await intent_col.find_one({"user_id": user_id})
+    except Exception:
+        logger.exception("Failed reading payment intent for user %s", user_id)
+        return
+
+    if not intent or intent.get("action") not in {"i_paid_clicked", "screenshot_sent"}:
+        return
+
+    for admin_id, msg_id in (intent.get("admin_msg_ids") or {}).items():
         try:
-            now = datetime.utcnow()
-            col = get_col()
-            if col:
-                async for doc in col.find({"active": True}):
-                    uid, exp = doc.get("user_id"), doc.get("expires_at")
-                    name = doc.get("username", "User")
-                    user_display = user_link(name, uid)
+            await client.delete_messages(int(admin_id), int(msg_id))
+        except Exception:
+            logger.exception("Failed deleting previous payment proof message %s for %s", msg_id, user_id)
 
-                    if not isinstance(exp, datetime):
-                        continue
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("✅ Approve", callback_data=f"min_app_{user_id}"),
+        InlineKeyboardButton("❌ Reject", callback_data=f"min_rej_{user_id}"),
+    ]])
 
-                    reminders = doc.get("reminders", {})
-                    if (
-                        not reminders.get("1_day")
-                        and timedelta(seconds=0) < (exp - now) <= timedelta(days=1)
-                    ):
-                        try:
-                            await client.send_message(
-                                uid,
-                                "<b>⚠️ Your Premium Membership is expiring in 1 day!\n\n"
-                                "Renew now to maintain uninterrupted access.</b>",
-                                reply_markup=InlineKeyboardMarkup([
-                                    [InlineKeyboardButton("🔄 Renew Now", callback_data="buy_premium_start")]
-                                ]),
-                                parse_mode=enums.ParseMode.HTML,
-                            )
-                            await col.update_one(
-                                {"user_id": uid},
-                                {"$set": {"reminders.1_day": True}},
-                            )
-                        except Exception:
-                            logger.exception("Premium workflow error")
+    caption = (
+        f"<b>🔔 New Payment Verification</b>\n\n"
+        f"{user_link(message.from_user.first_name, user_id)}"
+    )
 
-                    if now >= exp:
-                        if PREMIUM_GROUP_ID:
-                            kicked = await safe_kick(client, PREMIUM_GROUP_ID, uid)
-                            if not kicked:
-                                continue
+    try:
+        admin_msg_ids = await safe_premium_proof(client, message, caption, keyboard)
 
-                        await col.delete_one({"user_id": uid})
+        await intent_col.update_one(
+            {"user_id": user_id},
+            {"$set": {
+                "admin_msg_ids": admin_msg_ids,
+                "action": "screenshot_sent",
+                "timestamp": datetime.utcnow(),
+            }},
+            upsert=True,
+        )
 
-                        await safe_premium_log(
-                            client,
-                            f"<b>❌ Premium Membership Expired & Ejected</b>\n\n"
-                            f"{user_display}\n"
-                            f"<b>• Plan: {doc.get('plan', 'N/A')}</b>\n"
-                            f"<b>• Expired On: {fmt_date(exp)}</b>",
-                        )
-                        try:
-                            await client.send_message(
-                                uid,
-                                "<b>⚠️ Premium Membership Expired!\n\n"
-                                "Renew your plan to restore your premium status.</b>",
-                                reply_markup=InlineKeyboardMarkup([
-                                    [InlineKeyboardButton("🔄 Renew Plan", callback_data="buy_premium_start")]
-                                ]),
-                                parse_mode=enums.ParseMode.HTML,
-                            )
-                        except Exception:
-                            logger.exception("Premium workflow error")
-        except Exception as e:
-            logger.error(f"Expiry loop error: {e}")
-
-        await asyncio.sleep(3600)
+        await message.reply_text(
+            "<b>✅ Payment proof submitted for verification.</b>",
+            parse_mode=enums.ParseMode.HTML,
+        )
+    except Exception:
+        logger.exception("Payment screenshot workflow failed for user %s", user_id)
 
 
-@Client.on_message(filters.command("approve") & filters.create(premium_admin_only))
+@Client.on_message(filters.command("approve") & filters.user(OWNER))
 async def approve_command(client, message):
     if len(message.command) < 2:
         return await message.reply_text(
             "<b>⚠️ Usage: /approve [user_id]</b>",
             parse_mode=enums.ParseMode.HTML,
         )
+
     try:
         uid = int(message.command[1])
-        u_link = await get_user_display(client, uid)
-
-        col_ses = get_db_collection("admin_approval_sessions")
-        if col_ses is not None:
-            await col_ses.update_one(
-                {"admin_id": message.from_user.id},
-                {"$set": {"target_user_id": uid}},
-                upsert=True,
-            )
-
-        kb = get_plan_keyboard(uid)
-        await message.reply_text(
-            f"<b>💎 Select Plan Package for</b>\n{u_link}",
-            reply_markup=kb,
-            parse_mode=enums.ParseMode.HTML,
-        )
-    except Exception as e:
-        await message.reply_text(
-            f"<b>❌ Error: {e}</b>",
-            parse_mode=enums.ParseMode.HTML,
-        )
-
-
-@Client.on_message(filters.command("revoke") & filters.create(premium_admin_only))
-async def revoke_command(client, message):
-    if len(message.command) < 2:
-        return await message.reply_text(
-            "<b>⚠️ Usage: /revoke [user_id]</b>",
-            parse_mode=enums.ParseMode.HTML,
-        )
-    try:
-        uid = int(message.command[1])
-        u_link = await get_user_display(client, uid)
-
-        if PREMIUM_GROUP_ID:
-            kicked = await safe_kick(client, PREMIUM_GROUP_ID, uid)
-            if not kicked:
-                return await message.reply_text(
-                    f"<b>❌ Revocation Halted</b>\n\n{u_link}\n"
-                    "<b>• Automated kick failed. Database record retained for safety.</b>",
-                    parse_mode=enums.ParseMode.HTML,
-                )
-
-        col = get_col()
-        if col:
-            await col.delete_one({"user_id": uid})
-
-        try:
-            await client.send_message(
-                uid,
-                "<b>❌ Your Premium Membership has been revoked by administration.</b>",
-                parse_mode=enums.ParseMode.HTML,
-            )
-        except Exception:
-            logger.exception("Premium workflow error")
-
-        await safe_premium_log(
-            client,
-            f"<b>❌ Premium Membership Revoked</b>\n\n"
-            f"{u_link}\n"
-            f"<b>• Revoked by: {message.from_user.mention}</b>",
-        )
-
-        await message.reply_text(
-            f"<b>✅ Successfully revoked premium for</b>\n{u_link}",
-            parse_mode=enums.ParseMode.HTML,
-        )
-    except Exception as e:
-        await message.reply_text(
-            f"<b>❌ Error: {e}</b>",
-            parse_mode=enums.ParseMode.HTML,
-        )
-
-
-@Client.on_message(filters.command("premiums") & filters.create(premium_admin_only))
-async def premiums_command(client, message):
-    col = get_col()
-    if not col:
-        return await message.reply_text(
-            "<b>❌ Database collection unavailable.</b>",
-            parse_mode=enums.ParseMode.HTML,
-        )
-
-    text = "<b>💎 Active Premium Members List:</b>\n\n"
-    count = 0
-
-    async for doc in col.find({"active": True}):
-        count += 1
-        uid = doc.get("user_id")
-        name = doc.get("username", "User")
-        plan = doc.get("plan")
-        exp = fmt_date(doc.get("expires_at"))
-        text += (
-            f"<b>{count}.</b> {user_link(name, uid)}\n"
-            f"<b>   • Plan: {plan}</b>\n"
-            f"<b>   • Expires: {exp}</b>\n\n"
-        )
-
-    if count == 0:
-        text = "<b>❌ No active premium users found.</b>"
-
-    if len(text) > 4096:
-        file = "premium_users.txt"
-        with open(file, "w", encoding="utf-8") as f:
-            f.write(text)
-        await message.reply_document(file)
-        os.remove(file)
-    else:
-        await message.reply_text(text, parse_mode=enums.ParseMode.HTML)
-
-
-@Client.on_message(filters.command("myplan") & filters.private)
-async def check_my_plan(client, message):
-    user_id = message.from_user.id
-    col = get_col()
-    doc = await col.find_one({"user_id": user_id, "active": True}) if col else None
-    if not doc:
-        return await message.reply_text(
-            "<b>❌ No active Premium subscription.</b>",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🌟 Buy Premium", callback_data="buy_premium_start")]
-            ]),
-            parse_mode=enums.ParseMode.HTML,
-        )
-
-    plan, expires_at, price = (
-        doc.get("plan"),
-        doc.get("expires_at"),
-        doc.get("price", "40"),
-    )
-    now = datetime.utcnow()
-    rem = expires_at - now if expires_at and expires_at > now else None
-    left_str = (
-        f"{rem.days} Days"
-        if rem and rem.days > 0
-        else (
-            f"{rem.seconds // 3600} Hours {(rem.seconds % 3600) // 60} Minutes"
-            if rem
-            else "Expired"
-        )
-    )
-
-    await message.reply_text(
-        f"<b>🌟 Premium Membership Active ✅</b>\n\n"
-        f"{user_link(message.from_user.first_name, user_id)}\n"
-        f"<b>💰 Plan: {plan} | ₹{price}</b>\n"
-        f"<b>⌛ Expiry: {fmt_date(expires_at)}</b>\n"
-        f"<b>⏳ Remaining: {left_str}</b>",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔄 Renew Plan", callback_data="buy_premium_start")]
-        ]),
-        parse_mode=enums.ParseMode.HTML,
-    )
-
-
-@Client.on_message(filters.command("premium") & filters.private)
-@Client.on_callback_query(filters.regex("^buy_premium_start$"))
-async def premium_menu(client, update):
-    message = update.message if isinstance(update, CallbackQuery) else update
-    if isinstance(update, CallbackQuery):
-        await update.answer()
-
-
-    text = (
-        "<b>🌟 Choose Your Plan:-\n\n"
-        "🔹 ₹40   – 1 Month\n"
-        "🔸 ₹80   – 2 Months\n"
-        "🔹 ₹240  – 6 Months\n"
-        "🔸 ₹480  – 1 Year</b>"
-    )
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔗 Click Here To Pay", callback_data="click_here_to_pay")]
-    ])
-
-    if isinstance(update, CallbackQuery):
-        try:
-            await message.delete()
-        except Exception:
-            logger.exception("Premium workflow error")
-        await client.send_message(
-            message.chat.id,
-            text,
-            reply_markup=kb,
-            parse_mode=enums.ParseMode.HTML,
-        )
-    else:
-        await message.reply_text(
-            text,
-            reply_markup=kb,
-            parse_mode=enums.ParseMode.HTML,
-        )
-
-
-@Client.on_callback_query(filters.regex("^click_here_to_pay$"))
-async def click_here_to_pay_cb(client, callback: CallbackQuery):
-    await callback.answer()
-
-
-    try:
-        await callback.message.delete()
-    except Exception:
-        logger.exception("Premium workflow error")
-
-    qr_caption = (
-        f"<b>📸 Scan QR CODE or use UPI ID to Pay:\n\n"
-        f"UPI ID:</b> <code>{PREMIUM_UPI_ID}</code>"
-    )
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("✅ I Paid", callback_data="minimal_send_proof")]
-    ])
-
-    await client.send_photo(
-        chat_id=callback.message.chat.id,
-        photo=PREMIUM_QR,
-        caption=qr_caption,
-        reply_markup=kb,
-        parse_mode=enums.ParseMode.HTML,
-    )
-
-
-@Client.on_callback_query(filters.regex("^minimal_send_proof$"))
-async def send_proof_cb(client, callback: CallbackQuery):
-    try:
-        col_intent = get_db_collection("user_payment_intents")
-        if col_intent is not None:
-            await col_intent.update_one(
-                {"user_id": callback.from_user.id},
-                {
-                    "$set": {
-                        "action": "i_paid_clicked",
-                        "timestamp": datetime.utcnow(),
-                    }
-                },
-                upsert=True,
-            )
-    except Exception:
-        logger.exception("Premium workflow error")
-
-    await callback.answer()
-
-
-    try:
-        await callback.message.delete()
-    except Exception:
-        logger.exception("Premium workflow error")
-
-    await client.send_message(
-        callback.message.chat.id,
-        "<b>📸 Send Payment Proof!\n\nPlease upload your transaction screenshot to verify!</b>",
-        parse_mode=enums.ParseMode.HTML,
-    )
-
-
-async def update_user_payment_intent(client, user_id: int, action: str, file_id: str = None):
-    col_intent = get_db_collection("user_payment_intents")
-    if col_intent is not None:
-        old_doc = await col_intent.find_one({"user_id": user_id})
-
-        if old_doc and old_doc.get("admin_msg_ids"):
-            for admin_id, msg_id in old_doc["admin_msg_ids"].items():
-                try:
-                    await client.delete_messages(
-                        chat_id=int(admin_id),
-                        message_ids=int(msg_id),
-                    )
-                except Exception:
-                    logger.exception("Premium workflow error")
-
-        data = {
-            "user_id": user_id,
-            "action": action,
-            "file_id": file_id,
-            "timestamp": datetime.utcnow(),
-            "admin_msg_ids": {},
-        }
-        await col_intent.update_one(
-            {"user_id": user_id},
-            {"$set": data},
+        await aux_col("admin_approval_sessions").update_one(
+            {"admin_id": message.from_user.id},
+            {"$set": {"target_user_id": uid}},
             upsert=True,
         )
 
-
-@Client.on_message(filters.private & (filters.photo | filters.document) & ~filters.command(["start", "premium"]))
-async def screenshot_handler(client, message):
-    user_id = message.from_user.id
-    is_valid_intent = False
-
-    try:
-        col_intent = get_db_collection("user_payment_intents")
-        if col_intent is not None:
-            doc = await col_intent.find_one({"user_id": user_id})
-            timestamp = doc.get("timestamp") if doc else None
-            if (
-                doc
-                and doc.get("action") in {"i_paid_clicked", "screenshot_sent"}
-                and isinstance(timestamp, datetime)
-                and datetime.utcnow() - timestamp <= timedelta(days=1)
-            ):
-                is_valid_intent = True
-                if doc.get("admin_msg_ids"):
-                    for admin_id, msg_id in doc["admin_msg_ids"].items():
-                        try:
-                            await client.delete_messages(
-                                chat_id=int(admin_id),
-                                message_ids=int(msg_id),
-                            )
-                        except Exception:
-                            logger.exception("Premium workflow error")
-    except Exception:
-        logger.exception("Premium workflow error")
-
-    if not is_valid_intent:
-        return
-
-    await message.reply_text(
-        "<b>✅ Your screenshot has been submitted for verification, please wait!</b>",
-        parse_mode=enums.ParseMode.HTML,
-    )
-
-    kb = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("✅ Approve", callback_data=f"min_app_{user_id}"),
-            InlineKeyboardButton("❌ Reject", callback_data=f"min_rej_{user_id}"),
-        ]
-    ])
-    text = (
-        f"<b>🔔 New Payment Verification</b>\n\n"
-        f"{user_link(message.from_user.first_name, user_id)}"
-    )
-
-    fid = message.photo.file_id if message.photo else message.document.file_id
-    admin_msg_ids = {}
-
-    try:
-        log_id = int(PREMIUM_LOG) if PREMIUM_LOG else None
-        if not log_id:
-            raise ValueError("PREMIUM_LOG is not configured")
-
-        if message.photo:
-            sent_msg = await client.send_photo(
-                log_id,
-                fid,
-                caption=text,
-                reply_markup=kb,
-                parse_mode=enums.ParseMode.HTML,
-            )
-        else:
-            sent_msg = await client.send_document(
-                log_id,
-                fid,
-                caption=text,
-                reply_markup=kb,
-                parse_mode=enums.ParseMode.HTML,
-            )
-
-        if sent_msg:
-            admin_msg_ids[str(log_id)] = sent_msg.id
-
-    except Exception as e:
-        logger.exception(
-            "PREMIUM_LOG screenshot delivery failed; falling back to OWNER: %s",
-            e,
+        await message.reply_text(
+            f"<b>💎 Select Premium Plan</b>\n\n"
+            f"{await get_user_display(client, uid)}",
+            reply_markup=get_plan_keyboard(uid),
+            parse_mode=enums.ParseMode.HTML,
+        )
+    except Exception as exc:
+        await message.reply_text(
+            f"<b>❌ Error: {exc}</b>",
+            parse_mode=enums.ParseMode.HTML,
         )
 
-        try:
-            if message.photo:
-                sent_msg = await client.send_photo(
-                    int(OWNER),
-                    fid,
-                    caption=text,
-                    reply_markup=kb,
-                    parse_mode=enums.ParseMode.HTML,
-                )
-            else:
-                sent_msg = await client.send_document(
-                    int(OWNER),
-                    fid,
-                    caption=text,
-                    reply_markup=kb,
-                    parse_mode=enums.ParseMode.HTML,
-                )
 
-            if sent_msg:
-                admin_msg_ids[str(OWNER)] = sent_msg.id
-
-        except Exception:
-            logger.exception("OWNER fallback failed for payment screenshot")
-
-    try:
-        col_intent = get_db_collection("user_payment_intents")
-        if col_intent is not None:
-            await col_intent.update_one(
-                {"user_id": user_id},
-                {
-                    "$set": {
-                        "admin_msg_ids": admin_msg_ids,
-                        "action": "screenshot_sent",
-                        "timestamp": datetime.utcnow(),
-                    }
-                },
-                upsert=True,
-            )
-    except Exception:
-        logger.exception("Premium workflow error")
-
-
-@Client.on_callback_query(filters.regex("^min_app_"))
-async def admin_app_cb(client, callback: CallbackQuery):
-    if callback.from_user.id != OWNER:
+@Client.on_callback_query(filters.regex(r"^min_app_"))
+async def approve_button(client, callback):
+    if callback.from_user.id != int(OWNER):
         return await callback.answer("Unauthorized.", show_alert=True)
 
-    uid = int(callback.data.split("_")[2])
+    uid = int(callback.data.split("_")[-1])
 
-    try:
-        col_ses = get_db_collection("admin_approval_sessions")
-        if col_ses is not None:
-            await col_ses.update_one(
-                {"admin_id": callback.from_user.id},
-                {"$set": {"target_user_id": uid}},
-                upsert=True,
-            )
-    except Exception:
-        logger.exception("Premium workflow error")
+    await aux_col("admin_approval_sessions").update_one(
+        {"admin_id": callback.from_user.id},
+        {"$set": {"target_user_id": uid}},
+        upsert=True,
+    )
 
-    kb = get_plan_keyboard(uid)
     await callback.answer()
-    text = "<b>💎 Select Plan Package</b>"
-    await safe_edit_message(callback.message, text, reply_markup=kb)
+    await safe_edit_message(
+        callback.message,
+        "<b>💎 Select Premium Plan</b>",
+        get_plan_keyboard(uid),
+    )
 
 
-@Client.on_callback_query(filters.regex("^selplan_"))
-async def select_plan_cb(client, callback: CallbackQuery):
-    if callback.from_user.id != OWNER:
+@Client.on_callback_query(filters.regex(r"^selplan_"))
+async def select_plan(client, callback):
+    if callback.from_user.id != int(OWNER):
         return await callback.answer("Unauthorized.", show_alert=True)
 
-    _, uid_str, duration_str, price = callback.data.split("_")
-    uid = int(uid_str)
-
+    _, uid_text, duration, price = callback.data.split("_")
+    uid = int(uid_text)
+    delta, plan = parse_plan_duration(duration)
     now = datetime.utcnow()
-    delta, plan_name = parse_plan_duration(duration_str)
+    existing = await premium_col().find_one({"user_id": uid, "active": True})
 
-    col = get_col()
-    existing = await col.find_one({"user_id": uid, "active": True}) if col else None
     start = (
         existing.get("expires_at")
         if existing
@@ -816,44 +422,35 @@ async def select_plan_cb(client, callback: CallbackQuery):
     )
     exp = start + delta
 
-    u_link = await get_user_display(client, uid)
-
-    kb = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("✅ Confirm", callback_data=f"confact_{uid}_{duration_str}_{price}"),
-            InlineKeyboardButton("⏪ Back", callback_data=f"min_app_{uid}"),
-        ],
-        [InlineKeyboardButton("❌ Cancel", callback_data=f"min_rej_{uid}")],
-    ])
-    text = (
+    await callback.answer()
+    await safe_edit_message(
+        callback.message,
         f"<b>💎 Preview Panel</b>\n\n"
-        f"{u_link}\n"
-        f"<b>✨ Plan: {plan_name} | ₹{price}</b>\n"
-        f"<b>📆 Expiry: {fmt_date(exp)}</b>"
+        f"{await get_user_display(client, uid)}\n"
+        f"<b>✨ Plan:</b> {plan} | ₹{price}\n"
+        f"<b>📆 Expiry:</b> {fmt_date(exp)}",
+        InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("✅ Confirm", callback_data=f"confact_{uid}_{duration}_{price}"),
+                InlineKeyboardButton("◀ Back", callback_data=f"min_app_{uid}"),
+            ],
+            [InlineKeyboardButton("❌ Cancel", callback_data=f"min_rej_{uid}")],
+        ]),
     )
 
-    await callback.answer()
-    await safe_edit_message(callback.message, text, reply_markup=kb)
 
-
-@Client.on_callback_query(filters.regex("^confact_"))
-async def conf_act_cb(client, callback: CallbackQuery):
-    if callback.from_user.id != OWNER:
+@Client.on_callback_query(filters.regex(r"^confact_"))
+async def confirm_activation(client, callback):
+    if callback.from_user.id != int(OWNER):
         return await callback.answer("Unauthorized.", show_alert=True)
 
-    _, uid_str, duration_str, price = callback.data.split("_")
-    uid = int(uid_str)
-
+    _, uid_text, duration, price = callback.data.split("_")
+    uid = int(uid_text)
+    delta, plan = parse_plan_duration(duration)
     now = datetime.utcnow()
-    delta, plan = parse_plan_duration(duration_str)
+    col = premium_col()
+    existing = await col.find_one({"user_id": uid, "active": True})
 
-    name = await fetch_user_name(client, uid)
-    u_link = user_link(name, uid)
-    await callback.answer("Activating...")
-
-    col = get_col()
-    existing = await col.find_one({"user_id": uid, "active": True}) if col else None
-    is_renewal = existing is not None
     start = (
         existing.get("expires_at")
         if existing
@@ -863,21 +460,15 @@ async def conf_act_cb(client, callback: CallbackQuery):
     )
     exp = start + delta
 
-    group_access_ok = True
     if PREMIUM_GROUP_ID:
         try:
             cid = int(PREMIUM_GROUP_ID)
             await client.unban_chat_member(cid, uid)
-            await client.approve_chat_join_request(chat_id=cid, user_id=uid)
+            await client.approve_chat_join_request(cid, uid)
         except Exception:
-            group_access_ok = False
-            logger.exception("Failed to grant premium group access to %s", uid)
-            await safe_premium_log(
-                client,
-                f"<b>⚠️ Premium Group Access Failed</b>\n\n{u_link}\n"
-                f"<b>❓ User was activated but group access failed.</b>",
-            )
+            pass
 
+    name = await fetch_user_name(client, uid)
     data = {
         "user_id": uid,
         "username": name,
@@ -888,189 +479,287 @@ async def conf_act_cb(client, callback: CallbackQuery):
         "active": True,
         "reminders": {"1_day": False},
     }
-    if col:
-        await col.update_one({"user_id": uid}, {"$set": data}, upsert=True)
 
-    try:
-        col_intent = get_db_collection("user_payment_intents")
-        col_ses = get_db_collection("admin_approval_sessions")
-        if col_intent is not None:
-            await col_intent.delete_many({"user_id": uid})
-        if col_ses is not None:
-            await col_ses.delete_many({"admin_id": callback.from_user.id})
-    except Exception:
-        logger.exception("Premium workflow error")
-
-    link = PREMIUM_PERMANENT_LINK or "https://t.me/your_group_link"
-    title_msg = (
-        "<b>🌟 Premium Membership Renewed ✅</b>"
-        if is_renewal
-        else "<b>🌟 Premium Membership Active ✅</b>"
+    await col.update_one(
+        {"user_id": uid},
+        {"$set": data},
+        upsert=True,
     )
+
+    await aux_col("admin_approval_sessions").delete_one(
+        {"admin_id": callback.from_user.id}
+    )
+    await aux_col("user_payment_intents").delete_one(
+        {"user_id": uid}
+    )
+
+    markup = (
+        InlineKeyboardMarkup([
+            [InlineKeyboardButton("✨ Premium Group", url=PREMIUM_PERMANENT_LINK)]
+        ])
+        if PREMIUM_PERMANENT_LINK
+        else None
+    )
+
     try:
         await client.send_message(
             uid,
-            f"{title_msg}\n\n"
-            f"<b>💰 Plan: {plan} | ₹{price}</b>\n"
-            f"<b>⌛ Expiry: {fmt_date(exp)}</b>\n\n"
-            f"<b>✨ Join Premium Group:</b>",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🧤 Click Here To Join", url=link)]
-            ]),
+            f"<b>{'🌟 Premium Membership Renewed ✅' if existing else '🌟 Premium Membership Active ✅'}</b>\n\n"
+            f"<b>💰 Plan:</b> {plan} | ₹{price}\n"
+            f"<b>⌛ Expiry:</b> {fmt_date(exp)}",
+            reply_markup=markup,
             parse_mode=enums.ParseMode.HTML,
         )
     except Exception:
-        logger.exception("Premium workflow error")
+        pass
 
-    log_title = (
-        "<b>🌟 Premium Renewed ✅</b>"
-        if is_renewal
-        else "<b>🌟 Premium Activated ✅</b>"
-    )
-    await safe_premium_log(
+    await notify_owner(
         client,
-        f"{log_title}\n\n{u_link}\n"
-        f"<b>• 💰 Plan: {plan} | ₹{price}</b>\n"
-        f"<b>• ⌛ Expiry: {fmt_date(exp)}</b>",
+        f"<b>{'🌟 Premium Renewed ✅' if existing else '🌟 Premium Activated ✅'}</b>\n\n"
+        f"{user_link(name, uid)}\n"
+        f"<b>• Plan:</b> {plan} | ₹{price}\n"
+        f"<b>• Expiry:</b> {fmt_date(exp)}",
     )
 
-    success_text = (
-        f"<b>✅ Activated Successfully</b>\n{u_link}"
-        if group_access_ok
-        else f"<b>⚠️ Premium Activated, But Group Access Failed</b>\n{u_link}"
-    )
-    await safe_edit_message(callback.message, success_text, reply_markup=None)
-
-
-@Client.on_chat_join_request()
-async def auto_accept(client, req: ChatJoinRequest):
-    if PREMIUM_GROUP_ID and req.chat.id == int(PREMIUM_GROUP_ID):
-        col = get_col()
-        if col and await col.find_one({"user_id": req.from_user.id, "active": True}):
-            try:
-                await client.approve_chat_join_request(req.chat.id, req.from_user.id)
-            except Exception:
-                logger.exception("Premium workflow error")
-
-
-@Client.on_chat_member_updated()
-async def member_update(client, update: ChatMemberUpdated):
-    if not PREMIUM_GROUP_ID:
-        return
-    try:
-        if update.chat.id != int(PREMIUM_GROUP_ID):
-            return
-    except ValueError:
-        return
-
-    old = (
-        update.old_chat_member.status
-        if update.old_chat_member
-        else enums.ChatMemberStatus.LEFT
-    )
-    new = (
-        update.new_chat_member.status
-        if update.new_chat_member
-        else enums.ChatMemberStatus.LEFT
+    await callback.answer("Activated")
+    await safe_edit_message(
+        callback.message,
+        f"<b>✅ Activated Successfully</b>\n{user_link(name, uid)}",
     )
 
-    if old in [enums.ChatMemberStatus.LEFT, enums.ChatMemberStatus.BANNED] and new in [
-        enums.ChatMemberStatus.MEMBER,
-        enums.ChatMemberStatus.ADMINISTRATOR,
-        enums.ChatMemberStatus.OWNER,
-    ]:
-        user = update.new_chat_member.user
-        if not user or user.is_bot:
-            return
-        col = get_col()
-        if col:
-            doc = await col.find_one({"user_id": user.id, "active": True})
-            if not doc:
-                return
-            link = PREMIUM_PERMANENT_LINK or "https://t.me/your_group_link"
-            text = (
-                f"<b>🌟 Premium Activated ✅</b>\n\n"
-                f"{user_link(user.first_name, user.id)}\n"
-                f"<b>💰 Plan: {doc.get('plan')} | ₹{doc.get('price')}</b>\n"
-                f"<b>⌛ Expiry: {fmt_date(doc.get('expires_at'))}</b>"
-            )
-            kb = InlineKeyboardMarkup([
-                [InlineKeyboardButton("✨ Premium Group", url=link)]
-            ])
-            try:
-                await client.send_message(
-                    user.id,
-                    text,
-                    reply_markup=kb,
-                    parse_mode=enums.ParseMode.HTML,
-                )
-            except Exception:
-                logger.exception("Premium workflow error")
 
-
-@Client.on_callback_query(filters.regex("^min_rej_"))
-async def admin_reject_cb(client, callback: CallbackQuery):
-    if callback.from_user.id != OWNER:
+@Client.on_callback_query(filters.regex(r"^min_rej_"))
+async def reject_payment(client, callback):
+    if callback.from_user.id != int(OWNER):
         return await callback.answer("Unauthorized.", show_alert=True)
 
     uid = int(callback.data.split("_")[-1])
-    try:
-        col_intent = get_db_collection("user_payment_intents")
-        col_ses = get_db_collection("admin_approval_sessions")
-        if col_intent is not None:
-            await col_intent.delete_many({"user_id": uid})
-        if col_ses is not None:
-            await col_ses.delete_many({"admin_id": callback.from_user.id})
-    except Exception:
-        logger.exception("Premium workflow error")
-
+    await aux_col("user_payment_intents").delete_one({"user_id": uid})
+    await aux_col("admin_approval_sessions").delete_one({"admin_id": callback.from_user.id})
     await callback.answer("Rejected.")
-
-    try:
-        await safe_premium_log(
-            client,
-            f"<b>❌ Premium Payment Rejected</b>\n\n"
-            f"{await get_user_display(client, uid)}",
-        )
-    except Exception:
-        logger.exception("Failed to log premium rejection")
 
     try:
         await client.send_message(
             uid,
-            "<b>⚠️ Payment Verification Failed.\n\nPlease Pay and Send a Valid Screenshot.</b>",
+            "<b>⚠️ Payment Verification Failed.</b>\n\n"
+            "Please pay again and send a valid screenshot.",
             parse_mode=enums.ParseMode.HTML,
         )
     except Exception:
-        logger.exception("Premium workflow error")
+        pass
 
     await safe_edit_message(
         callback.message,
         "<b>❌ Status: REJECTED</b>",
-        reply_markup=None,
     )
 
 
-async def ensure_payment_intent_ttl():
-    col = get_db_collection("user_payment_intents")
-    if col is None:
-        logger.error("Cannot create payment-intent TTL index: collection unavailable")
-        return
-    try:
-        await col.create_index(
-            "timestamp",
-            expireAfterSeconds=86400,
-            name="payment_intent_ttl",
+@Client.on_message(filters.command("revoke") & filters.user(OWNER))
+async def revoke_premium(client, message):
+    if len(message.command) < 2:
+        return await message.reply_text(
+            "<b>⚠️ Usage: /revoke [user_id]</b>",
+            parse_mode=enums.ParseMode.HTML,
         )
-        logger.info("Payment intent TTL index ready (24 hours)")
+
+    uid = int(message.command[1])
+
+    if PREMIUM_GROUP_ID and not await safe_kick(client, uid):
+        return await message.reply_text(
+            "<b>❌ Revocation halted because group removal failed.</b>",
+            parse_mode=enums.ParseMode.HTML,
+        )
+
+    await premium_col().delete_one({"user_id": uid})
+
+    try:
+        await client.send_message(
+            uid,
+            "<b>❌ Your Premium Membership has been revoked by administration.</b>",
+            parse_mode=enums.ParseMode.HTML,
+        )
     except Exception:
-        logger.exception("Failed to create payment-intent TTL index")
+        pass
+
+    await message.reply_text(
+        f"<b>✅ Premium revoked</b>\n{await get_user_display(client, uid)}",
+        parse_mode=enums.ParseMode.HTML,
+    )
+
+
+@Client.on_message(filters.command("premiums") & filters.user(OWNER))
+async def premiums_list(client, message):
+    lines = ["<b>💎 Active Premium Members</b>", ""]
+    count = 0
+
+    async for doc in premium_col().find({"active": True}):
+        count += 1
+        uid = doc.get("user_id")
+        lines.extend([
+            f"<b>{count}.</b> {user_link(doc.get('username', 'User'), uid)}",
+            f"<b>• Plan:</b> {doc.get('plan', 'N/A')}",
+            f"<b>• Expires:</b> {fmt_date(doc.get('expires_at'))}",
+            "",
+        ])
+
+    if not count:
+        lines = ["<b>❌ No active premium users found.</b>"]
+
+    text = "\n".join(lines)
+
+    if len(text) > 4096:
+        with open("premium_users.txt", "w", encoding="utf-8") as f:
+            f.write(text)
+        try:
+            await message.reply_document("premium_users.txt")
+        finally:
+            try:
+                os.remove("premium_users.txt")
+            except OSError:
+                pass
+    else:
+        await message.reply_text(text, parse_mode=enums.ParseMode.HTML)
+
+
+@Client.on_message(filters.command("myplan") & filters.private)
+async def my_plan(client, message):
+    uid = message.from_user.id
+    doc = await premium_col().find_one({"user_id": uid, "active": True})
+
+    if not doc or not await is_premium_user(client, uid):
+        return await message.reply_text(
+            "<b>❌ No active Premium subscription.</b>",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("💎 Buy Premium", callback_data="buy_premium_start")]
+            ]),
+            parse_mode=enums.ParseMode.HTML,
+        )
+
+    exp = doc.get("expires_at")
+    rem = exp - datetime.utcnow() if isinstance(exp, datetime) else None
+    remaining = (
+        f"{rem.days} Days"
+        if rem and rem.days > 0
+        else (f"{rem.seconds // 3600} Hours" if rem else "Expired")
+    )
+
+    await message.reply_text(
+        f"<b>🌟 Premium Membership Active ✅</b>\n\n"
+        f"{user_link(message.from_user.first_name, uid)}\n"
+        f"<b>💰 Plan:</b> {doc.get('plan')} | ₹{doc.get('price')}\n"
+        f"<b>⌛ Expiry:</b> {fmt_date(exp)}\n"
+        f"<b>⏳ Remaining:</b> {remaining}",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔄 Renew Now", callback_data="buy_premium_start")]
+        ]),
+        parse_mode=enums.ParseMode.HTML,
+    )
+
+
+@Client.on_chat_join_request()
+async def premium_join_request(client, request: ChatJoinRequest):
+    if not PREMIUM_GROUP_ID:
+        return
+
+    try:
+        if request.chat.id != int(PREMIUM_GROUP_ID):
+            return
+    except (TypeError, ValueError):
+        return
+
+    if await is_premium_user(client, request.from_user.id):
+        try:
+            await client.approve_chat_join_request(
+                request.chat.id,
+                request.from_user.id,
+            )
+        except Exception:
+            logger.exception("Failed approving premium join request")
+
+
+@Client.on_chat_member_updated()
+async def premium_member_update(client, update: ChatMemberUpdated):
+    if not PREMIUM_GROUP_ID:
+        return
+
+    try:
+        if update.chat.id != int(PREMIUM_GROUP_ID):
+            return
+    except (TypeError, ValueError):
+        return
+
+    new_member = update.new_chat_member.user if update.new_chat_member else None
+    if not new_member or new_member.is_bot:
+        return
+
+    if await is_premium_user(client, new_member.id):
+        return
+
+    if update.new_chat_member.status in {
+        enums.ChatMemberStatus.MEMBER,
+        enums.ChatMemberStatus.ADMINISTRATOR,
+        enums.ChatMemberStatus.OWNER,
+    }:
+        await safe_kick(client, new_member.id)
+
+
+async def premium_expiry_loop(client):
+    await asyncio.sleep(10)
+
+    while True:
+        try:
+            now = datetime.utcnow()
+            col = premium_col()
+
+            async for doc in col.find({"active": True}):
+                uid = doc.get("user_id")
+                exp = doc.get("expires_at")
+
+                if not uid or not isinstance(exp, datetime):
+                    continue
+
+                if now >= exp:
+                    if PREMIUM_GROUP_ID and not await safe_kick(client, uid):
+                        continue
+
+                    await col.delete_one({"user_id": uid})
+
+                    try:
+                        await client.send_message(
+                            uid,
+                            "<b>⚠️ Premium Membership Expired.</b>\n\n"
+                            "Renew your plan to restore access.",
+                            parse_mode=enums.ParseMode.HTML,
+                        )
+                    except Exception:
+                        pass
+
+                elif (
+                    not doc.get("reminders", {}).get("1_day")
+                    and timedelta(0) < (exp - now) <= timedelta(days=1)
+                ):
+                    try:
+                        await client.send_message(
+                            uid,
+                            "<b>⚠️ Your Premium Membership expires in 1 day.</b>\n\n"
+                            "Renew now to keep access.",
+                            reply_markup=InlineKeyboardMarkup([
+                                [InlineKeyboardButton("🔄 Renew Now", callback_data="buy_premium_start")]
+                            ]),
+                            parse_mode=enums.ParseMode.HTML,
+                        )
+                        await col.update_one(
+                            {"user_id": uid},
+                            {"$set": {"reminders.1_day": True}},
+                        )
+                    except Exception:
+                        pass
+
+        except Exception:
+            logger.exception("Premium expiry loop error")
+
+        await asyncio.sleep(3600)
 
 
 async def start_premium_tasks(client):
-    await ensure_payment_intent_ttl()
-    asyncio.create_task(premium_expiry_reminder_loop(client))
-
-
-# ================= AUTOFILTER FILE DELIVERY =================
-
+    asyncio.create_task(premium_expiry_loop(client))
