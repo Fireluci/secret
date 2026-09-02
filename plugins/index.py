@@ -7,7 +7,7 @@ from pyrogram.errors.exceptions.bad_request_400 import ChannelInvalid, ChatAdmin
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database.ia_filterdb import save_file, db
 from utils import temp, connected_group
-from info *
+from info import *
 from database.ia_filterdb import Media, normalize_for_search, unpack_new_file_id
 
 media_filter = filters.document | filters.video
