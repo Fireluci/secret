@@ -133,31 +133,29 @@ async def safe_premium_log(client, text):
     return await notify_owner(client, text)
 
 async def safe_premium_proof(client, message, caption, keyboard):
-    # 1. Extract raw file ID (stripping forward privacy headers)
-    is_doc = bool(message.document)
-    fid = message.document.file_id if is_doc else message.photo.file_id
-
-    # 2. Attempt delivery to PREMIUM_LOG
-    if PREMIUM_LOG_ID and await resolve_log_peer(client):
+    async def _send(chat_id):
         try:
-            if is_doc:
-                sent = await client.send_document(PREMIUM_LOG_ID, fid, caption=caption, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
-            else:
-                sent = await client.send_photo(PREMIUM_LOG_ID, fid, caption=caption, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
-            return {str(PREMIUM_LOG_ID): sent.id}
+            return await message.copy(
+                chat_id,
+                caption=caption,
+                reply_markup=keyboard,
+                parse_mode=enums.ParseMode.HTML,
+            )
         except Exception:
-            logger.exception("PREMIUM_LOG screenshot delivery failed")
+            logger.exception("Screenshot delivery failed to %s", chat_id)
+            return None
 
-    # 3. Fallback to OWNER_ID
-    try:
-        if is_doc:
-            sent = await client.send_document(OWNER_ID, fid, caption=caption, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
-        else:
-            sent = await client.send_photo(OWNER_ID, fid, caption=caption, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
+    if PREMIUM_LOG_ID and await resolve_log_peer(client):
+        sent = await _send(PREMIUM_LOG_ID)
+        if sent:
+            return {str(PREMIUM_LOG_ID): sent.id}
+
+    sent = await _send(OWNER_ID)
+    if sent:
         return {str(OWNER_ID): sent.id}
-    except Exception:
-        logger.exception("OWNER screenshot fallback failed")
-        return {}
+
+    logger.error("Screenshot delivery failed to PREMIUM_LOG and OWNER")
+    return {}
 
 async def safe_kick(client, user_id):
     if not PREMIUM_GROUP_ID:
