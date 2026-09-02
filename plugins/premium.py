@@ -229,7 +229,7 @@ async def click_here_to_pay_cb(client, callback):
         await client.send_photo(
             callback.message.chat.id,
             photo="https://ibb.co/KHqPKqg",
-            caption="<b>📸 Scan QR CODE or use UPI ID to Pay:\n\nUPI ID:</b> <code>karthik.slice@ibl</code>",
+            caption = "<b>📸 Scan QR CODE or use UPI ID to Pay:\n\n💳 UPI ID:</b> <code>karthik.slice@ibl</code>\n\n<b><u>🌟 Choose Your Plan:-</u>\n🔹 ₹40   – 1 Month\n🔸 ₹80   – 2 Months\n🔹 ₹240 – 6 Months\n🔸 ₹480 – 1 Year</b>",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ I Paid", callback_data="minimal_send_proof")]]),
             parse_mode=enums.ParseMode.HTML,
         )
