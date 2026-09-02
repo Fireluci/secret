@@ -110,15 +110,21 @@ async def index_files(bot, query):
     asyncio.create_task(index_files_to_db(int(lst_msg_id), chat, msg, bot))
 
 @Client.on_message(
-    (filters.forwarded | (filters.regex(
+    (filters.forwarded | filters.regex(
         r"(https://)?(t\.me/|telegram\.me/|telegram\.dog/)(c/)?(\d+|[a-zA-Z_0-9]+)/(\d+)$"
-    )) & filters.text) & filters.private & filters.incoming
+    )) & filters.private & filters.incoming
 )
 async def send_for_index(bot, message):
     if message.from_user.id not in OWNER:
         return
 
-    if message.text:
+    # 1. Prioritize checking if it's a forwarded message from a channel
+    if message.forward_from_chat and message.forward_from_chat.type == enums.ChatType.CHANNEL:
+        last_msg_id = message.forward_from_message_id
+        chat_id = message.forward_from_chat.username or message.forward_from_chat.id
+        
+    # 2. Fallback to checking if it's a direct text message containing a link
+    elif message.text:
         regex = re.compile(
             r"(https://)?(t\.me/|telegram\.me/|telegram\.dog/)(c/)?(\d+|[a-zA-Z_0-9]+)/(\d+)$"
         )
@@ -129,9 +135,7 @@ async def send_for_index(bot, message):
         last_msg_id = int(match.group(5))
         if chat_id.isnumeric():
             chat_id = int("-100" + chat_id)
-    elif message.forward_from_chat and message.forward_from_chat.type == enums.ChatType.CHANNEL:
-        last_msg_id = message.forward_from_message_id
-        chat_id = message.forward_from_chat.username or message.forward_from_chat.id
+            
     else:
         return
 
@@ -158,6 +162,7 @@ async def send_for_index(bot, message):
         return await message.reply(
             'This may be a group and I am not an admin of the group.'
         )
+        
     buttons = [[
         InlineKeyboardButton(
             '✅ Accept',
