@@ -115,7 +115,12 @@ async def index_files(bot, query):
         pass
     asyncio.create_task(index_files_to_db(int(lst_msg_id), chat, msg, bot))
 
-@Client.on_message(filters.private & filters.incoming & (filters.forwarded | filters.text))
+@Client.on_message(
+    filters.private & filters.incoming & (
+        filters.forwarded | 
+        filters.regex(r"(https://)?(t\.me/|telegram\.me/|telegram\.dog/)(c/)?(\d+|[a-zA-Z_0-9]+)/(\d+)$")
+    )
+)
 async def send_for_index(bot, message):
     # FIXED: Safe OWNER check to prevent silent drops
     owner_ids = OWNER if isinstance(OWNER, list) else [OWNER]
