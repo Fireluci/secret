@@ -63,8 +63,11 @@ async def clear_index_state():
 
 @Client.on_callback_query(filters.regex(r'^index'))
 async def index_files(bot, query):
-    if not query.from_user or query.from_user.id not in OWNER:
+    # FIXED: Safe OWNER check to prevent TypeError
+    owner_ids = OWNER if isinstance(OWNER, list) else [OWNER]
+    if not query.from_user or query.from_user.id not in owner_ids:
         return await query.answer("Unauthorized!", show_alert=True)
+        
     if query.data.startswith('index_cancel'):
         temp.CANCEL = True
         await clear_index_state()
@@ -88,11 +91,14 @@ async def index_files(bot, query):
         _, raju, chat, lst_msg_id = query.data.split("#")
     except (ValueError, AttributeError):
         return await query.answer("Invalid index request.", show_alert=True)
+        
     if raju == 'reject':
         await query.message.delete()
         return
+        
     if lock.locked():
         return await query.answer('Wait Until Previous Index is Finished', show_alert=True)
+        
     msg = query.message
     await query.answer('Processing...⏳', show_alert=True)
     temp.CANCEL = False
@@ -109,65 +115,60 @@ async def index_files(bot, query):
         pass
     asyncio.create_task(index_files_to_db(int(lst_msg_id), chat, msg, bot))
 
-@Client.on_message(
-    (filters.forwarded | filters.regex(
-        r"(https://)?(t\.me/|telegram\.me/|telegram\.dog/)(c/)?(\d+|[a-zA-Z_0-9]+)/(\d+)$"
-    )) & filters.private & filters.incoming
-)
+@Client.on_message(filters.private & filters.incoming & (filters.forwarded | filters.text))
 async def send_for_index(bot, message):
-    if message.from_user.id not in OWNER:
+    # FIXED: Safe OWNER check to prevent silent drops
+    owner_ids = OWNER if isinstance(OWNER, list) else [OWNER]
+    if message.from_user.id not in owner_ids:
         return
 
-    # 1. Prioritize checking if it's a forwarded message from a channel
-    if message.forward_from_chat and message.forward_from_chat.type == enums.ChatType.CHANNEL:
-        last_msg_id = message.forward_from_message_id
-        chat_id = message.forward_from_chat.username or message.forward_from_chat.id
-        
-    # 2. Fallback to checking if it's a direct text message containing a link
+    chat_id = None
+    last_msg_id = None
+
+    # FIXED: Prioritize checking for forwarded files to bypass text-link regex
+    if message.forward_from_chat:
+        if message.forward_from_chat.type in [enums.ChatType.CHANNEL, enums.ChatType.SUPERGROUP]:
+            last_msg_id = message.forward_from_message_id
+            chat_id = message.forward_from_chat.username or message.forward_from_chat.id
+        else:
+            return await message.reply('⚠️ Please forward a message from a Channel or Supergroup.')
+            
+    # Fallback: Check if user pasted a direct message link
     elif message.text:
         regex = re.compile(
             r"(https://)?(t\.me/|telegram\.me/|telegram\.dog/)(c/)?(\d+|[a-zA-Z_0-9]+)/(\d+)$"
         )
-        match = regex.match(message.text)
+        match = regex.search(message.text)
         if not match:
-            return await message.reply('Invalid link')
+            return # Ignore random text that isn't a link
+            
         chat_id = match.group(4)
         last_msg_id = int(match.group(5))
         if chat_id.isnumeric():
             chat_id = int("-100" + chat_id)
-            
     else:
         return
 
     try:
         await bot.get_chat(chat_id)
     except ChannelInvalid:
-        return await message.reply(
-            '📮This Channel Is Private, Make Me Admin In The Channel To Index The Files'
-        )
+        return await message.reply('📮 This Channel is private. Make me an Admin in the channel to index files.')
     except (UsernameInvalid, UsernameNotModified):
-        return await message.reply('Invalid Link specified.')
+        return await message.reply('❌ Invalid Link specified.')
     except Exception as e:
         logger.exception(e)
-        return await message.reply(f'Errors - {e}')
+        return await message.reply(f'⚠️ Error: {e}')
 
     try:
         k = await bot.get_messages(chat_id, last_msg_id)
-    except:
-        return await message.reply(
-            'Make Sure That I am An Admin In The Channel, if channel is private'
-        )
+    except Exception:
+        return await message.reply('⚠️ Make sure that I am an Admin in the channel (if it is private).')
 
     if k.empty:
-        return await message.reply(
-            'This may be a group and I am not an admin of the group.'
-        )
+        return await message.reply('⚠️ I cannot read this group. Ensure I have proper admin rights.')
         
     buttons = [[
-        InlineKeyboardButton(
-            '✅ Accept',
-            callback_data=f'index#accept#{chat_id}#{last_msg_id}'
-        ),
+        InlineKeyboardButton('✅ Accept', callback_data=f'index#accept#{chat_id}#{last_msg_id}'),
         InlineKeyboardButton('❌ Reject', callback_data='close_data')
     ]]
 
@@ -199,7 +200,6 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, resume_current=None, res
     temp.DUP = duplicate
     temp.DEL = deleted
     
-    # Ensure it respects what was set via /setskip if no explicit resume value is passed
     if resume_current is not None:
         temp.CURRENT = resume_current
     elif not hasattr(temp, 'CURRENT'):
@@ -325,7 +325,9 @@ async def check_pending_index_on_startup(client):
             logger.exception("Could not verify pending indexing chat %s; leaving state intact", chat_id)
             return
 
-        for admin_id in OWNER:
+        # FIXED: Safe OWNER check for loop processing
+        owner_ids = OWNER if isinstance(OWNER, list) else [OWNER]
+        for admin_id in owner_ids:
             try:
                 msg = await client.send_message(
                     admin_id, 
