@@ -410,23 +410,30 @@ async def get_shortlink(chat_id, link, client=None):
         shortzy = Shortzy(api_key=api_key, base_site=base_site)
         return await shortzy.convert(link)
 
+    async def notify_admin(error_msg, shortener_name):
+        if client and LOG_CHANNEL:
+            try:
+                await client.send_message(
+                    LOG_CHANNEL,
+                    f"⚠️ **Shortener Warning**\n"
+                    f"Provider: `{shortener_name}`\n"
+                    f"Error: `{error_msg}`\n"
+                    f"Chat ID: `{chat_id}`"
+                )
+            except Exception as notify_error:
+                logger.error("Failed to send admin notification: %s", notify_error)
+
     try:
         return await _request_shorten(primary_site, primary_api)
     except Exception as first_error:
         logger.warning("Primary shortener failed: %s", first_error)
+        await notify_admin(str(first_error), primary_site)
 
     try:
         return await _request_shorten(secondary_site, secondary_api)
     except Exception as second_error:
         logger.error("Secondary shortener failed: %s", second_error)
-        if client and LOG_CHANNEL:
-            try:
-                await client.send_message(
-                    LOG_CHANNEL,
-                    f"⚠️ Shortener failure\nChat: `{chat_id}`\nError: `{second_error}`",
-                )
-            except Exception:
-                pass
+        await notify_admin(str(second_error), secondary_site)
         raise RuntimeError("All shorteners are down.") from second_error
 
 
