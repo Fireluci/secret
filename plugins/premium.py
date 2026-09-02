@@ -133,30 +133,34 @@ async def safe_premium_log(client, text):
     return await notify_owner(client, text)
 
 async def safe_premium_proof(client, message, caption, keyboard):
-    if PREMIUM_LOG_ID is not None:
+    # Extract raw file ID to strip forward headers and avoid copy() restrictions
+    file_id = None
+    is_doc = False
+    
+    if message.photo:
+        file_id = message.photo.file_id
+    elif message.document:
+        file_id = message.document.file_id
+        is_doc = True
+        
+    if not file_id:
+        return {} # Fallback safety if no media is found
+        
+    if PREMIUM_LOG_ID and await resolve_log_peer(client):
         try:
-            await client.get_chat(PREMIUM_LOG_ID)
-        except Exception:
-            pass
-            
-        try:
-            sent = await message.copy(
-                PREMIUM_LOG_ID,
-                caption=caption,
-                reply_markup=keyboard,
-                parse_mode=enums.ParseMode.HTML,
-            )
+            if is_doc:
+                sent = await client.send_document(PREMIUM_LOG_ID, file_id, caption=caption, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
+            else:
+                sent = await client.send_photo(PREMIUM_LOG_ID, file_id, caption=caption, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
             return {str(PREMIUM_LOG_ID): sent.id}
         except Exception:
-            logger.exception("PREMIUM_LOG screenshot copy failed to %s", PREMIUM_LOG_ID)
+            logger.exception("PREMIUM_LOG screenshot delivery failed to %s", PREMIUM_LOG_ID)
 
     try:
-        sent = await message.copy(
-            OWNER_ID,
-            caption=caption,
-            reply_markup=keyboard,
-            parse_mode=enums.ParseMode.HTML,
-        )
+        if is_doc:
+            sent = await client.send_document(OWNER_ID, file_id, caption=caption, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
+        else:
+            sent = await client.send_photo(OWNER_ID, file_id, caption=caption, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
         return {str(OWNER_ID): sent.id}
     except Exception:
         logger.exception("OWNER screenshot fallback failed")
@@ -389,6 +393,16 @@ async def confirm_activation(client, callback):
         existing = await col.find_one({"user_id": uid, "active": True})
         start = existing.get("expires_at") if existing and isinstance(existing.get("expires_at"), datetime) and existing.get("expires_at") > now else now
         exp = start + delta
+        name = await fetch_user_name(client, uid)
+
+        # 1. Update Database FIRST to prevent group-join race conditions
+        await col.update_one({"user_id": uid}, {"$set": {
+            "user_id": uid, "username": name, "plan": plan, "price": price,
+            "purchased_at": now, "expires_at": exp, "active": True,
+            "reminders": {"1_day": False}
+        }}, upsert=True)
+
+        # 2. Unban and approve join request
         if PREMIUM_GROUP_ID:
             try:
                 cid = int(PREMIUM_GROUP_ID)
@@ -396,19 +410,16 @@ async def confirm_activation(client, callback):
                 await client.approve_chat_join_request(cid, uid)
             except Exception:
                 logger.exception("Premium group activation failed for user %s", uid)
-        name = await fetch_user_name(client, uid)
-        await col.update_one({"user_id": uid}, {"$set": {
-            "user_id": uid, "username": name, "plan": plan, "price": price,
-            "purchased_at": now, "expires_at": exp, "active": True,
-            "reminders": {"1_day": False}
-        }}, upsert=True)
+        
         await aux_col("admin_approval_sessions").delete_one({"admin_id": OWNER_ID})
         await aux_col("user_payment_intents").delete_one({"user_id": uid})
+        
         markup = InlineKeyboardMarkup([[InlineKeyboardButton("✨ Premium Group", url=PREMIUM_PERMANENT_LINK)]]) if PREMIUM_PERMANENT_LINK else None
         try:
             await client.send_message(uid, f"<b>{'🌟 Premium Membership Renewed ✅' if existing else '🌟 Premium Membership Active ✅'}</b>\n\n<b>💰 Plan:</b> {plan} | ₹{price}\n<b>⌛ Expiry:</b> {fmt_date(exp)}", reply_markup=markup, parse_mode=enums.ParseMode.HTML)
         except Exception:
             logger.exception("Failed notifying premium user %s about activation", uid)
+            
         await safe_premium_log(client, f"<b>{'🌟 Premium Renewed ✅' if existing else '🌟 Premium Activated ✅'}</b>\n\n{user_link(name, uid)}\n<b>• Plan:</b> {plan} | ₹{price}\n<b>• Expiry:</b> {fmt_date(exp)}")
         await callback.answer("Activated")
         await safe_edit_message(callback.message, f"<b>✅ Activated Successfully</b>\n{user_link(name, uid)}")
@@ -540,7 +551,7 @@ async def premium_member_update(client, update: ChatMemberUpdated):
         # Detect a newly joined user transitioning to MEMBER
         if new_status == enums.ChatMemberStatus.MEMBER and old_status != enums.ChatMemberStatus.MEMBER:
             
-            # Pull their subscription logic immediately
+            # DB is already updated from confirm_activation
             doc = await premium_col().find_one({"user_id": new_member.id, "active": True})
             
             if doc:
