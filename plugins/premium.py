@@ -133,10 +133,11 @@ async def safe_premium_log(client, text):
     return await notify_owner(client, text)
 
 async def safe_premium_proof(client, message, caption, keyboard):
-    # Extract raw file_id to strip forward headers and bypass privacy restrictions
+    # 1. Extract raw file ID (stripping forward privacy headers)
     is_doc = bool(message.document)
     fid = message.document.file_id if is_doc else message.photo.file_id
-        
+
+    # 2. Attempt delivery to PREMIUM_LOG
     if PREMIUM_LOG_ID and await resolve_log_peer(client):
         try:
             if is_doc:
@@ -147,7 +148,7 @@ async def safe_premium_proof(client, message, caption, keyboard):
         except Exception:
             logger.exception("PREMIUM_LOG screenshot delivery failed")
 
-    # Fallback to OWNER_ID
+    # 3. Fallback to OWNER_ID
     try:
         if is_doc:
             sent = await client.send_document(OWNER_ID, fid, caption=caption, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
