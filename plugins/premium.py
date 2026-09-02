@@ -531,8 +531,8 @@ async def premium_menu(client, update):
         "<b>🌟 Choose Your Plan:-\n\n"
         "🔹 ₹40   – 1 Month\n"
         "🔸 ₹80   – 2 Months\n"
-        "🔹 ₹240 – 6 Months\n"
-        "🔸 ₹480 – 1 Year</b>"
+        "🔹 ₹240  – 6 Months\n"
+        "🔸 ₹480  – 1 Year</b>"
     )
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("🔗 Click Here To Pay", callback_data="click_here_to_pay")]
