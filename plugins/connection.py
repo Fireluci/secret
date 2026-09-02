@@ -1,7 +1,7 @@
 from pyrogram import Client, enums, filters
 
 from database.users_chats_db import db
-from info *
+from info import *
 from utils import connected_group, temp
 
 
