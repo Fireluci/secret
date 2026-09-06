@@ -7,6 +7,7 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQ
 from pyrogram.errors import MessageNotModified
 from database.users_chats_db import db
 from info import *
+import html
 
 logger = logging.getLogger(__name__)
 OWNER_ID = int(OWNER)
@@ -474,31 +475,86 @@ async def revoke_premium(client, message):
         logger.exception("Premium /revoke failed")
         await message.reply_text("<b>❌ Error processing revoke command.</b>", parse_mode=enums.ParseMode.HTML)
 
+PAGE_SIZE = 15
+
+def get_premiums_view(users, page=1):
+    total = len(users)
+    pages = (total + PAGE_SIZE - 1) // PAGE_SIZE or 1
+    page = max(1, min(page, pages))
+    start = (page - 1) * PAGE_SIZE
+
+    lines = [f"<b>💎 Active Premium Members ({total})</b> | Page: <code>{page}/{pages}</code>\n"]
+    for i, doc in enumerate(users[start : start + PAGE_SIZE], start=start + 1):
+        u = doc.get("user_id")
+        name = html.escape(str(doc.get("username") or "User"))
+        lines.append(
+            f"<b>{i}.</b> <a href='tg://user?id={u}'>{name}</a> "
+            f"(<code>{u}</code>) | {doc.get('plan', 'N/A')} | {fmt_date(doc.get('expires_at'))}"
+        )
+
+    btns = []
+    if page > 1:
+        btns.append(InlineKeyboardButton("⬅️ Prev", callback_data=f"prem_page_{page - 1}"))
+    btns.append(InlineKeyboardButton(f"{page}/{pages}", callback_data="prem_page_noop"))
+    if page < pages:
+        btns.append(InlineKeyboardButton("Next ➡️", callback_data=f"prem_page_{page + 1}"))
+
+    return "\n".join(lines), (InlineKeyboardMarkup([btns]) if pages > 1 else None)
+
+
 @Client.on_message(filters.command("premiums") & filters.create(premium_admin_chat))
 async def premiums_list(client, message):
     try:
-        lines = ["<b>💎 Active Premium Members</b>", ""]
-        count = 0
-        async for doc in premium_col().find({"active": True}):
-            count += 1
-            uid = doc.get("user_id")
-            lines += [f"<b>{count}.</b> {user_link(doc.get('username', 'User'), uid)}", f"<b>• Plan:</b> {doc.get('plan', 'N/A')}", f"<b>• Expires:</b> {fmt_date(doc.get('expires_at'))}", ""]
-        text = "\n".join(lines) if count else "<b>❌ No active premium users found.</b>"
-        if len(text) > 4096:
-            path = "premium_users.txt"
-            with open(path, "w", encoding="utf-8") as f:
-                f.write(text)
-            try:
-                await message.reply_document(path)
-            finally:
-                try:
-                    os.remove(path)
-                except OSError:
-                    logger.exception("Failed removing temporary premium list")
-        else:
-            await message.reply_text(text, parse_mode=enums.ParseMode.HTML)
+        col = premium_col()
+        if col is None:
+            raise RuntimeError("Database collection handle unavailable")
+        users = [doc async for doc in col.find({"active": True}).sort("expires_at", 1)]
     except Exception:
-        logger.exception("Premium /premiums failed")
+        logger.exception("Failed to query premium collection in /premiums")
+        return await message.reply_text("<b>❌ Database error while retrieving premium list.</b>", parse_mode=enums.ParseMode.HTML)
+
+    if not users:
+        return await message.reply_text("<b>❌ No active premium users found.</b>", parse_mode=enums.ParseMode.HTML)
+
+    text, markup = get_premiums_view(users, 1)
+    await message.reply_text(
+        text,
+        reply_markup=markup,
+        parse_mode=enums.ParseMode.HTML,
+        disable_web_page_preview=True
+    )
+
+
+@Client.on_callback_query(filters.regex(r"^prem_page_"))
+async def premiums_page_cb(client, callback):
+    if not premium_admin_callback(callback):
+        return await callback.answer("Unauthorized.", show_alert=True)
+
+    target = callback.data.rsplit("_", 1)[-1]
+    if target == "noop":
+        return await callback.answer()
+
+    try:
+        page = int(target)
+    except (TypeError, ValueError):
+        return await callback.answer("Invalid page.", show_alert=True)
+
+    try:
+        col = premium_col()
+        if col is None:
+            raise RuntimeError("Database collection handle unavailable")
+        users = [doc async for doc in col.find({"active": True}).sort("expires_at", 1)]
+    except Exception:
+        logger.exception("Failed to query premium collection in pagination callback")
+        return await callback.answer("Database error fetching page.", show_alert=True)
+
+    if not users:
+        await callback.answer("No active users.", show_alert=True)
+        return await safe_edit_message(callback.message, "<b>❌ No active premium users found.</b>")
+
+    text, markup = get_premiums_view(users, page)
+    await callback.answer()
+    await safe_edit_message(callback.message, text, reply_markup=markup)
 
 @Client.on_message(filters.command("myplan") & filters.private)
 async def my_plan(client, message):
