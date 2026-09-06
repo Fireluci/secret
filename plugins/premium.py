@@ -296,7 +296,7 @@ async def screenshot_handler(client, message):
     # 2. Extract raw file ID directly (Original Working Method)
     fid = message.photo.file_id if message.photo else message.document.file_id
     name = message.from_user.first_name if message.from_user else "User"
-    caption = f"<b>🔔 New Payment Verification</b>\n\n{user_link(name, user_id)}"
+    caption = f"<b>🔔 New Payment Verification!</b>\n\n{user_link(name, user_id)}"
     
     keyboard = InlineKeyboardMarkup([[
         InlineKeyboardButton("✅ Approve", callback_data=f"min_app_{user_id}"),
@@ -448,7 +448,7 @@ async def reject_payment(client, callback):
         await aux_col("admin_approval_sessions").delete_one({"admin_id": OWNER_ID})
         await callback.answer("Rejected.")
         try:
-            await client.send_message(uid, "<b>⚠️ Payment Verification Failed.</b>\n\nPlease pay again and send a valid screenshot.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Try Again", callback_data="buy_premium_start2")]]), parse_mode=enums.ParseMode.HTML)
+            await client.send_message(uid, "<b>⚠️ Payment Verification Failed.</b>\n\nPlease Pay and send a valid screenshot.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Try Again", callback_data="buy_premium_start2")]]), parse_mode=enums.ParseMode.HTML)
         except Exception:
             logger.exception("Failed notifying rejected premium payment for user %s", uid)
         await safe_edit_message(callback.message, f"<b>❌ Status: REJECTED</b>\n\n{await get_user_display(client, uid)}")
@@ -469,7 +469,7 @@ async def revoke_premium(client, message):
         except Exception:
             logger.exception("Failed notifying revoked premium user %s", uid)
         await safe_premium_log(client, f"<b>❌ Premium Revoked</b>\n\n{await get_user_display(client, uid)}")
-        await message.reply_text(f"<b>✅ Premium revoked</b>\n{await get_user_display(client, uid)}", parse_mode=enums.ParseMode.HTML)
+        await message.reply_text(f"<b>✅ Premium Revoked</b>\n{await get_user_display(client, uid)}", parse_mode=enums.ParseMode.HTML)
     except Exception:
         logger.exception("Premium /revoke failed")
         await message.reply_text("<b>❌ Error processing revoke command.</b>", parse_mode=enums.ParseMode.HTML)
@@ -571,11 +571,9 @@ async def premium_member_update(client, update: ChatMemberUpdated):
                 remaining = f"{rem.days} Days" if rem and rem.days > 0 else (f"{rem.seconds // 3600} Hours" if rem and rem.total_seconds() > 0 else "Expired")
                 
                 welcome_text = (
-                    f"<b>🎉 Welcome to the Premium Group!</b>\n\n"
+                    f"<b>🎉 Welcome to Premium Group!</b>\n\n"
                     f"{user_link(new_member.first_name, new_member.id)}\n"
-                    f"<b>💰 Plan:</b> {doc.get('plan')} | ₹{doc.get('price')}\n"
-                    f"<b>⌛ Expiry:</b> {fmt_date(exp)}\n"
-                    f"<b>⏳ Remaining:</b> {remaining}"
+                    f"<b>⌛ Expires On:</b> {fmt_date(exp)}"
                 )
                 
                 try:
