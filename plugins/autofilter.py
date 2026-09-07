@@ -90,21 +90,32 @@ async def get_result_buttons(chat_id, req_user_id, cache_id, offset, next_offset
 
     return [btn]
 
-def build_results_caption(search, files):
+def build_results_caption(search, files, debug_ctx=""):
     cap = (
         f"<b>🔆 Results For ➔ ‛{escape(search)}’👇\n\n"
         f"🎬 Select Your Pick ↡\n\n"
     )
 
-    for file in files:
+    BAD_SEQS = ("__", "--", "**", "~~", "||")
+
+    for idx, file in enumerate(files):
         title = file.file_name or ""
+        href = (
+            f"https://telegram.me/{temp.U_NAME}"
+            f"?start=files_{file.file_id}"
+        )
+        hit = [s for s in BAD_SEQS if s in href]
+        logger.error(
+            "LINK_DEBUG[%s] #%d file_id=%r href=%r markdown_collision=%s",
+            debug_ctx, idx, file.file_id, href, hit or "none",
+        )
         cap += (
-            f"🍿 <a href=\"https://telegram.me/{temp.U_NAME}"
-            f"?start=files_{file.file_id}\">"
+            f"🍿 <a href=\"{href}\">"
             f"[{get_size(file.file_size)}] {escape(title)}</a>\n\n"
         )
 
     cap += "</b>"
+    logger.error("LINK_DEBUG[%s] FULL_CAP=%r", debug_ctx, cap)
     return cap
 
 async def store_file_links(chat_id, files):
@@ -190,7 +201,7 @@ async def next_page(bot, query):
             query.message.chat.id, req, key, offset, next_offset, total
         )
         await store_file_links(query.message.chat.id, files)
-        cap = build_results_caption(search, files)
+        cap = build_results_caption(search, files, debug_ctx=f"next_page offset={offset}")
 
         try:
             await query.message.edit_text(
@@ -384,7 +395,7 @@ async def auto_filter(client, msg, spoll=False):
         message.chat.id, req, key, 0, offset, total_results
     )
     await store_file_links(message.chat.id, files)
-    cap = build_results_caption(search, files)
+    cap = build_results_caption(search, files, debug_ctx=f"auto_filter offset={offset}")
 
     result = await message.reply_text(
         cap,
