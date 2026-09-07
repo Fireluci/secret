@@ -141,37 +141,54 @@ async def get_search_results(
         }
         for word in words
     ]
-    fuzzy_filter = {**base_filter, "$and": fuzzy_conditions}
 
-    # Run both searches independently, then prioritize strict matches.
-    strict_cursor = Media.find(strict_filter).sort("$natural", -1)
-    fuzzy_cursor = Media.find(fuzzy_filter).sort("$natural", -1)
-    strict_files, fuzzy_files = await asyncio.gather(
-        strict_cursor.to_list(length=100),
-        fuzzy_cursor.to_list(length=100),
+    # Strict matches are also fuzzy matches, so exclude all strict matches
+    # from the fuzzy section to prevent duplicates.
+    fuzzy_filter = {
+        **base_filter,
+        "$and": fuzzy_conditions,
+        "$nor": [{"$and": strict_conditions}],
+    }
+
+    # Count both sections in parallel. This lets pagination continue through
+    # every strict result first, then every remaining fuzzy result.
+    strict_count_task = Media.count_documents(strict_filter)
+    fuzzy_count_task = Media.count_documents(fuzzy_filter)
+    strict_total, fuzzy_total = await asyncio.gather(
+        strict_count_task,
+        fuzzy_count_task,
     )
 
-    seen_ids = set()
-    combined_files = []
+    total_results = strict_total + fuzzy_total
 
-    for file in strict_files + fuzzy_files:
-        file_id = getattr(file, "file_id", None)
-        if not file_id:
-            file_id = str(getattr(file, "_id", ""))
-        if file_id and file_id not in seen_ids:
-            seen_ids.add(file_id)
-            combined_files.append(file)
-
-    total_results = len(combined_files)
     if total_results == 0:
-        return [], 0, 0
+        return [], "", 0
 
-    paginated_files = combined_files[offset:offset + max_results]
-    next_offset = offset + len(paginated_files)
+    if offset < strict_total:
+        # This page is still inside the strict-results section.
+        cursor = (
+            Media.find(strict_filter)
+            .sort("$natural", -1)
+            .skip(offset)
+            .limit(max_results)
+        )
+    else:
+        # Strict results are finished; continue from the fuzzy section.
+        fuzzy_offset = offset - strict_total
+        cursor = (
+            Media.find(fuzzy_filter)
+            .sort("$natural", -1)
+            .skip(fuzzy_offset)
+            .limit(max_results)
+        )
+
+    files = await cursor.to_list(length=max_results)
+
+    next_offset = offset + len(files)
     if next_offset >= total_results:
         next_offset = ""
 
-    return paginated_files, next_offset, total_results
+    return files, next_offset, total_results
 
 
 async def get_bad_files(query, file_type=None, **kwargs):
