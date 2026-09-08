@@ -10,7 +10,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pyrogram.file_id import FileId
 from marshmallow.exceptions import ValidationError
 
-from info import DATABASE_URI, DATABASE_NAME, COLLECTION_NAME, CAPTION_INDEX_CHANNEL
+from info import *
 from utils import extract_v2
 
 logger = logging.getLogger(__name__)
@@ -39,14 +39,13 @@ class Media(Document):
     file_id = fields.StrField(attribute="_id")
     file_ref = fields.StrField(allow_none=True)
     file_name = fields.StrField(required=True)
-    words = fields.ListField(fields.StrField())
     file_size = fields.IntField(required=True)
     file_type = fields.StrField(allow_none=True)
     mime_type = fields.StrField(allow_none=True)
 
     class Meta:
         collection_name = COLLECTION_NAME
-        indexes = ["words"]
+        indexes = ["$file_name"]
 
 
 async def save_file(media):
@@ -63,14 +62,12 @@ async def save_file(media):
 
     source_text = str(source_text)[:1000]
     normalized_name = await normalize_for_search(source_text)
-    normalized_words = normalized_name.split()
 
     try:
         file = Media(
             file_id=file_id,
             file_ref=file_ref,
             file_name=normalized_name,
-            words=normalized_words,
             file_size=media.file_size,
             file_type=media.file_type,
             mime_type=media.mime_type,
@@ -80,14 +77,11 @@ async def save_file(media):
         logger.exception("Validation error while saving file")
         return False, 2
     except DuplicateKeyError:
-        if (
-            getattr(media, "chat_id", None) == CAPTION_INDEX_CHANNEL
-            and getattr(media, "caption", None)
-        ):
+        if getattr(media, "chat_id", None) == CAPTION_INDEX_CHANNEL and getattr(media, "caption", None):
             try:
                 await Media.collection.update_one(
                     {"_id": file_id},
-                    {"$set": {"file_name": normalized_name, "words": normalized_words}},
+                    {"$set": {"file_name": normalized_name}},
                 )
                 logger.info("%s updated using caption indexing", original_name)
                 return True, 1
@@ -119,68 +113,76 @@ async def get_search_results(
     words = normalize(query)
 
     if not words:
-        return [], "", 0
+        return [], 0, 0
 
     base_filter = {}
     if file_type:
         base_filter["file_type"] = file_type
 
-    # Exact matches: every query word must exist as an exact word.
-    exact_filter = {
+    # Strict: every search term must exist as a complete filename word.
+    strict_conditions = [
+        {
+            "file_name": {
+                "$regex": rf"\b{re.escape(word)}\b",
+                "$options": "i",
+            }
+        }
+        for word in words
+    ]
+    strict_filter = {**base_filter, "$and": strict_conditions}
+
+    # Fuzzy: every search term only needs to occur somewhere inside the filename.
+    fuzzy_conditions = [
+        {
+            "file_name": {
+                "$regex": re.escape(word),
+                "$options": "i",
+            }
+        }
+        for word in words
+    ]
+
+    # Strict matches are also fuzzy matches, so exclude all strict matches
+    # from the fuzzy section to prevent duplicates.
+    fuzzy_filter = {
         **base_filter,
-        "words": {"$all": words},
+        "$and": fuzzy_conditions,
+        "$nor": [{"$and": strict_conditions}],
     }
 
-    # Prefix matches: every query word must prefix-match a word.
-    # Exact matches are excluded so they only appear in the exact section.
-    prefix_filter = {
-        **base_filter,
-        "$and": [
-            {"words": {"$regex": f"^{re.escape(word)}"}}
-            for word in words
-        ],
-        "$nor": [exact_filter],
-    }
-
-    exact_total, prefix_total = await asyncio.gather(
-        Media.count_documents(exact_filter),
-        Media.count_documents(prefix_filter),
+    # Count both sections in parallel. This lets pagination continue through
+    # every strict result first, then every remaining fuzzy result.
+    strict_count_task = Media.count_documents(strict_filter)
+    fuzzy_count_task = Media.count_documents(fuzzy_filter)
+    strict_total, fuzzy_total = await asyncio.gather(
+        strict_count_task,
+        fuzzy_count_task,
     )
 
-    total_results = exact_total + prefix_total
+    total_results = strict_total + fuzzy_total
+
     if total_results == 0:
         return [], "", 0
 
-    # Exact results always come first. If the requested page reaches the
-    # end of exact results, fill the rest of the page from prefix results.
-    files = []
-
-    if offset < exact_total:
-        exact_cursor = (
-            Media.find(exact_filter)
+    if offset < strict_total:
+        # This page is still inside the strict-results section.
+        cursor = (
+            Media.find(strict_filter)
             .sort("$natural", -1)
             .skip(offset)
             .limit(max_results)
         )
-        files = await exact_cursor.to_list(length=max_results)
-
-        remaining = max_results - len(files)
-        if remaining > 0 and offset + len(files) >= exact_total:
-            prefix_cursor = (
-                Media.find(prefix_filter)
-                .sort("$natural", -1)
-                .limit(remaining)
-            )
-            files.extend(await prefix_cursor.to_list(length=remaining))
     else:
-        prefix_offset = offset - exact_total
-        prefix_cursor = (
-            Media.find(prefix_filter)
+        # Strict results are finished; continue from the fuzzy section.
+        fuzzy_offset = offset - strict_total
+        cursor = (
+            Media.find(fuzzy_filter)
             .sort("$natural", -1)
-            .skip(prefix_offset)
+            .skip(fuzzy_offset)
             .limit(max_results)
         )
-        files = await prefix_cursor.to_list(length=max_results)
+
+    files = await cursor.to_list(length=max_results)
 
     next_offset = offset + len(files)
     if next_offset >= total_results:
