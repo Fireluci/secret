@@ -42,10 +42,11 @@ class Media(Document):
     file_size = fields.IntField(required=True)
     file_type = fields.StrField(allow_none=True)
     mime_type = fields.StrField(allow_none=True)
+    words = fields.ListField(fields.StrField())
 
     class Meta:
         collection_name = COLLECTION_NAME
-        indexes = ["$file_name"]
+        indexes = ["words"]
 
 
 async def save_file(media):
@@ -62,12 +63,14 @@ async def save_file(media):
 
     source_text = str(source_text)[:1000]
     normalized_name = await normalize_for_search(source_text)
+    normalized_words = normalized_name.split()
 
     try:
         file = Media(
             file_id=file_id,
             file_ref=file_ref,
             file_name=normalized_name,
+            words=normalized_words,
             file_size=media.file_size,
             file_type=media.file_type,
             mime_type=media.mime_type,
@@ -81,7 +84,7 @@ async def save_file(media):
             try:
                 await Media.collection.update_one(
                     {"_id": file_id},
-                    {"$set": {"file_name": normalized_name}},
+                    {"$set": {"file_name": normalized_name, "words": normalized_words}},
                 )
                 logger.info("%s updated using caption indexing", original_name)
                 return True, 1
@@ -113,72 +116,47 @@ async def get_search_results(
     words = normalize(query)
 
     if not words:
-        return [], 0, 0
+        return [], "", 0
 
     base_filter = {}
     if file_type:
         base_filter["file_type"] = file_type
 
-    # Strict: every search term must exist as a complete filename word.
-    strict_conditions = [
-        {
-            "file_name": {
-                "$regex": rf"\b{re.escape(word)}\b",
-                "$options": "i",
-            }
-        }
-        for word in words
-    ]
-    strict_filter = {**base_filter, "$and": strict_conditions}
-
-    # Fuzzy: every search term only needs to occur somewhere inside the filename.
-    fuzzy_conditions = [
-        {
-            "file_name": {
-                "$regex": re.escape(word),
-                "$options": "i",
-            }
-        }
-        for word in words
-    ]
-
-    # Strict matches are also fuzzy matches, so exclude all strict matches
-    # from the fuzzy section to prevent duplicates.
-    fuzzy_filter = {
+    # Exact word matches first. `words` is a normal MongoDB multikey index.
+    exact_filter = {
         **base_filter,
-        "$and": fuzzy_conditions,
-        "$nor": [{"$and": strict_conditions}],
+        "$and": [{"words": word} for word in words],
     }
+    exact_total = await Media.count_documents(exact_filter)
 
-    # Count both sections in parallel. This lets pagination continue through
-    # every strict result first, then every remaining fuzzy result.
-    strict_count_task = Media.count_documents(strict_filter)
-    fuzzy_count_task = Media.count_documents(fuzzy_filter)
-    strict_total, fuzzy_total = await asyncio.gather(
-        strict_count_task,
-        fuzzy_count_task,
-    )
+    # Prefix matches second. Exclude exact matches so they remain in the first section.
+    prefix_filter = {
+        **base_filter,
+        "$and": [
+            {"words": {"$regex": f"^{re.escape(word)}"}}
+            for word in words
+        ],
+        "$nor": [{"$and": [{"words": word} for word in words]}],
+    }
+    prefix_total = await Media.count_documents(prefix_filter)
 
-    total_results = strict_total + fuzzy_total
-
+    total_results = exact_total + prefix_total
     if total_results == 0:
         return [], "", 0
 
-    if offset < strict_total:
-        # This page is still inside the strict-results section.
+    if offset < exact_total:
         cursor = (
-            Media.find(strict_filter)
+            Media.find(exact_filter)
             .sort("$natural", -1)
             .skip(offset)
             .limit(max_results)
         )
     else:
-        # Strict results are finished; continue from the fuzzy section.
-        fuzzy_offset = offset - strict_total
+        prefix_offset = offset - exact_total
         cursor = (
-            Media.find(fuzzy_filter)
+            Media.find(prefix_filter)
             .sort("$natural", -1)
-            .skip(fuzzy_offset)
+            .skip(prefix_offset)
             .limit(max_results)
         )
 
