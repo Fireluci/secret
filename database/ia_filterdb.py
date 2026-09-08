@@ -39,10 +39,10 @@ class Media(Document):
     file_id = fields.StrField(attribute="_id")
     file_ref = fields.StrField(allow_none=True)
     file_name = fields.StrField(required=True)
+    words = fields.ListField(fields.StrField())
     file_size = fields.IntField(required=True)
     file_type = fields.StrField(allow_none=True)
     mime_type = fields.StrField(allow_none=True)
-    words = fields.ListField(fields.StrField())
 
     class Meta:
         collection_name = COLLECTION_NAME
@@ -80,7 +80,10 @@ async def save_file(media):
         logger.exception("Validation error while saving file")
         return False, 2
     except DuplicateKeyError:
-        if getattr(media, "chat_id", None) == CAPTION_INDEX_CHANNEL and getattr(media, "caption", None):
+        if (
+            getattr(media, "chat_id", None) == CAPTION_INDEX_CHANNEL
+            and getattr(media, "caption", None)
+        ):
             try:
                 await Media.collection.update_one(
                     {"_id": file_id},
@@ -122,45 +125,62 @@ async def get_search_results(
     if file_type:
         base_filter["file_type"] = file_type
 
-    # Exact word matches first. `words` is a normal MongoDB multikey index.
+    # Exact matches: every query word must exist as an exact word.
     exact_filter = {
         **base_filter,
-        "$and": [{"words": word} for word in words],
+        "words": {"$all": words},
     }
-    exact_total = await Media.count_documents(exact_filter)
 
-    # Prefix matches second. Exclude exact matches so they remain in the first section.
+    # Prefix matches: every query word must prefix-match a word.
+    # Exact matches are excluded so they only appear in the exact section.
     prefix_filter = {
         **base_filter,
         "$and": [
             {"words": {"$regex": f"^{re.escape(word)}"}}
             for word in words
         ],
-        "$nor": [{"$and": [{"words": word} for word in words]}],
+        "$nor": [exact_filter],
     }
-    prefix_total = await Media.count_documents(prefix_filter)
+
+    exact_total, prefix_total = await asyncio.gather(
+        Media.count_documents(exact_filter),
+        Media.count_documents(prefix_filter),
+    )
 
     total_results = exact_total + prefix_total
     if total_results == 0:
         return [], "", 0
 
+    # Exact results always come first. If the requested page reaches the
+    # end of exact results, fill the rest of the page from prefix results.
+    files = []
+
     if offset < exact_total:
-        cursor = (
+        exact_cursor = (
             Media.find(exact_filter)
             .sort("$natural", -1)
             .skip(offset)
             .limit(max_results)
         )
+        files = await exact_cursor.to_list(length=max_results)
+
+        remaining = max_results - len(files)
+        if remaining > 0 and offset + len(files) >= exact_total:
+            prefix_cursor = (
+                Media.find(prefix_filter)
+                .sort("$natural", -1)
+                .limit(remaining)
+            )
+            files.extend(await prefix_cursor.to_list(length=remaining))
     else:
         prefix_offset = offset - exact_total
-        cursor = (
+        prefix_cursor = (
             Media.find(prefix_filter)
             .sort("$natural", -1)
             .skip(prefix_offset)
             .limit(max_results)
         )
-
-    files = await cursor.to_list(length=max_results)
+        files = await prefix_cursor.to_list(length=max_results)
 
     next_offset = offset + len(files)
     if next_offset >= total_results:
