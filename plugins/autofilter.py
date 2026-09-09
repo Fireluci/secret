@@ -70,7 +70,7 @@ async def get_result_buttons(chat_id, req_user_id, cache_id, offset, next_offset
 
     btn.append(
         InlineKeyboardButton(
-            f"📒 Pages {current_page} / {total_pages}",
+            f"📓 Page {current_page} / {total_pages}",
             callback_data="pages"
         )
     )
