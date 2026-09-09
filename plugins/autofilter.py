@@ -269,7 +269,8 @@ async def cb_handler(client, query):
         except Exception:
             pass
         return await query.answer("Closed!")
-
+    if query.data == "pages":
+        return await query.answer()
     if query.data.startswith("killfilesdq"):
         user_id = query.from_user.id
         if query.message.chat.type in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP):
