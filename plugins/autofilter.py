@@ -201,6 +201,7 @@ async def next_page(bot, query):
                 cap,
                 reply_markup=InlineKeyboardMarkup(buttons),
                 disable_web_page_preview=True,
+                parse_mode=enums.ParseMode.HTML,
             )
             await query.answer()
         except MessageNotModified:
@@ -378,6 +379,7 @@ async def auto_filter(client, msg, spoll=False):
         cap,
         reply_markup=InlineKeyboardMarkup(buttons),
         disable_web_page_preview=True,
+        parse_mode=enums.ParseMode.HTML,
     )
     asyncio.create_task(handle_auto_delete(result))
     asyncio.create_task(handle_auto_delete(message))
@@ -466,11 +468,12 @@ async def send_shortlink_page(client, user_id, file_id, chat_id):
 
     msg = await client.send_message(
         chat_id=user_id,
-        text=f'<b>🔆 [ {get_size(file.file_size)} ] <a href="https://telegram.me/{CHNL_LNK}">{title}</a>\n\n📥 Download Link↓\n{short_url}</b>',
+        text=f'<b>🔆 [ {get_size(file.file_size)} ] <a href="https://telegram.me/{CHNL_LNK}">{escape(title)}</a>\n\n📥 Download Link↓\n{short_url}</b>',
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("♻️ Download Link ♻️", url=short_url)],
             [TUTORIAL_BUTTON],
         ]),
+        parse_mode=enums.ParseMode.HTML,
     )
     asyncio.create_task(delete_later(msg))
     return True
