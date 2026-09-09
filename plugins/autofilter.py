@@ -208,6 +208,7 @@ async def next_page(bot, query):
                 cap,
                 reply_markup=InlineKeyboardMarkup(buttons),
                 disable_web_page_preview=True,
+                parse_mode=enums.ParseMode.HTML,
             )
             await query.answer()
         except MessageNotModified:
@@ -401,6 +402,7 @@ async def auto_filter(client, msg, spoll=False):
         cap,
         reply_markup=InlineKeyboardMarkup(buttons),
         disable_web_page_preview=True,
+        parse_mode=enums.ParseMode.HTML,
     )
     asyncio.create_task(handle_auto_delete(result))
     asyncio.create_task(handle_auto_delete(message))
