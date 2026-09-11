@@ -278,7 +278,7 @@ async def cb_handler(client, query):
             if member.status not in (
                 enums.ChatMemberStatus.ADMINISTRATOR,
                 enums.ChatMemberStatus.OWNER,
-            ) and str(user_id) not in ADMINS:
+            ) and user_id not in ADMINS:
                 return await query.answer(ALRT_TXT, show_alert=True)
 
         try:
