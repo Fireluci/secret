@@ -491,8 +491,4 @@ async def extract_v2(text):
     # cleanup spaces
     text = re.sub(r'\s+', ' ', text).strip()
 
-    # 🔥 if episode exists but season missing → assume s01
-    if re.search(r'\be\d{2}\b', text) and not re.search(r'\bs\d{2}\b', text):
-        text = re.sub(r'\be(\d{2})\b', r's01e\1', text)
-
     return text
