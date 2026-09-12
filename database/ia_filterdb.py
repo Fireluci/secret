@@ -20,7 +20,6 @@ client = AsyncIOMotorClient(DATABASE_URI)
 db = client[DATABASE_NAME]
 instance = Instance.from_db(db)
 
-
 def normalize(text: str) -> list:
     text = text.casefold()
     text = re.sub(r"@[^\s.-]+", " ", text)
@@ -30,9 +29,19 @@ def normalize(text: str) -> list:
     return text.split()
 
 
-async def normalize_for_search(text: str) -> str:
-    return " ".join(normalize(await extract_v2(text)))
+def normalize_basic_episode(text: str) -> str:
+    text = text.casefold()
+    text = re.sub(r'\bs(\d{2})\s*e(\d{2})\b', r's\1e\2', text)
+    text = re.sub(r'\bs(\d{2})\s*ep(\d{2})\b', r's\1e\2', text)
+    text = re.sub(r'\bs(\d{2})\s*ep\s*(\d{2})\b', r's\1e\2', text)
+    return text
 
+
+async def normalize_for_search(text: str) -> str:
+    # Saving/indexing uses basic episode normalization + normalize().
+    # extract_v2() is reserved for user search queries.
+    text = normalize_basic_episode(str(text or ""))
+    return " ".join(normalize(text))
 
 @instance.register
 class Media(Document):
