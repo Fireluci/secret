@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 import base64
@@ -29,8 +30,19 @@ def normalize(text: str) -> list:
     return text.split()
 
 
+def normalize_basic_episode(text: str) -> str:
+    text = text.casefold()
+    text = re.sub(r'\bs(\d{2})\s*e(\d{2})\b', r's\1e\2', text)
+    text = re.sub(r'\bs(\d{2})\s*ep(\d{2})\b', r's\1e\2', text)
+    text = re.sub(r'\bs(\d{2})\s*ep\s*(\d{2})\b', r's\1e\2', text)
+    return text
+
+
 async def normalize_for_search(text: str) -> str:
-    return " ".join(normalize(await extract_v2(text)))
+    # Saving/indexing uses basic episode normalization + normalize().
+    # extract_v2() is reserved for user search queries.
+    text = normalize_basic_episode(str(text or ""))
+    return " ".join(normalize(text))
 
 
 @instance.register
@@ -101,30 +113,104 @@ async def get_search_results(
     **kwargs,
 ):
     max_results = 10
+
+    try:
+        offset = int(offset)
+    except (TypeError, ValueError):
+        offset = 0
+    offset = max(0, offset)
+
     query = (await extract_v2(query)).strip()
     words = normalize(query)
 
-    mongo_filter = (
-        {"$and": [{"file_name": {"$regex": re.escape(word), "$options": "i"}} for word in words]}
-        if words else {}
+    if not words:
+        return [], "", 0
+
+    base_filter = {}
+    if file_type:
+        base_filter["file_type"] = file_type
+
+    # Strict: every search term must exist as a complete filename word.
+    strict_conditions = [
+        {
+            "file_name": {
+                "$regex": rf"\b{re.escape(word)}\b",
+                "$options": "i",
+            }
+        }
+        for word in words
+    ]
+    strict_filter = {**base_filter, "$and": strict_conditions}
+
+    # Fuzzy: every search term may occur anywhere inside the filename.
+    # Strict matches are excluded here so a file is never shown twice.
+    fuzzy_conditions = [
+        {
+            "file_name": {
+                "$regex": re.escape(word),
+                "$options": "i",
+            }
+        }
+        for word in words
+    ]
+    fuzzy_filter = {
+        **base_filter,
+        "$and": fuzzy_conditions,
+        "$nor": [{"$and": strict_conditions}],
+    }
+
+    # Get the sizes of both sections concurrently. We need the exact total
+    # because the existing UI displays Pages X/Y and uses next_offset.
+    strict_count_task = Media.count_documents(strict_filter)
+    fuzzy_count_task = Media.count_documents(fuzzy_filter)
+    strict_total, fuzzy_total = await asyncio.gather(
+        strict_count_task,
+        fuzzy_count_task,
     )
 
-    if file_type:
-        mongo_filter["file_type"] = file_type
+    total_results = strict_total + fuzzy_total
 
-    total_results = await Media.count_documents(mongo_filter)
+    if total_results == 0 or offset >= total_results:
+        return [], "", total_results
 
-    next_offset = offset + max_results
+    # The result list is logically:
+    #   [all strict matches] + [all fuzzy-only matches]
+    # Fetch only the 10 records needed for this page.
+    if offset < strict_total:
+        strict_cursor = (
+            Media.find(strict_filter)
+            .sort("$natural", -1)
+            .skip(offset)
+            .limit(max_results)
+        )
+        files = await strict_cursor.to_list(length=max_results)
+
+        # If the page crosses the strict/fuzzy boundary, fill the remaining
+        # slots from the beginning of the fuzzy-only section.
+        if len(files) < max_results and offset + len(files) < total_results:
+            remaining = max_results - len(files)
+            fuzzy_cursor = (
+                Media.find(fuzzy_filter)
+                .sort("$natural", -1)
+                .skip(0)
+                .limit(remaining)
+            )
+            fuzzy_files = await fuzzy_cursor.to_list(length=remaining)
+            files.extend(fuzzy_files)
+    else:
+        fuzzy_offset = offset - strict_total
+        fuzzy_cursor = (
+            Media.find(fuzzy_filter)
+            .sort("$natural", -1)
+            .skip(fuzzy_offset)
+            .limit(max_results)
+        )
+        files = await fuzzy_cursor.to_list(length=max_results)
+
+    next_offset = offset + len(files)
     if next_offset >= total_results:
         next_offset = ""
 
-    cursor = (
-        Media.find(mongo_filter)
-        .sort("$natural", -1)
-        .skip(offset)
-        .limit(max_results)
-    )
-    files = await cursor.to_list(length=max_results)
     return files, next_offset, total_results
 
 
