@@ -475,6 +475,7 @@ async def send_shortlink_page(client, user_id, file_id, chat_id):
             [TUTORIAL_BUTTON],
         ]),
         parse_mode=enums.ParseMode.HTML,
+        disable_web_page_preview=True,
     )
     asyncio.create_task(delete_later(msg))
     return True
