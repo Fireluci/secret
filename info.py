@@ -17,7 +17,7 @@ BOT_TOKEN = environ.get('BOT_TOKEN', '85867547u7tdRlLYC5wt7JdQb4')
 
 DATABASE_URI = environ.get('DATABASE_URI', "mongodbriana")
 DATABASE_NAME = environ.get('DATABASE_NAME', "mini")
-COLLECTION_NAME = environ.get('COLLECTION_NAME', 'mini')
+COLLECTION_NAME = environ.get('COLLECTION_NAME', 'index')
 
 CAPTION_INDEX_CHANNEL = int(environ.get('CAPTION_INDEX_CHANNEL', '-1002299214709'))
 CHANNELS = [int(ch) if id_pattern.search(ch) else ch for ch in environ.get('CHANNELS', '-1001638006524').split()] + [CAPTION_INDEX_CHANNEL]
