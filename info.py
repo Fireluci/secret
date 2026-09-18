@@ -11,23 +11,23 @@ def is_enabled(value, default):
         return default
 
 SESSION = environ.get('SESSION', 'Media_search')
-API_ID = int(environ.get('API_ID', '1736204'))
-API_HASH = environ.get('API_HASH', '890d40e0f91a4de32dec2965444b2cbe')
-BOT_TOKEN = environ.get('BOT_TOKEN', '858675477lcZRg-4fLdK6Pu7tdRlLYC5wt7JdQb4')
+API_ID = int(environ.get('API_ID', '28780052'))
+API_HASH = environ.get('API_HASH', '2bc69d5385f8e8b62c682883b97621fd')
+BOT_TOKEN = environ.get('BOT_TOKEN', '85867547u7tdRlLYC5wt7JdQb4')
 
-DATABASE_URI = environ.get('DATABASE_URI', "mongodb+srriana@ariana.vxqvh5x.mongodb.net/?appName=ariana")
-DATABASE_NAME = environ.get('DATABASE_NAME', "heroflix")
-COLLECTION_NAME = environ.get('COLLECTION_NAME', 'index')
+DATABASE_URI = environ.get('DATABASE_URI', "mongodbriana")
+DATABASE_NAME = environ.get('DATABASE_NAME', "mini")
+COLLECTION_NAME = environ.get('COLLECTION_NAME', 'mini')
 
 CAPTION_INDEX_CHANNEL = int(environ.get('CAPTION_INDEX_CHANNEL', '-1002299214709'))
 CHANNELS = [int(ch) if id_pattern.search(ch) else ch for ch in environ.get('CHANNELS', '-1001638006524').split()] + [CAPTION_INDEX_CHANNEL]
 
-PICS = environ.get("PICS", "https://te.legra.ph/file/d6a23f16e002e86381656.jpg")
+PICS = environ.get("PICS", "https://te.legra.ph/file/26e6f0b8df376da856c80.jpg")
 FORCE = "https://telegram.me/+W6BkAHSGGME3OGY1"
-ADMINS = [int(admin) if id_pattern.search(admin) else admin for admin in environ.get('ADMINS', '1058015838').split()]
+ADMINS = [int(admin) if id_pattern.search(admin) else admin for admin in environ.get('ADMINS', '1058015838 1945334264').split()]
 
 
-auth_channel = environ.get('AUTH_CHANNEL', '-1002048881772')
+auth_channel = environ.get('AUTH_CHANNEL', '-1001624917302')
 AUTH_CHANNEL = int(auth_channel) if auth_channel and id_pattern.search(auth_channel) else None
 
 SHORT1_URL = environ.get('SHORT1_URL', 'cpmshort.com')
@@ -36,10 +36,10 @@ SHORT2_URL = environ.get('SHORT2_URL', 'easysky.in')
 SHORT2_API = environ.get('SHORT2_API', 'f3753546bce8faa1a5e9ef961431c0b57e4d26a9')
 IS_SHORTLINK = is_enabled(environ.get("IS_SHORTLINK", "True"), True)
 PORT = environ.get("PORT", "8080")
-CHNL_LNK = environ.get('CHNL_LNK', 'HEROFLiX')
-TUTORIAL = environ.get('TUTORIAL', 'HeroFlixx/54')
-LOG_CHANNEL = int(environ.get('LOG_CHANNEL', '-1001652564383'))
-SUPPORT_CHAT = environ.get('SUPPORT_CHAT', 'herofeedbot')
+CHNL_LNK = environ.get('CHNL_LNK', 'MiniStudiosX')
+TUTORIAL = environ.get('TUTORIAL', 'OpenMSLinkX')
+LOG_CHANNEL = int(environ.get('LOG_CHANNEL', '-1002486392693'))
+SUPPORT_CHAT = environ.get('SUPPORT_CHAT', 'MiniStudiosAdmin_bot')
  
 
 # ==================== BOT TEXT ====================
@@ -61,9 +61,9 @@ Nᴀᴍᴇ - {}"""
 
 NO_RESULTS = """<b><i>💢 No Results For Your Search❗️
 
-⚠️ The Reason❓[<a href="https://telegram.me/HeroFlixx/3">Click Here</a>]
+⚠️ The Reason❓[<a href="https://telegram.me/MiniStudiosX/386">Click Here</a>]
 🌀 Please Follow Request Tips!
-🔆 Request Tips ➔ [<a href="https://telegram.me/HeroFlixx/2">Click Here</a>]</i></b>"""
+🔆 Request Tips ➔ [<a href="https://telegram.me/MiniStudiosX/385">Click Here</a>]</i></b>"""
 
 CAPTION = '<a href="https://telegram.me/HeroFlix"><b>{file_name}</b></a>'
 
@@ -75,7 +75,7 @@ RESTART_TXT = """
 🌐 Tɪᴍᴇᴢᴏɴᴇ : <code>Asia/Kolkata</code>
 🛠️ Bᴜɪʟᴅ Sᴛᴀᴛᴜs: <code>v2.7.1 [ Sᴛᴀʙʟᴇ ]</code></b>"""
 
-LOGO = '🔆彡[ HEROFLiX ]彡🔆'
+LOGO = '🔆彡[ MiniStudiosX ]彡🔆'
 
  
  
