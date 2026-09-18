@@ -65,7 +65,7 @@ NO_RESULTS = """<b><i>💢 No Results For Your Search❗️
 🌀 Please Follow Request Tips!
 🔆 Request Tips ➔ [<a href="https://telegram.me/MiniStudiosX/385">Click Here</a>]</i></b>"""
 
-CAPTION = '<a href="https://telegram.me/HeroFlix"><b>{file_name}</b></a>'
+CAPTION = '<a href="https://telegram.me/ministudiosx"><b>{file_name}</b></a>'
 
 RESTART_TXT = """
 <b>Bᴏᴛ Rᴇsᴛᴀʀᴛᴇᴅ !
