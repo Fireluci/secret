@@ -23,17 +23,17 @@ CAPTION_INDEX_CHANNEL = int(environ.get('CAPTION_INDEX_CHANNEL', '-1002299214709
 CHANNELS = [int(ch) if id_pattern.search(ch) else ch for ch in environ.get('CHANNELS', '-1001638006524').split()] + [CAPTION_INDEX_CHANNEL]
 
 PICS = environ.get("PICS", "https://te.legra.ph/file/26e6f0b8df376da856c80.jpg")
-FORCE = "https://telegram.me/+W6BkAHSGGME3OGY1"
+FORCE = "https://t.me/MiniStudiosX"
 ADMINS = [int(admin) if id_pattern.search(admin) else admin for admin in environ.get('ADMINS', '1058015838 1945334264').split()]
 
 
 auth_channel = environ.get('AUTH_CHANNEL', '-1001624917302')
 AUTH_CHANNEL = int(auth_channel) if auth_channel and id_pattern.search(auth_channel) else None
 
-SHORT1_URL = environ.get('SHORT1_URL', 'cpmshort.com')
-SHORT1_API = environ.get('SHORT1_API', '4edd2741cf55b86fd7306942fd25bb163c8f8cd6')
-SHORT2_URL = environ.get('SHORT2_URL', 'easysky.in')
-SHORT2_API = environ.get('SHORT2_API', 'f3753546bce8faa1a5e9ef961431c0b57e4d26a9')
+SHORT1_URL = environ.get('SHORT1_URL', 'easysky.in')
+SHORT1_API = environ.get('SHORT1_API', '66c315c6bc6df05d9cb4eec4bae3a2ebda102144')
+SHORT2_URL = environ.get('SHORT2_URL', 'vplink.in')
+SHORT2_API = environ.get('SHORT2_API', '8cbd12391c0c8dac548a1d0b7a039e77055e86ed')
 IS_SHORTLINK = is_enabled(environ.get("IS_SHORTLINK", "True"), True)
 PORT = environ.get("PORT", "8080")
 CHNL_LNK = environ.get('CHNL_LNK', 'MiniStudiosX')
