@@ -11,7 +11,11 @@ from database.ia_filterdb import Media, get_bad_files, get_file_details, get_sea
 from database.users_chats_db import db
 from info import *
 from utils import get_settings, get_shortlink, get_size, is_group_connected, is_subscribed, search_gagala, temp
-
+from pyrogram.types import (
+    InlineQuery,
+    InlineQueryResultCachedDocument,
+    InlineQueryResultCachedVideo,
+)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.ERROR)
 lock = asyncio.Lock()
@@ -660,3 +664,108 @@ async def start(client, message):
             await message.reply("No such file exist.")
 
         return
+
+@Client.on_inline_query()
+async def inline_search(client, inline_query: InlineQuery):
+    user_id = inline_query.from_user.id
+
+    # Admin-only access
+    admin_ids = {int(admin) for admin in ADMINS}
+
+    if user_id not in admin_ids:
+        return await inline_query.answer(
+            results=[],
+            switch_pm_text="❌ Admins Only",
+            switch_pm_parameter="admin_only",
+            cache_time=5,
+            is_personal=True,
+        )
+
+    query = (inline_query.query or "").strip()
+
+    if not query:
+        return await inline_query.answer(
+            results=[],
+            switch_pm_text="Type a file name to search",
+            switch_pm_parameter="search",
+            cache_time=5,
+            is_personal=True,
+        )
+
+    try:
+        offset = int(inline_query.offset or 0)
+    except (TypeError, ValueError):
+        offset = 0
+
+    offset = max(0, offset)
+
+    try:
+        # Telegram allows a maximum of 50 inline results per response.
+        results = []
+        current_offset = offset
+        total_results = 0
+
+        for _ in range(5):
+            files, next_offset, total_results = await get_search_results(
+                inline_query.from_user.id,
+                query,
+                offset=current_offset,
+            )
+
+            if not files:
+                break
+
+            for file in files:
+                file_id = file.file_id
+                file_name = file.file_name or "Unknown File"
+
+                if file.file_type == "document":
+                    results.append(
+                        InlineQueryResultCachedDocument(
+                            id=f"document_{file_id}",
+                            title=file_name,
+                            document_file_id=file_id,
+                            description=file_name,
+                        )
+                    )
+
+                elif file.file_type == "video":
+                    results.append(
+                        InlineQueryResultCachedVideo(
+                            id=f"video_{file_id}",
+                            title=file_name,
+                            video_file_id=file_id,
+                            description=file_name,
+                        )
+                    )
+
+            if not next_offset:
+                break
+
+            current_offset = int(next_offset)
+
+            if len(results) >= 50:
+                break
+
+        results = results[:50]
+
+        new_offset = ""
+
+        if offset + len(results) < total_results:
+            new_offset = str(offset + len(results))
+
+        await inline_query.answer(
+            results=results,
+            next_offset=new_offset,
+            cache_time=10,
+            is_personal=True,
+        )
+
+    except Exception:
+        logger.exception("Inline search failed for user %s", user_id)
+
+        await inline_query.answer(
+            results=[],
+            cache_time=5,
+            is_personal=True,
+        )
