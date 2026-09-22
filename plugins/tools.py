@@ -369,13 +369,22 @@ async def view_shorteners(bot, message):
     s2_url = settings.get('second_shortlink') or SHORT2_URL
     s2_api = settings.get('second_shortlink_api') or SHORT2_API
     is_active = settings.get('is_shortlink', IS_SHORTLINK)
-    await message.reply_text(
+    
+    # Send the response and save it in a variable
+    sent_message = await message.reply_text(
         f"⚙️ **Current Group Shortener Configuration**\n\n"
         f"• **Status:** `{'Enabled' if is_active else 'Disabled'}`\n"
         f"• **Primary (Short1):** `{s1_url}` (API: `{s1_api}`)\n"
         f"• **Secondary (Short2):** `{s2_url}` (API: `{s2_api}`)",
         parse_mode=enums.ParseMode.MARKDOWN,
     )
+    
+    # Wait 10 seconds and delete ONLY the bot's message
+    await asyncio.sleep(10)
+    try:
+        await sent_message.delete()
+    except Exception:
+        pass
 
 @Client.on_message(filters.command('logs') & filters.user(ADMINS))
 async def log_file(bot, message):
