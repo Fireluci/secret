@@ -136,21 +136,21 @@ async def handle_auto_delete(message_obj):
 @Client.on_message(
     filters.group
     & filters.text
+    & filters.incoming
     & ~filters.regex(r"^/")
 )
 async def give_filter(client, message):
+
     try:
-        if not await db.is_group_connected(message.chat.id):
-            return
-
-        await auto_filter(client, message)
-
+        connected = await db.is_group_connected(message.chat.id)
     except Exception:
-        logger.exception(
-            "Group filter failed | chat_id=%s | user_id=%s",
-            message.chat.id,
-            message.from_user.id if message.from_user else None,
-        )
+        logger.exception("Failed to check connected status for group %s", message.chat.id)
+        return
+
+    if not connected:
+        return
+
+    await auto_filter(client, message)
 
 @Client.on_callback_query(filters.regex(r"^next"))
 async def next_page(bot, query):
