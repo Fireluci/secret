@@ -32,8 +32,8 @@ AUTH_CHANNEL = int(auth_channel) if auth_channel and id_pattern.search(auth_chan
 
 PORT = environ.get("PORT", "8080")
 CHNL_LNK = environ.get('CHNL_LNK', 'HEROFLiX')
-PREMIUM_GROUP_ID = environ.get('PREMIUM_GROUP_ID', '-1004463577278')
-PREMIUM_PERMANENT_LINK = environ.get('PREMIUM_PERMANENT_LINK', 'https://t.me/+b9x5RFpJdCJlM2Vl')
+PREMIUM_GROUP_ID = environ.get('PREMIUM_GROUP_ID', '-1003982795858')
+PREMIUM_PERMANENT_LINK = environ.get('PREMIUM_PERMANENT_LINK', 'https://t.me/+n0ENmAyL2l0wZmQ1')
 PREMIUM_UPI_ID = environ.get('PREMIUM_UPI_ID', 'karthik.slice@ibl')
 PREMIUM_QR = environ.get('PREMIUM_QR', 'https://ibb.co/KHqPKqg')
 SUPPORT_CHAT = environ.get('SUPPORT_CHAT', 'herofeedbot')
