@@ -269,7 +269,7 @@ async def deletemultiplefiles(bot, message):
 
 @Client.on_callback_query(filters.regex(r'^setgs#'))
 async def settings_callback(client, callback):
-    if callback.from_user.id not in OWNER:
+    if callback.from_user.id != OWNER:
         return await callback.answer("Only bot admins can change settings.", show_alert=True)
     try:
         _, setting, _ = callback.data.split("#")
@@ -327,7 +327,7 @@ async def delete_all_index(bot, message):
 
 @Client.on_callback_query(filters.regex(r'^clear_index$'))
 async def delete_all_index_confirm(bot, callback):
-    if callback.from_user.id not in OWNER:
+    if callback.from_user.id != OWNER:
         return await callback.answer("Unauthorized!", show_alert=True)
     await Media.collection.drop()
     await callback.answer('Done')
