@@ -47,7 +47,9 @@ async def normalize_for_search(text: str) -> str:
 class Media(Document):
     file_id = fields.StrField(attribute="_id")
     file_ref = fields.StrField(allow_none=True)
+
     file_name = fields.StrField(required=True)
+
     file_size = fields.IntField(required=True)
     file_type = fields.StrField(allow_none=True)
     mime_type = fields.StrField(allow_none=True)
@@ -55,6 +57,7 @@ class Media(Document):
     class Meta:
         collection_name = COLLECTION_NAME
         indexes = ["$file_name"]
+        strict = False
 
 
 async def save_file(media):
