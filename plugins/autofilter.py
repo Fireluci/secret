@@ -527,7 +527,7 @@ async def start(client, message):
         return await message.reply_photo(
             photo=PICS,
             caption=START_TXT,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Buy Premium", callback_data="buy_premium_start")]]),
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Click Here To Buy Premium", callback_data="buy_premium_start")]]),
             parse_mode=enums.ParseMode.HTML,
         )
 
