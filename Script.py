@@ -1,5 +1,5 @@
 class script(object):
-    START_TXT = "<b>🌀 Unlimited Movies, Series, Anime\n🔆 New Releases Upload Every Day\n♻️ 24 x 7 Service 📆 Daily Updates</b>"
+    START_TXT = "<b>🌀 Unlimited Movies, Series, Anime\n🔆 New Releases Upload Every Day\n♻️ 24 x 7 Service 📆 Daily Updates\n🔗 No Ads or Links 📗 Direct Files</b>"
  
     STATUS_TXT = """<b>★ Tᴏᴛᴀʟ Fɪʟᴇs: <code>{}</code>
 ★ Tᴏᴛᴀʟ Usᴇʀs: <code>{}</code>
