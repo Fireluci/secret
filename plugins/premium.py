@@ -470,31 +470,53 @@ async def revoke_premium(client, message):
         logger.exception("Premium /revoke failed")
         await message.reply_text("<b>❌ Error processing revoke command.</b>", parse_mode=enums.ParseMode.HTML)
 
+PREMIUMS_PAGE_SIZE = 10
+
+async def build_premiums_page(page: int):
+    skip = page * PREMIUMS_PAGE_SIZE
+    total = await premium_col().count_documents({"active": True})
+    if total == 0:
+        return "<b>❌ No active premium users found.</b>", None
+
+    cursor = premium_col().find({"active": True}).skip(skip).limit(PREMIUMS_PAGE_SIZE)
+    lines = ["<b>💎 Active Premium Members</b>", ""]
+    count = skip
+    async for doc in cursor:
+        count += 1
+        uid = doc.get("user_id")
+        lines += [f"<b>{count}.</b> {user_link(doc.get('username', 'User'), uid)}", f"<b>• Plan:</b> {doc.get('plan', 'N/A')}", f"<b>• Expires:</b> {fmt_date(doc.get('expires_at'))}", ""]
+
+    total_pages = (total + PREMIUMS_PAGE_SIZE - 1) // PREMIUMS_PAGE_SIZE
+    lines.append(f"<i>Page {page + 1}/{total_pages} • {total} total</i>")
+
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton("◀ Prev", callback_data=f"premlist_{page - 1}"))
+    if page + 1 < total_pages:
+        nav.append(InlineKeyboardButton("Next ▶", callback_data=f"premlist_{page + 1}"))
+    markup = InlineKeyboardMarkup([nav]) if nav else None
+
+    return "\n".join(lines), markup
+
 @Client.on_message(filters.command("premiums") & filters.create(premium_admin_chat))
 async def premiums_list(client, message):
     try:
-        lines = ["<b>💎 Active Premium Members</b>", ""]
-        count = 0
-        async for doc in premium_col().find({"active": True}):
-            count += 1
-            uid = doc.get("user_id")
-            lines += [f"<b>{count}.</b> {user_link(doc.get('username', 'User'), uid)}", f"<b>• Plan:</b> {doc.get('plan', 'N/A')}", f"<b>• Expires:</b> {fmt_date(doc.get('expires_at'))}", ""]
-        text = "\n".join(lines) if count else "<b>❌ No active premium users found.</b>"
-        if len(text) > 4096:
-            path = "premium_users.txt"
-            with open(path, "w", encoding="utf-8") as f:
-                f.write(text)
-            try:
-                await message.reply_document(path)
-            finally:
-                try:
-                    os.remove(path)
-                except OSError:
-                    logger.exception("Failed removing temporary premium list")
-        else:
-            await message.reply_text(text, parse_mode=enums.ParseMode.HTML)
+        text, markup = await build_premiums_page(0)
+        await message.reply_text(text, reply_markup=markup, parse_mode=enums.ParseMode.HTML)
     except Exception:
         logger.exception("Premium /premiums failed")
+
+@Client.on_callback_query(filters.regex(r"^premlist_"))
+async def premiums_list_page(client, callback):
+    if not premium_admin_callback(callback):
+        return await callback.answer("Unauthorized.", show_alert=True)
+    try:
+        page = int(callback.data.split("_")[-1])
+        text, markup = await build_premiums_page(page)
+        await callback.answer()
+        await safe_edit_message(callback.message, text, markup)
+    except Exception:
+        logger.exception("Premium /premiums page nav failed")
 
 @Client.on_message(filters.command("myplan") & filters.private)
 async def my_plan(client, message):
