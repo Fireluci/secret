@@ -75,18 +75,14 @@ def parse_plan_duration(duration_str):
     return timedelta(days=days), name
 
 def premium_admin_chat(_, __, message):
-    return bool(message.from_user and message.from_user.id == OWNER_ID and (
-        message.chat.type == enums.ChatType.PRIVATE or
-        (PREMIUM_LOG_ID is not None and message.chat.id == PREMIUM_LOG_ID)
-    ))
+    if PREMIUM_LOG_ID is not None and message.chat.id == PREMIUM_LOG_ID:
+        return True
+    return bool(message.from_user and message.from_user.id == OWNER_ID and message.chat.type == enums.ChatType.PRIVATE)
 
 def premium_admin_callback(callback):
-    return bool(callback.from_user and callback.from_user.id == OWNER_ID and (
-        callback.message and (
-            callback.message.chat.type == enums.ChatType.PRIVATE or
-            (PREMIUM_LOG_ID is not None and callback.message.chat.id == PREMIUM_LOG_ID)
-        )
-    ))
+    if callback.message and PREMIUM_LOG_ID is not None and callback.message.chat.id == PREMIUM_LOG_ID:
+        return True
+    return bool(callback.from_user and callback.from_user.id == OWNER_ID and callback.message and callback.message.chat.type == enums.ChatType.PRIVATE)
 
 async def safe_edit_message(message, text, reply_markup=None):
     try:
