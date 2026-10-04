@@ -57,7 +57,7 @@ class Media(Document):
     class Meta:
         collection_name = COLLECTION_NAME
         indexes = ["$file_name"]
-
+        strict = False
 
 async def save_file(media):
     file_id, file_ref = unpack_new_file_id(media.file_id)
