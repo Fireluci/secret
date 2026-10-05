@@ -329,7 +329,7 @@ async def screenshot_handler(client, message):
 
     # 5. If successful, notify user and update DB
     if admin_msg_ids:
-        await message.reply_text("<b>✅ Payment proof submitted for verification.</b>", parse_mode=enums.ParseMode.HTML)
+        await message.reply_text("<b>✅ Payment proof submitted for verification, Please Wait.</b>", parse_mode=enums.ParseMode.HTML)
         try:
             if col_intent is not None:
                 await col_intent.update_one(
