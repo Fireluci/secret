@@ -125,7 +125,7 @@ async def send_for_index(bot, message):
     # FIXED: Safe OWNER check to prevent silent drops
     owner_ids = OWNER if isinstance(OWNER, list) else [OWNER]
     if message.from_user.id not in owner_ids:
-        return
+        message.continue_propagation()
 
     chat_id = None
     last_msg_id = None
@@ -152,7 +152,7 @@ async def send_for_index(bot, message):
         if chat_id.isnumeric():
             chat_id = int("-100" + chat_id)
     else:
-        return
+        message.continue_propagation()
 
     try:
         await bot.get_chat(chat_id)
