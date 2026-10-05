@@ -349,9 +349,6 @@ async def check_pending_index_on_startup(client):
                 continue
 
 # ==================== CAPTION_EDIT.PY ====================
-
-logger = logging.getLogger(__name__)
-
 @Client.on_edited_message(filters.chat(CAPTION_INDEX_CHANNEL))
 async def caption_edit_handler(client, message):
     media = message.document or message.video
