@@ -255,7 +255,7 @@ async def send_proof_cb(client, callback):
         
     await client.send_message(
         callback.message.chat.id,
-        "<b>📸 Send Payment Proof!\n\nPlease upload your transaction screenshot to verify!</b>",
+        "<b>📸 Send Payment Proof!\n\nPlease upload your transaction screenshot for verification!</b>",
         parse_mode=enums.ParseMode.HTML,
     )
 
@@ -470,7 +470,7 @@ async def revoke_premium(client, message):
         logger.exception("Premium /revoke failed")
         await message.reply_text("<b>❌ Error processing revoke command.</b>", parse_mode=enums.ParseMode.HTML)
 
-PREMIUMS_PAGE_SIZE = 10
+PREMIUMS_PAGE_SIZE = 15
 
 async def build_premiums_page(page: int):
     skip = page * PREMIUMS_PAGE_SIZE
