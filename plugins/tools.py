@@ -249,8 +249,6 @@ async def delete(bot, message):
 
 @Client.on_message(filters.command("deletefiles") & filters.user(OWNER))
 async def deletemultiplefiles(bot, message):
-    if message.chat.type != enums.ChatType.PRIVATE:
-        return await message.reply_text("<b>Only Works in PM !</b>")
     try:
         keyword = message.text.split(" ", 1)[1]
     except Exception:
