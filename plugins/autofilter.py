@@ -7,8 +7,8 @@ from html import escape
 from pyrogram import Client, enums, filters
 from pyrogram.errors import MessageNotModified
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from database.ia_filterdb import Media, get_bad_files, get_file_details, get_search_results
-from database.users_chats_db import db
+from plugins.index import Media, get_bad_files, get_file_details, get_search_results
+from utils import db
 from info import *
 from utils import get_settings, get_shortlink, get_size, is_group_connected, is_subscribed, search_gagala, temp
 

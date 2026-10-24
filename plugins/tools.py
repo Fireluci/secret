@@ -4,8 +4,8 @@ from html import escape
 from pyrogram import Client, enums, filters
 from pyrogram.errors import FloodWait, MessageNotModified, MessageTooLong, PeerIdInvalid, UserIsBlocked
 from pyrogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
-from database.ia_filterdb import Media, get_bad_files, get_file_details, get_search_results, unpack_new_file_id
-from database.users_chats_db import db
+from plugins.index import Media, get_bad_files, get_file_details, get_search_results, unpack_new_file_id
+from utils import db
 from info import *
 from utils import broadcast_messages, connected_group, get_settings, get_shortlink, get_size, is_group_connected, is_subscribed, save_group_settings, search_gagala, temp
 
