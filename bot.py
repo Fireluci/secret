@@ -10,8 +10,8 @@ logging.getLogger("pyrogram").setLevel(logging.ERROR)
 from plugins.index import check_pending_index_on_startup
 from pyrogram import Client, __version__
 from pyrogram.raw.all import layer
-from database.ia_filterdb import Media
-from database.users_chats_db import db
+from plugins.index import Media
+from utils import db
 from utils import temp, close_http_session
 from datetime import date, datetime 
 import pytz
