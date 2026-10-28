@@ -35,7 +35,7 @@ CHNL_LNK = environ.get('CHNL_LNK', 'HEROFLiX')
 PREMIUM_GROUP_ID = environ.get('PREMIUM_GROUP_ID', '-1003982795858')
 PREMIUM_PERMANENT_LINK = environ.get('PREMIUM_PERMANENT_LINK', 'https://t.me/+n0ENmAyL2l0wZmQ1')
 PREMIUM_UPI_ID = environ.get('PREMIUM_UPI_ID', 'karthik.slice@ibl')
-PREMIUM_QR = environ.get('PREMIUM_QR', 'https://files.catbox.moe/6aqvlh.jpg')
+PREMIUM_QR = environ.get('PREMIUM_QR', 'https://imgur.com/JfVdC4i')
 SUPPORT_CHAT = environ.get('SUPPORT_CHAT', 'herofeedbot')
 SPELL_CHECK_REPLY = is_enabled(environ.get("SPELL_CHECK_REPLY", "True"), True)
 
