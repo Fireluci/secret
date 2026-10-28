@@ -339,21 +339,4 @@ async def stop_button(bot, message):
     )
     await db.set_restart_flag()
     os.execl(sys.executable, sys.executable, *sys.argv)
-
-@Client.on_message(filters.command("getqr") & filters.private)
-async def get_qr_id(client, message):
-    if message.from_user.id != OWNER:
-        return
-
-    reply = message.reply_to_message
-    if not reply:
-        return await message.reply_text("Reply to a QR photo with /getqr")
-
-    media = reply.photo or reply.document
-    if not media:
-        return await message.reply_text("Reply to a photo or image document.")
-
-    await message.reply_text(
-        f"PREMIUM_QR =\n<code>{media.file_id}</code>",
-        parse_mode=enums.ParseMode.HTML
-    )
+ 
