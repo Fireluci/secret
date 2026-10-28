@@ -524,7 +524,7 @@ async def my_plan(client, message):
         uid = message.from_user.id
         doc = await premium_col().find_one({"user_id": uid, "active": True})
         if not doc or not await is_premium_user(client, uid):
-            return await message.reply_text("<b>❌ No active Premium subscription.</b>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Buy Premium", callback_data="buy_premium_start")]]), parse_mode=enums.ParseMode.HTML)
+            return await message.reply_text("<b>❌ No active Premium subscription.</b>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌟 Click Here To Buy Premium", callback_data="buy_premium_start")]]), parse_mode=enums.ParseMode.HTML)
         exp = doc.get("expires_at")
         rem = exp - now_utc() if isinstance(exp, datetime) else None
         remaining = f"{rem.days} Days" if rem and rem.days > 0 else (f"{rem.seconds // 3600} Hours" if rem and rem.total_seconds() > 0 else "Expired")
