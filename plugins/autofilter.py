@@ -507,7 +507,7 @@ async def start(client, message):
             pass
 
     if len(message.command) != 2:
-        return await message.reply_photo(photo=PICS, caption=START_TXT, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Buy Premium", callback_data="buy_premium_start")]]), parse_mode=enums.ParseMode.HTML)    
+        return await message.reply_photo(photo=PICS, caption=START_TXT, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌟 Click Here To Buy Premium", callback_data="buy_premium_start")]]), parse_mode=enums.ParseMode.HTML)    
 
     if AUTH_CHANNEL and not await is_subscribed(client, message):
         payload = message.text.split(" ", 1)[1] if " " in message.text else "subscribe"
