@@ -545,7 +545,7 @@ async def start(client, message):
         return await message.reply_text(
             "<b>🔒 This file is exclusive to Premium members.</b>",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("💎 Buy Premium", callback_data="buy_premium_start")]
+                [InlineKeyboardButton("🌟 Click Here To Buy Premium", callback_data="buy_premium_start")]
             ]),
             parse_mode=enums.ParseMode.HTML,
         )
