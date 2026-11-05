@@ -562,6 +562,7 @@ async def premium_join_request(client, request: ChatJoinRequest):
     except Exception:
         logger.exception("Failed processing premium join request for %s", request.from_user.id)
 
+
 @Client.on_chat_member_updated()
 async def premium_member_update(client, update: ChatMemberUpdated):
     if not PREMIUM_GROUP_ID:
@@ -569,7 +570,7 @@ async def premium_member_update(client, update: ChatMemberUpdated):
     try:
         if update.chat.id != int(PREMIUM_GROUP_ID):
             return
-            
+
         new_member = update.new_chat_member.user if update.new_chat_member else None
         if not new_member or new_member.is_bot:
             return
@@ -577,34 +578,33 @@ async def premium_member_update(client, update: ChatMemberUpdated):
         new_status = update.new_chat_member.status if update.new_chat_member else None
         old_status = update.old_chat_member.status if update.old_chat_member else None
 
-        # Detect a newly joined user transitioning to MEMBER
         if new_status == enums.ChatMemberStatus.MEMBER and old_status != enums.ChatMemberStatus.MEMBER:
-            
-            # DB is already updated from confirm_activation
             doc = await premium_col().find_one({"user_id": new_member.id, "active": True})
-            
+
             if doc:
                 exp = doc.get("expires_at")
-                rem = exp - now_utc() if isinstance(exp, datetime) else None
-                remaining = f"{rem.days} Days" if rem and rem.days > 0 else (f"{rem.seconds // 3600} Hours" if rem and rem.total_seconds() > 0 else "Expired")
-                
                 welcome_text = (
                     f"<b>🎉 Welcome to Premium Group!</b>\n\n"
                     f"{user_link(new_member.first_name, new_member.id)}\n"
                     f"<b>⌛ Expires On:</b> {fmt_date(exp)}"
                 )
-                
+
                 try:
-                    # Added a slight delay to allow the user's Telegram UI to load the group chat
                     await asyncio.sleep(2)
-                    await client.send_message(update.chat.id, welcome_text, parse_mode=enums.ParseMode.HTML)
+                    sent_msg = await client.send_message(
+                        update.chat.id,
+                        welcome_text,
+                        parse_mode=enums.ParseMode.HTML
+                    )
+                    await asyncio.sleep(300)
+                    await sent_msg.delete()
+
                 except Exception:
-                    logger.exception("Failed to send welcome message to group for %s", new_member.id)
-            else:
-                # Eject non-premium users, except the OWNER
-                if new_member.id != OWNER_ID:
-                    await safe_kick(client, new_member.id)
-                
+                    logger.exception("Premium welcome message failed for %s", new_member.id)
+
+            elif new_member.id != OWNER_ID:
+                await safe_kick(client, new_member.id)
+
     except Exception:
         logger.exception("Premium member update processing failed")
 
